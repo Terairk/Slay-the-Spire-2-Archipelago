@@ -402,6 +402,28 @@ copilot-instructions.md
 # JetBrains Rider
 *.sln.iml
 
+# Vue (For Web Page)
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+node_modules
+dist
+dist-ssr
+*.local
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
 # Slay the Spire / Godot Local Props
 local.props
 client/StS2AP/godot/.godot/global_script_class_cache.cfg
