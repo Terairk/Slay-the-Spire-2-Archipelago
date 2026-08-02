@@ -9,6 +9,15 @@ export default defineConfig({
     vue(),
     tailwindcss(),
     ui({
+      ui: {
+        colors: {
+          primary: "amber",
+        },
+        colorMode: {
+          preference: "dark",
+          fallback: "dark",
+        },
+      },
       icon: {
         clientBundle: {
           scan: true,

@@ -27,25 +27,12 @@ const items = computed<NavigationMenuItem[]>(() => [
 <template>
   <UHeader>
     <template #title>
-      <div class="flex min-w-0 items-center gap-3">
-        <img
-          src="/logo_game.webp"
-          alt="Slay the Spire 2"
-          class="h-9 object-contain"
-        />
-        <img
-          src="/logo_mod.webp"
-          alt="Archipelago"
-          class="h-8 w-auto shrink-0 object-contain"
-        />
-      </div>
+      <img src="/logo.webp" alt="Slay the Spire 2 Archipelago" class="h-14" />
     </template>
 
-    <UNavigationMenu :items="items" />
+    <UNavigationMenu :items="items" color="primary" />
 
     <template #right>
-      <UColorModeButton class="cursor-pointer" />
-
       <UTooltip text="Join our Discord Thread">
         <UButton
           color="neutral"
