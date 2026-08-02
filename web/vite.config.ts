@@ -9,7 +9,11 @@ export default defineConfig({
     vue(),
     tailwindcss(),
     ui({
-      router: false,
+      icon: {
+        clientBundle: {
+          scan: true,
+        },
+      },
     }),
   ],
 });

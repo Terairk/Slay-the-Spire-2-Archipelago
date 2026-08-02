@@ -1,7 +1,13 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import AppBar from "./components/AppBar.vue";
+</script>
 
 <template>
   <UApp>
-    <b>Hey</b>
+    <!-- Nav Bar / App Bar -->
+    <AppBar />
+
+    <!-- Content -->
+    <RouterView />
   </UApp>
 </template>

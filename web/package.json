@@ -12,10 +12,12 @@
     "@nuxt/ui": "4.10.0",
     "@tailwindcss/vite": "4.3.3",
     "tailwindcss": "4.3.3",
-    "vue": "3.5.40"
+    "vue": "3.5.40",
+    "vue-router": "5.2.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@iconify-json/simple-icons": "1.2.92",
     "@types/node": "24.13.3",
     "@vitejs/plugin-vue": "6.0.8",
     "@vue/tsconfig": "0.9.1",
