@@ -57,3 +57,64 @@ body {
 a {
   color: var(--color-amber-500);
 }
+
+/* shared layout */
+.markdown-alert {
+  border: 1px solid;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  background-color: transparent;
+}
+
+.markdown-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.markdown-alert-title svg {
+  flex-shrink: 0;
+}
+
+/* variant colors */
+.markdown-alert-tip {
+  --alert-color: var(--ui-success);
+}
+
+.markdown-alert-note {
+  --alert-color: var(--ui-info);
+}
+
+.markdown-alert-important {
+  --alert-color: var(--color-purple-500);
+}
+
+.markdown-alert-warning {
+  --alert-color: var(--ui-warning);
+}
+
+.markdown-alert-caution {
+  --alert-color: var(--ui-error);
+}
+
+/* apply shared color values from the custom property */
+.markdown-alert {
+  border-color: color-mix(
+    in oklab,
+    var(--alert-color, var(--ui-success)) 60%,
+    transparent
+  );
+  background-color: color-mix(
+    in oklab,
+    var(--alert-color, var(--ui-success)) 18%,
+    transparent
+  );
+  color: color-mix(in oklab, var(--alert-color, var(--ui-success)) 55%, #fff);
+}
+
+.markdown-alert-title svg {
+  fill: color-mix(in oklab, var(--alert-color, var(--ui-success)) 60%, #fff);
+}
