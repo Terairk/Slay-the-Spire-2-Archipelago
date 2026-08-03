@@ -12,6 +12,11 @@ const items = computed<NavigationMenuItem[]>(() => [
     active: route.path === "/",
   },
   {
+    label: "Setup",
+    to: "/setup",
+    active: route.path.startsWith("/setup"),
+  },
+  {
     label: "YAML Builder",
     to: "/builder",
     active: route.path.startsWith("/builder"),

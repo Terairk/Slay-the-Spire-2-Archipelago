@@ -17,6 +17,8 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@iconify-json/glyphs": "1.2.0",
+    "@iconify-json/glyphs-poly": "1.2.0",
     "@iconify-json/simple-icons": "1.2.92",
     "@types/node": "24.13.3",
     "@vitejs/plugin-vue": "6.0.8",
