@@ -22,17 +22,17 @@ namespace StS2AP.Patches
         {
             List<EventOption> newResult = new List<EventOption>();
             var player = GameUtility.CurrentPlayer;
-            var maxAct = ArchipelagoClient.Progress.MaxAncientUnlock(player?.Character.GetCharacterOffset() ?? -1);
+            var maxAct = ArchipelagoClient.Progress.MaxProgressiveAncientLevel(player?.Character.GetCharacterOffset() ?? -1);
             if (maxAct == null || player == null || maxAct < (player.RunState.CurrentActIndex + 1))
             {
-                LogUtility.Info($"Not enough Ancient Unlocks for Act; replacing with fake options maxAct {maxAct} current act {(player?.RunState.CurrentActIndex ?? 0) + 1}");
+                LogUtility.Info($"Not enough Progressive Ancients for Act; replacing with fake options maxAct {maxAct} current act {(player?.RunState.CurrentActIndex ?? 0) + 1}");
                 newResult.Add(CreateFakeOption(__instance));
                 __result = newResult;
             }
         }
 
         [HarmonyPrefix]
-        public static void SendAncientUnlockCheck()
+        public static void SendAncientCheck()
         {
 
             var player = GameUtility.CurrentPlayer;

@@ -747,15 +747,15 @@ namespace StS2AP
 
                     break;
                 }
-                // Progressive Smiths/Rests
+                // Progressive threshold items
                 case APItem.ProgressiveSmith:
                     HandleThreshholdItem(item, Progress.ProgressiveSmiths, "Progressive Smiths");
                     break;
                 case APItem.ProgressiveRest:
                     HandleThreshholdItem(item, Progress.ProgressiveRests, "Progressive Rests");
                     break;
-                case APItem.AncientUnlock:
-                    HandleThreshholdItem(item, Progress.AncientUnlocks, "Progressive Rests");
+                case APItem.ProgressiveAncient:
+                    HandleThreshholdItem(item, Progress.ProgressiveAncients, "Progressive Ancients");
                     break;
                 // Gold is condensed into a single reward pool
                 case APItem.OneGold:

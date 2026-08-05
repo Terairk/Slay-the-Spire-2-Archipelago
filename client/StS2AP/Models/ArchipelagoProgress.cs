@@ -326,9 +326,9 @@ namespace StS2AP.Models
         public Dictionary<long, int> ProgressiveRests = new Dictionary<long, int>();
 
         /// <summary>
-        /// Keeps track of the number of Ancient Unlocks we've received for each character
+        /// Keeps track of the number of Progressive Ancients we've received for each character
         /// </summary>
-        public Dictionary<long, int> AncientUnlocks = new Dictionary<long, int>();
+        public Dictionary<long, int> ProgressiveAncients = new Dictionary<long, int>();
 
         /// <summary>
         /// Gets the highest Act that a character can rest at
@@ -367,14 +367,14 @@ namespace StS2AP.Models
         public Dictionary<string, bool> ShopSlotsChecked { get; set; } = new Dictionary<string, bool>();
 
         /// <summary>
-        /// Returns the highest Act that a character can receive Ancient Rewards at
+        /// Returns the highest Act that a character can redeem Progressive Ancients at
         /// </summary>
         /// <param name="character"> The Character's offset</param>
-        /// <returns>The highest Act (one-based) that the character can receive Ancient Rewards at </returns>
-        public int MaxAncientUnlock(long offset)
+        /// <returns>The highest Act (one-based) that the character can redeem Progressive Ancients at</returns>
+        public int MaxProgressiveAncientLevel(long offset)
         {
             int count;
-            if(!AncientUnlocks.TryGetValue( offset, out count))
+            if(!ProgressiveAncients.TryGetValue(offset, out count))
             {
                 count = 0;
             }

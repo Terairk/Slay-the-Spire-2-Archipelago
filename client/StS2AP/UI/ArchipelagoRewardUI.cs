@@ -865,7 +865,7 @@ namespace StS2AP.UI
                     return IconCard;
 
                 case APItem.Relic:
-                case APItem.AncientUnlock:
+                case APItem.ProgressiveAncient:
                     return IconRelic;
 
 
