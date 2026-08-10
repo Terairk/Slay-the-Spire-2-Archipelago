@@ -196,7 +196,7 @@ dotnet/embed_build_outputs=false
 			<ApWorldDest>$(ModsOutputDir)\spire2.apworld</ApWorldDest>
 		</PropertyGroup>
 		<Copy SourceFiles="$(ApWorldSource)" DestinationFiles="$(ApWorldDest)" Condition="Exists('$(ApWorldSource)')" />
-		<Warning Text="spire2.apworld not found in dist folder. Run scripts\build_world.ps1 to build it." Condition="!Exists('$(ApWorldSource)')" />
+		<Warning Text="spire2.apworld not found in dist folder. Run scripts/build_world.sh (macOS/Linux) or scripts\build_world.ps1 (Windows) to build it." Condition="!Exists('$(ApWorldSource)')" />
 		<Exec Command="&quot;$(GodotExePath)&quot; --headless --path &quot;$(GodotProject)&quot; --export-pack &quot;Windows Desktop&quot; &quot;$(ModsOutputDir)\$(ModName).pck&quot;" />
 	</Target>
 </Project>
