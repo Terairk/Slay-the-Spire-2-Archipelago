@@ -154,7 +154,9 @@ namespace StS2AP.Patches
 
         /// <summary>
         /// Handles the room's base Elite relic after tutorial and extra-room rewards are assembled.
-        /// Treasure uses the same point because its native relic picker already exists by then.
+        /// Treasure uses the same point because its native relic picker already exists by then;
+        /// its AP check is sent automatically so the chest cinematic is not interrupted by a
+        /// separate rewards screen.
         /// </summary>
         [HarmonyPatch(typeof(RewardsSet), nameof(RewardsSet.WithRewardsFromRoom))]
         public static class ProcessRoomRelicReward
@@ -182,16 +184,17 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                __instance.Rewards.Add(
-                    new ArchipelagoReward($"{player.APName()} Relic {rewardNumber}")
-                );
+                // Opening the chest is the interaction that earns this check. Sending it here
+                // avoids inserting an AP rewards screen between the chest-open animation and the
+                // native relic picker. SendCheck is idempotent for an already-checked location.
+                GameUtility.SendCheck($"{player.APName()} Relic {rewardNumber}");
 
                 var relicPicker = RunManager.Instance.TreasureRoomRelicSynchronizer;
                 var nativeRelicExists = relicPicker.CurrentRelics?.Count > 0;
                 if (nativeRelicExists
                     && !RelicRewardUtility.TryConsumeWaitingReceiptForNaturalReward(player))
                 {
-                    // The AP check still exists; only the native chest relic becomes a bank.
+                    // The AP check was still sent; only the native chest relic becomes a bank.
                     // BeginRelicPicking currently exposes its backing List as IReadOnlyList. Clear
                     // it here so the native empty-chest flow owns the later completion event.
                     if (relicPicker.CurrentRelics is List<RelicModel> relics)
