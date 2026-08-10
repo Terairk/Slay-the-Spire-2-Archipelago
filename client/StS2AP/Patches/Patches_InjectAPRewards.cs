@@ -206,6 +206,7 @@ namespace StS2AP.Patches
                         // Fail open if the game changes this collection type. Do not leave a bank
                         // behind as well as the native relic, which would duplicate the reward.
                         ArchipelagoClient.Progress.BankedRelicRewards--;
+                        RelicCoupons.RefreshCounter(player);
                         LogUtility.Error(
                             "Could not suppress the native treasure relic; preserving vanilla without a Relic bank"
                         );

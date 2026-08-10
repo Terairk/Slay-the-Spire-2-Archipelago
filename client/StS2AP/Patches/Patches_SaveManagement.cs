@@ -231,6 +231,7 @@ namespace StS2AP.Patches
                         GameUtility.CurrentPlayer = runState.Players[0];
                         GameUtility.CurrentConfig = ArchipelagoClient.Settings.Characters[GameUtility.CurrentPlayer.getInternalName()];
                         ArchipelagoClient.Progress = ArchipelagoProgress.FromSerializable(result, GameUtility.CurrentPlayer);
+                        RelicCoupons.EnsureOwnedBy(GameUtility.CurrentPlayer, silent: true);
                         ArchipelagoClient.ReprocessItems();
                         RelicRewardUtility.ReconcileBankedRewards(GameUtility.CurrentPlayer);
                         ArchipelagoClient.Progress.InitializeFromServer(GameUtility.CurrentPlayer);
@@ -314,6 +315,7 @@ namespace StS2AP.Patches
                     SfxCmd.Play(runState.Players[0].Character.CharacterTransitionSfx);
 
                     GameUtility.CurrentPlayer = runState.Players[0];
+                    RelicCoupons.EnsureOwnedBy(GameUtility.CurrentPlayer, silent: true);
 
                     await NGame.Instance.Transition.FadeOut(0.8f, runState.Players[0].Character.CharacterSelectTransitionPath);
                     NGame.Instance.ReactionContainer.InitializeNetworking(new NetSingleplayerGameService());

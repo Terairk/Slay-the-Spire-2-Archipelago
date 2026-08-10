@@ -70,6 +70,9 @@ namespace StS2AP.Patches
                 // Reset progress
                 ArchipelagoClient.Progress.InitializeTrackers(__result);
 
+                // Relic Coupons is a presentation-only starting relic backed by the saved bank.
+                RelicCoupons.EnsureOwnedBy(__result);
+
                 // At start of game, listen to Combat Manager
                 //CombatManager.Instance.CombatWon -= GameUtility.OnCombatWin;
                 //CombatManager.Instance.CombatWon += GameUtility.OnCombatWin;

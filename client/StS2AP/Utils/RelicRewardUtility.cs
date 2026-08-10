@@ -44,6 +44,7 @@ namespace StS2AP.Utils
                 return false;
 
             progress.BankedRelicRewards++;
+            RelicCoupons.RefreshCounter();
             return true;
         }
 
@@ -101,6 +102,7 @@ namespace StS2AP.Utils
 
             progress.UsedItems.Add(receipt.Index);
             progress.BankedRelicRewards--;
+            RelicCoupons.Activate(player);
             LogUtility.Info(
                 $"Paired Relic item w/ index {receipt.Index} with a natural relic reward; " +
                 $"{progress.BankedRelicRewards} banked reward(s) remain"
@@ -138,6 +140,7 @@ namespace StS2AP.Utils
                 }
 
                 progress.BankedRelicRewards--;
+                RelicCoupons.Activate(player);
                 LogUtility.Info(
                     $"Assigned banked relic reward to AP item w/ index {receipt.Index}; " +
                     $"{progress.BankedRelicRewards} banked reward(s) remain"
