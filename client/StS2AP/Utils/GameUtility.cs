@@ -631,11 +631,20 @@ namespace StS2AP.Utils
 
                     LogUtility.Success($"TrySetGoalAchieved: Recorded goal for '{charName}'. Total goaled: {_goaledCharacters.Count}");
 
-                    // Now that the character has cleared, we should release all of their checks
-                    await TryReleaseAllCharacterChecks(CurrentPlayer.APName());
-                    foreach(var unrecognized in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
+                    // Goal progress is independent from whether victory releases this character's checks.
+                    if (settings.ReleaseOnVictory)
                     {
-                        await TryReleaseAllCharacterChecks(unrecognized.Name);
+                        await TryReleaseAllCharacterChecks(CurrentPlayer.APName());
+                        foreach(var unrecognized in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
+                        {
+                            await TryReleaseAllCharacterChecks(unrecognized.Name);
+                        }
+                    }
+                    else
+                    {
+                        LogUtility.Info(
+                            $"Victory recorded for '{charName}' without releasing remaining checks"
+                        );
                     }
                 }
                 else

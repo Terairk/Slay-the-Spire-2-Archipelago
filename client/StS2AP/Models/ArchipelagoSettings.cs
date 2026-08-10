@@ -80,10 +80,12 @@ namespace StS2AP.Models
         public AncientRelicPoolMode AncientRelicPool { get; set; } = AncientRelicPoolMode.Balanced;
 
         /// <summary>
-        /// Number of relics offered when claiming a Relic received from Archipelago.
-        /// This does not affect relic rewards created by the base game or other mods.
+        /// Number of Relic receipts that do not need an earned Elite, chest, or Black Star reward.
         /// </summary>
-        public int RelicChoiceCount { get; set; } = 1;
+        public int RelicRewardsAvailableAnytime { get; set; } = 2;
+
+        /// <summary>Whether a victory releases the winning character's remaining checks.</summary>
+        public bool ReleaseOnVictory { get; set; } = true;
 
         public bool CampfireSanity { get; set; }
         public bool GoldSanity { get; set; }

@@ -81,20 +81,27 @@ class TestAncientRelicOptionsTrueChaos(Spire2TestBase):
         self.assertEqual(2, self.world.fill_slot_data()["ancient_relic_pool"])
 
 
-class TestRelicChoiceCountDefault(Spire2TestBase):
-    def test_one_choice_by_default(self):
-        self.assertEqual(1, self.world.options.relic_choice_count.value)
-        self.assertEqual(1, self.world.fill_slot_data()["relic_choice_count"])
+class TestProgressiveRelicOptionsDefault(Spire2TestBase):
+    def test_defaults_are_sent_in_slot_data(self):
+        slot_data = self.world.fill_slot_data()
+        self.assertEqual(2, self.world.options.relic_rewards_available_anytime.value)
+        self.assertEqual(2, slot_data["relic_rewards_available_anytime"])
+        self.assertEqual(1, self.world.options.release_on_victory.value)
+        self.assertEqual(1, slot_data["release_on_victory"])
 
 
-class TestRelicChoiceCountConfigured(Spire2TestBase):
+class TestProgressiveRelicOptionsConfigured(Spire2TestBase):
     options = {
-        "relic_choice_count": 5,
+        "relic_rewards_available_anytime": 7,
+        "release_on_victory": 0,
     }
 
-    def test_configured_count_is_sent_in_slot_data(self):
-        self.assertEqual(5, self.world.options.relic_choice_count.value)
-        self.assertEqual(5, self.world.fill_slot_data()["relic_choice_count"])
+    def test_configured_values_are_sent_in_slot_data(self):
+        slot_data = self.world.fill_slot_data()
+        self.assertEqual(7, self.world.options.relic_rewards_available_anytime.value)
+        self.assertEqual(7, slot_data["relic_rewards_available_anytime"])
+        self.assertEqual(0, self.world.options.release_on_victory.value)
+        self.assertEqual(0, slot_data["release_on_victory"])
 
 
 class TestAscensionDowns(Spire2TestBase):

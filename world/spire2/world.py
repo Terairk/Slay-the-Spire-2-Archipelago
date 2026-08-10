@@ -687,7 +687,8 @@ class SlayTheSpire2World(World):
             "neow_sanity",
             "ancient_relic_location",
             "ancient_relic_pool",
-            "relic_choice_count",
+            "relic_rewards_available_anytime",
+            "release_on_victory",
             "shop_sanity",
             "potion_sanity",
             "gold_sanity",
@@ -732,7 +733,8 @@ class SlayTheSpire2World(World):
         self.options.neow_sanity.value = slot_data['neow_sanity']
         self.options.ancient_relic_location.value = slot_data['ancient_relic_location']
         self.options.ancient_relic_pool.value = slot_data['ancient_relic_pool']
-        self.options.relic_choice_count.value = slot_data['relic_choice_count']
+        self.options.relic_rewards_available_anytime.value = slot_data['relic_rewards_available_anytime']
+        self.options.release_on_victory.value = slot_data['release_on_victory']
         self.options.campfire_sanity.value = slot_data['campfire_sanity']
         self.options.progressive_starter_card.value = slot_data['progressive_starter_card']
         self.options.progressive_starter_relic.value = slot_data['progressive_starter_relic']

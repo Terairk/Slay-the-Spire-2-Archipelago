@@ -149,14 +149,20 @@ class AncientRelicPool(Choice):
     default = 0
 
 
-class RelicChoiceCount(Range):
-    """How many relics you can choose from when claiming a Relic received from Archipelago.
+class RelicRewardsAvailableAnytime(Range):
+    """How many Relic items can be claimed before earning relic rewards in the run.
 
-    This affects only Relic items received from Archipelago. Relics offered by the base game
-    and other mods are unchanged."""
-    display_name = "Relic Choice Count"
-    range_start = 1
-    range_end = 5
+    The client snapshots this value at run start. Later Relic items need a reward from an
+    Elite, treasure chest, or Black Star before they appear in the AP reward menu."""
+    display_name = "Relic Rewards Available Anytime"
+    range_start = 0
+    range_end = 10
+    default = 2
+
+
+class ReleaseOnVictory(Toggle):
+    """Release the winning character's remaining checks when their goal is recorded."""
+    display_name = "Release Checks On Victory"
     default = 1
 
 
@@ -593,7 +599,8 @@ class Spire2Options(PerGameCommonOptions):
     ascension_down: AscensionDown
     ancient_relic_location: AncientRelicLocation
     ancient_relic_pool: AncientRelicPool
-    relic_choice_count: RelicChoiceCount
+    relic_rewards_available_anytime: RelicRewardsAvailableAnytime
+    release_on_victory: ReleaseOnVictory
     shuffle_all_cards: CardReward
     include_floor_checks: IncludeFloorChecks
     # Filler item weights

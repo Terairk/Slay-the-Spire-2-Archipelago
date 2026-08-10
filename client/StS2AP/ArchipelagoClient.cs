@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using Newtonsoft.Json.Linq;
 using StS2AP.Data;
+using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.UI;
 using StS2AP.Utils;
@@ -865,6 +866,42 @@ namespace StS2AP
 
                         break;
                     }
+                case APItem.Relic:
+                {
+                    // Save loading replays the whole item list, then reconciles once at the end.
+                    if (!refresh)
+                    {
+                        Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
+                        return;
+                    }
+
+                    // Receipt storage, RelicFactory, and the AP reward UI share run state, so keep
+                    // the whole live-delivery path on Godot's main thread.
+                    Callable.From(() =>
+                    {
+                        // Keep every receipt. Other characters and out-of-run deliveries may
+                        // matter when their run starts or a checkpoint is loaded.
+                        Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
+
+                        var player = GameUtility.CurrentPlayer;
+                        var characterOffset = player?.Character.GetCharacterOffset();
+                        if (player == null
+                            || !characterOffset.HasValue
+                            || item.GetCharacterOffset() != characterOffset.Value)
+                        {
+                            return;
+                        }
+
+                        // A receipt arriving after its Elite/chest reward belongs in the AP menu.
+                        // Reconcile all pairs so checkpoint loads do not depend on callback order.
+                        RelicRewardUtility.ReconcileBankedRewards(player);
+                        if (ArchipelagoRewardUI.IsOpen)
+                            ArchipelagoRewardUI.ShowRewards();
+                        else
+                            ArchipelagoTopBarUI.RefreshCount();
+                    }).CallDeferred();
+                    return;
+                }
                 case APItem.SwarmingElites:
                 case APItem.WearyTraveler:
                 case APItem.Poverty:
@@ -1070,7 +1107,10 @@ namespace StS2AP
 
             settings.AncientRelicLocation = (AncientRelicLocation)Convert.ToInt32(slotData["ancient_relic_location"]);
             settings.AncientRelicPool = (AncientRelicPoolMode)Convert.ToInt32(slotData["ancient_relic_pool"]);
-            settings.RelicChoiceCount = Convert.ToInt32(slotData["relic_choice_count"]);
+            // These keys are one APWorld/client contract. Missing values should reject the slot
+            // instead of silently changing the run's reward rules.
+            settings.RelicRewardsAvailableAnytime = Convert.ToInt32(slotData["relic_rewards_available_anytime"]);
+            settings.ReleaseOnVictory = Convert.ToBoolean(slotData["release_on_victory"]);
 
             if (slotData.ContainsKey("campfire_sanity"))
                 settings.CampfireSanity = Convert.ToInt32(slotData["campfire_sanity"]) != 0;

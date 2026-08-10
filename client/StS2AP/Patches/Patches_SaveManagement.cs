@@ -232,6 +232,7 @@ namespace StS2AP.Patches
                         GameUtility.CurrentConfig = ArchipelagoClient.Settings.Characters[GameUtility.CurrentPlayer.getInternalName()];
                         ArchipelagoClient.Progress = ArchipelagoProgress.FromSerializable(result, GameUtility.CurrentPlayer);
                         ArchipelagoClient.ReprocessItems();
+                        RelicRewardUtility.ReconcileBankedRewards(GameUtility.CurrentPlayer);
                         ArchipelagoClient.Progress.InitializeFromServer(GameUtility.CurrentPlayer);
                         await NGame.Instance.Transition.FadeOut(0.8f, runState.Players[0].Character.CharacterSelectTransitionPath);
                         NGame.Instance.ReactionContainer.InitializeNetworking(new NetSingleplayerGameService());

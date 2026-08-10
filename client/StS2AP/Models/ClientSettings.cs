@@ -58,6 +58,18 @@ namespace StS2AP.Models
 
         #endregion
 
+        #region Relic Rewards
+
+        /// <summary>Whether the local anytime value replaces the AP slot setting.</summary>
+        public bool OverrideRelicRewardsAvailableAnytime { get; set; } = false;
+
+        /// <summary>
+        /// Local anytime value. It is only read when the override is enabled and only affects new runs.
+        /// </summary>
+        public int RelicRewardsAvailableAnytime { get; set; } = 2;
+
+        #endregion
+
         #region Key/Button Bindings
 
         /// <summary>

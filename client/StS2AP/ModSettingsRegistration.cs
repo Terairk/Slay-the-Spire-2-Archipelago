@@ -28,6 +28,10 @@ public static class ModSettingsRegistration
     private const string DeathLink_FragmentsOnId = "enable_death_fragments";
     private const string DeathLink_DamageId = "deathlink_damage";
 
+    // Relic rewards
+    private const string RelicRewards_OverrideId = "override_relic_rewards_available_anytime";
+    private const string RelicRewards_AvailableAnytimeId = "relic_rewards_available_anytime";
+
     #endregion
 
     #region Handle Hotkeys
@@ -105,6 +109,7 @@ public static class ModSettingsRegistration
                     .AddSection("charnames", ConfigureModdedCharactersSection)
                     .AddSection("keybinds", ConfigureKeybindsSection)
                     .AddSection("notifications", ConfigureNotificationsSection)
+                    .AddSection("relic_rewards", ConfigureRelicRewardsSection)
                     .AddSection("deathlink", ConfigureDeathLinkSection)
         );
         RegisterHotkeys();
@@ -302,6 +307,67 @@ public static class ModSettingsRegistration
             .WithEntryEnabledWhen(DeathLink_DamageId, IsDeathLinkOverriden);
     }
 
+    private static void ConfigureRelicRewardsSection(ModSettingsSectionBuilder section)
+    {
+        section
+            .WithTitle(ModSettingsText.Literal("Relic Rewards"))
+            .WithDescription(
+                ModSettingsText.Literal("Configure Relic availability for future runs.")
+            )
+            .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
+            .AddToggle(
+                RelicRewards_OverrideId,
+                ModSettingsText.Literal("Override AP Relic Availability"),
+                CreateBinding(
+                    static settings => settings.OverrideRelicRewardsAvailableAnytime,
+                    static (settings, value) =>
+                    {
+                        // Start an override from the slot's value instead of a stale local value.
+                        if (value && !settings.OverrideRelicRewardsAvailableAnytime)
+                        {
+                            settings.RelicRewardsAvailableAnytime =
+                                ArchipelagoClient.Settings?.RelicRewardsAvailableAnytime
+                                ?? settings.RelicRewardsAvailableAnytime;
+                        }
+
+                        settings.OverrideRelicRewardsAvailableAnytime = value;
+                    }
+                ),
+                ModSettingsText.Literal(
+                    "Use a local value instead of the one supplied by the Archipelago slot."
+                )
+            )
+            .ConfigureEntryMenu(
+                RelicRewards_OverrideId,
+                ModSettingsMenuCapabilities.None
+            )
+            .AddIntSlider(
+                RelicRewards_AvailableAnytimeId,
+                ModSettingsText.Literal("Relics Available Anytime"),
+                CreateBinding(
+                    static settings => settings.OverrideRelicRewardsAvailableAnytime
+                        ? settings.RelicRewardsAvailableAnytime
+                        : ArchipelagoClient.Settings?.RelicRewardsAvailableAnytime
+                            ?? settings.RelicRewardsAvailableAnytime,
+                    static (settings, value) => settings.RelicRewardsAvailableAnytime = value
+                ),
+                minValue: 0,
+                maxValue: 10,
+                step: 1,
+                description: ModSettingsText.Literal(
+                    "Overrides the AP slot setting for new runs. Does not affect the current run."
+                )
+            )
+            .ConfigureEntryMenu(
+                RelicRewards_AvailableAnytimeId,
+                ModSettingsMenuCapabilities.None
+            )
+            .WithEntryEnabledWhen(
+                RelicRewards_AvailableAnytimeId,
+                IsRelicRewardsOverrideEnabled
+            );
+    }
+
     #endregion
 
     #region Helper Functions
@@ -316,6 +382,12 @@ public static class ModSettingsRegistration
         var store = RitsuLibFramework.GetDataStore(ModEntry.ModId);
         var settings = store.Get<ClientSettings>("apsettings");
         return settings.OverrideDeathLinkOptions;
+    }
+
+    private static bool IsRelicRewardsOverrideEnabled()
+    {
+        var store = RitsuLibFramework.GetDataStore(ModEntry.ModId);
+        return store.Get<ClientSettings>("apsettings").OverrideRelicRewardsAvailableAnytime;
     }
 
     /// <summary>

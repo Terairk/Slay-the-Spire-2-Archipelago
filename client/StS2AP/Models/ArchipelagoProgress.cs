@@ -87,10 +87,22 @@ namespace StS2AP.Models
         public int RareCardRewardsAttempted { get; set; } = 0;
 
         /// <summary>
-        /// Keeps track of the number of times the game has tried to provide a Relic Reward.
-        /// Used to keep track of when to replace a Relic Reward with an AP Location.
+        /// Eligible Elite, chest, and Black Star rewards encountered this run. Attempts after ten
+        /// are still counted so the caller knows they must stay fully vanilla.
         /// </summary>
         public int RelicRewardsAttempted { get; set; } = 0;
+
+        /// <summary>
+        /// Earned relic rewards not yet paired with a received Relic item. A bank is spent when
+        /// the receipt is committed to either a native reward or a saved AP-menu assignment.
+        /// </summary>
+        public int BankedRelicRewards { get; set; } = 0;
+
+        /// <summary>
+        /// Run-start snapshot of the effective anytime setting. Changing local settings cannot
+        /// move receipts between anytime and reward-required while a run is in progress.
+        /// </summary>
+        public int RelicRewardsAvailableAnytimeForRun { get; set; } = 2;
 
         /// <summary>
         /// Keeps track of the number of times the game has tried to provide a Gold Reward.
@@ -113,7 +125,8 @@ namespace StS2AP.Models
 
         /// <summary>
         /// Maps an Archipelago Relic item's index to the choices pre-pulled from the RelicFactory for it.
-        /// This ensures that opening/closing or saving/loading the reward screen always shows the same choices.
+        /// Only AP-menu rewards use this; native Elite, chest, and Black Star rewards never do.
+        /// This ensures that reopening or loading the AP menu shows the same choice.
         /// Cleared on each new run via <see cref="ResetTrackers"/>.
         /// </summary>
         public Dictionary<int, List<RelicModel>> RelicChoiceAssignments { get; set; } = new Dictionary<int, List<RelicModel>>();
@@ -145,7 +158,7 @@ namespace StS2AP.Models
         /// </summary>
         /// <param name="index">The index of the specific item sent from the Multiworld.</param>
         /// <param name="player">The current player, needed by RelicFactory.</param>
-        /// <param name="choiceCount">The configured number of relics to offer.</param>
+        /// <param name="choiceCount">The number of relics to persist for this item.</param>
         /// <returns>The assigned relic choices, or an empty list if no player is provided or the factory fails.</returns>
         public IReadOnlyList<RelicModel> GetOrAssignRelicChoices(int index, Player player, int choiceCount)
         {
@@ -317,6 +330,8 @@ namespace StS2AP.Models
             RareCardRewardsAttempted = 0;
             BossRewardsDistributed = 0;
             RelicRewardsAttempted = 0;
+            BankedRelicRewards = 0;
+            RelicRewardsAvailableAnytimeForRun = RelicRewardUtility.EffectiveAvailableAnytime;
             GoldRewardsAttempted = 0;
             PotionRewardsAttempted = 0;
             CampfiresChecked.Clear();
@@ -355,7 +370,23 @@ namespace StS2AP.Models
         /// The number of items we've received from the multiworld that we haven't used yet. 
         /// This is what gets displayed in the top bar UI.
         /// </summary>
-        public int UnusedItemCount => AllReceivedItems.Where(i => i.Item.GetCharacterOffset() == GameUtility.CurrentConfig?.CharOffset && !i.Item.ItemDisplayName.Contains("Progressive") && !i.Item.ItemName.Contains("Progressive")).Count() - UsedItems.Count;
+        public int UnusedItemCount
+        {
+            get
+            {
+                var player = GameUtility.CurrentPlayer;
+                return AllReceivedItems.Count(item =>
+                    item.Item.GetCharacterOffset() == GameUtility.CurrentCharacterID
+                    && !item.Item.ItemDisplayName.Contains("Progressive")
+                    && !item.Item.ItemName.Contains("Progressive")
+                    && !UsedItems.Contains(item.Index)
+                    && (
+                        item.Item.GetCharacterSpecificItemID() != APItem.Relic
+                        || player != null && RelicRewardUtility.IsAvailableInRewardMenu(item, player)
+                    )
+                );
+            }
+        }
 
         #endregion
 
@@ -584,6 +615,8 @@ namespace StS2AP.Models
                 CardRewardsAttempted = CardRewardsAttempted,
                 RareCardRewardsAttempted = RareCardRewardsAttempted,
                 RelicRewardsAttempted = RelicRewardsAttempted,
+                BankedRelicRewards = BankedRelicRewards,
+                RelicRewardsAvailableAnytimeForRun = RelicRewardsAvailableAnytimeForRun,
                 GoldRewardsAttempted = GoldRewardsAttempted,
                 PotionRewardsAttempted = PotionRewardsAttempted,
                 BossRewardsDistributed = BossRewardsDistributed,
@@ -623,6 +656,8 @@ namespace StS2AP.Models
                 CardRewardsAttempted = saveData.CardRewardsAttempted,
                 RareCardRewardsAttempted = saveData.RareCardRewardsAttempted,
                 RelicRewardsAttempted = saveData.RelicRewardsAttempted,
+                BankedRelicRewards = saveData.BankedRelicRewards,
+                RelicRewardsAvailableAnytimeForRun = saveData.RelicRewardsAvailableAnytimeForRun,
                 GoldRewardsAttempted = saveData.GoldRewardsAttempted,
                 PotionRewardsAttempted = saveData.PotionRewardsAttempted,
                 BossRewardsDistributed = saveData.BossRewardsDistributed,
