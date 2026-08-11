@@ -24,8 +24,23 @@ Archipelago trying to install packages into a PEP 668/uv-managed global
 interpreter. Pass `--python /path/to/an/existing/venv/bin/python` to manage the
 environment yourself.
 
-This script replaces `Archipelago/worlds/spire2`, invokes the Archipelago
-launcher, and copies `build/apworlds/spire2.apworld` to `dist/`.
+This script synchronizes `Archipelago/worlds/spire2`, invokes the Archipelago
+launcher, and copies `build/apworlds/spire2.apworld` to `dist/`. If the target
+world contains files or edits that differ from this repository, the script
+moves it to a timestamped `Archipelago/worlds/.spire2.backup-*` directory
+before replacing it.
+
+## Run the placement-statistics experiment
+
+The experiment runner wraps the APWorld build plus fuzzer setup, so its normal
+path is also one command with no exported variables or manual copies:
+
+```console
+python tools/placement_stats/run_experiment.py
+```
+
+See [`tools/placement_stats/README.md`](../tools/placement_stats/README.md) for
+short-run options and analysis examples.
 
 ## Preview the legacy item enum generator
 

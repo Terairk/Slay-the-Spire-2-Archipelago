@@ -91,6 +91,17 @@ class FakeMultiWorld:
 
 
 class PlacementStatsHookTests(unittest.TestCase):
+    def test_supplies_missing_allow_quantity_without_overriding_fuzzer(self):
+        hook = hook_module.Hook()
+
+        missing = types.SimpleNamespace()
+        hook.before_generate(missing)
+        self.assertFalse(missing.allow_quantity)
+
+        existing = types.SimpleNamespace(allow_quantity=True)
+        hook.before_generate(existing)
+        self.assertTrue(existing.allow_quantity)
+
     def test_writes_one_atomic_csv_with_spheres(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
             old_output = os.environ.get(hook_module.OUTPUT_DIR_ENV)

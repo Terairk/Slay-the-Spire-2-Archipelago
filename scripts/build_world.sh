@@ -19,6 +19,9 @@ Synchronize world/spire2 into an Archipelago source checkout, invoke
 Launcher.py "Build APWorlds" "Slay the Spire II", and copy the resulting
 spire2.apworld into this repository's dist directory.
 
+If Archipelago/worlds/spire2 differs from this repository's source, it is
+moved to a timestamped .spire2.backup-* directory before synchronization.
+
 Environment overrides:
   ARCHIPELAGO_ROOT  Archipelago source checkout (default: ../Archipelago)
   PYTHON_BIN        Existing environment's Python executable
@@ -122,7 +125,13 @@ STAGING_DIR="$WORLDS_DIR/.spire2.sync.$$"
 [[ ! -e "$STAGING_DIR" ]] || die "temporary sync path already exists: $STAGING_DIR"
 cp -R -- "$LOCAL_WORLD" "$STAGING_DIR"
 if [[ -e "$TARGET_WORLD" ]]; then
-    rm -rf -- "$TARGET_WORLD"
+    if diff -qr -x __pycache__ -x '*.pyc' "$LOCAL_WORLD" "$TARGET_WORLD" >/dev/null; then
+        rm -rf -- "$TARGET_WORLD"
+    else
+        WORLD_BACKUP="$WORLDS_DIR/.spire2.backup-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+        mv -- "$TARGET_WORLD" "$WORLD_BACKUP"
+        printf 'Preserved differing target world at %s\n' "$WORLD_BACKUP"
+    fi
 fi
 mv -- "$STAGING_DIR" "$TARGET_WORLD"
 STAGING_DIR=""

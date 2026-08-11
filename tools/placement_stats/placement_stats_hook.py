@@ -201,6 +201,14 @@ class Hook(BaseHook):
         self.runs_dir = self.output_dir / "runs"
         self.dataset_label = os.environ.get(DATASET_LABEL_ENV, "default")
 
+    def before_generate(self, generator_args: Any) -> None:
+        # Archipelago 0.6.8 added this Generate.main Namespace field after the
+        # pinned fuzzer's call_generate() argument list was last updated. The
+        # fixed experiment YAML does not use quantity, so supply the normal
+        # disabled value only when the fuzzer has not learned the field yet.
+        if not hasattr(generator_args, "allow_quantity"):
+            generator_args.allow_quantity = False
+
     def setup_main(self, _args: Any) -> None:
         self.runs_dir.mkdir(parents=True, exist_ok=True)
 

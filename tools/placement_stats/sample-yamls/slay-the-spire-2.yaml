@@ -17,23 +17,23 @@ Slay the Spire II:
 
   characters:
     - Ironclad
+    - Silent
+    - Defect
   modded_characters: []
   pick_num_characters: 0
   num_chars_goal: 0
   lock_characters: locked_fixed
   unlocked_character: Ironclad
   use_advanced_characters: false
-  advanced_characters: {}
   ascension:
-    - 1
+    - 10
   ascension_down: []
-
   shuffle_all_cards: false
   include_floor_checks: true
-  neow_sanity: false
-  campfire_sanity: false
-  gold_sanity: false
-  potion_sanity: false
+  neow_sanity: true
+  campfire_sanity: true
+  gold_sanity: true
+  potion_sanity: true
   shop_sanity: false
   shop_card_slots: 2
   shop_neutral_card_slots: 1
@@ -49,17 +49,17 @@ Slay the Spire II:
 
   one_gold_filler_weight: none
   five_gold_filler_weight: high
-  free_attack_filler_weight: high
-  free_power_filler_weight: high
-  free_skill_filler_weight: high
-  vigor_filler_weight: high
-  artifact_filler_weight: high
-  thorns_filler_weight: high
-  buffer_filler_weight: low
-  dexterity_filler_weight: medium
-  strength_filler_weight: medium
-  plating_filler_weight: medium
-  friendship_filler_weight: medium
-  post_combat_card_upgrade_filler_weight: low
-  post_combat_card_removal_filler_weight: low
-  additional_card_reward_filler_weight: low
+  free_attack_filler_weight: none
+  free_power_filler_weight: none
+  free_skill_filler_weight: none
+  vigor_filler_weight: none
+  artifact_filler_weight: none
+  thorns_filler_weight: none
+  buffer_filler_weight: none
+  dexterity_filler_weight: none
+  strength_filler_weight: none
+  plating_filler_weight: none
+  friendship_filler_weight: none
+  post_combat_card_upgrade_filler_weight: none
+  post_combat_card_removal_filler_weight: none
+  additional_card_reward_filler_weight: none

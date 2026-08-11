@@ -26,6 +26,13 @@ def _sql_string(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _positive_integer(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
 def _source_expression(source: str) -> str:
     path = Path(source).expanduser()
     if path.is_dir():
@@ -131,6 +138,57 @@ def _item_spheres(args: argparse.Namespace) -> None:
     )
 
 
+def _item_nth_sphere(args: argparse.Namespace) -> None:
+    """Report when each seed has accumulated N reachable copies of an item."""
+    where, parameters = _filters(args, "item_name", "item_player")
+    parameters.append(args.count)
+    _run_query(
+        args.data,
+        f"""
+        WITH all_seeds AS (
+            SELECT DISTINCT generation_id
+            FROM placements
+        ),
+        ranked_items AS (
+            SELECT
+                generation_id,
+                sphere,
+                row_number() OVER (
+                    PARTITION BY generation_id
+                    ORDER BY sphere, location_player, location_name, location_address NULLS LAST
+                ) AS item_number
+            FROM placements
+            WHERE {where}
+              AND reachable
+              AND sphere IS NOT NULL
+        ),
+        milestones AS (
+            SELECT generation_id, sphere
+            FROM ranked_items
+            WHERE item_number = ?
+        ),
+        grouped AS (
+            SELECT milestones.sphere, count(*) AS seeds
+            FROM all_seeds
+            LEFT JOIN milestones USING (generation_id)
+            GROUP BY milestones.sphere
+        )
+        SELECT
+            coalesce(cast(sphere AS varchar), 'not_reached') AS sphere,
+            seeds,
+            round(100.0 * seeds / sum(seeds) OVER (), 3) AS percent_of_all_seeds,
+            CASE WHEN sphere IS NOT NULL THEN round(
+                100.0 * sum(seeds) OVER (ORDER BY sphere NULLS LAST ROWS UNBOUNDED PRECEDING)
+                / sum(seeds) OVER (),
+                3
+            ) END AS cumulative_percent_by_sphere
+        FROM grouped
+        ORDER BY grouped.sphere NULLS LAST
+        """,
+        parameters,
+    )
+
+
 def _custom_sql(args: argparse.Namespace) -> None:
     _run_query(args.data, args.query)
 
@@ -177,6 +235,21 @@ def _parser() -> argparse.ArgumentParser:
     item_spheres.add_argument("--item", required=True)
     item_spheres.add_argument("--item-player", type=int)
     item_spheres.set_defaults(handler=_item_spheres)
+
+    item_nth_sphere = subparsers.add_parser(
+        "item-nth-sphere",
+        help="Sphere where each seed reaches its Nth copy of an item",
+    )
+    item_nth_sphere.add_argument("data")
+    item_nth_sphere.add_argument("--item", required=True)
+    item_nth_sphere.add_argument("--item-player", type=int)
+    item_nth_sphere.add_argument(
+        "--count",
+        type=_positive_integer,
+        default=1,
+        help="reachable copy number to measure (default: 1)",
+    )
+    item_nth_sphere.set_defaults(handler=_item_nth_sphere)
 
     custom_sql = subparsers.add_parser("sql", help="Run custom DuckDB SQL against the placements view")
     custom_sql.add_argument("data")

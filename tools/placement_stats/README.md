@@ -32,35 +32,55 @@ This implementation was checked against:
 - With `--skip-output`, current `Main.main` still completes `post_fill`,
   progression balancing, `finalize_multiworld`, and `pre_output`, then returns
   the fully generated `MultiWorld` before multidata/spoiler output.
+- Current Archipelago `Generate.main` expects an `allow_quantity` namespace
+  field that the pinned fuzzer does not yet provide. The hook supplies the
+  normal disabled value when it is absent, without overriding future fuzzer
+  versions that provide it themselves.
 
 The hook numbers the first yielded reachable set as sphere 1. Unreachable
 placements have an empty `sphere` and `reachable=false`.
 
-## Generate 10,000 fixed-config seeds
+## Generate fixed-config seeds
 
-Install/copy this APWorld into a source Archipelago checkout first, then copy
-the fuzzer's `fuzz.py` to the Archipelago root as its README directs. From the
-Archipelago root:
+From this repository, run:
 
-```bash
-export STS2_AP_REPO=/absolute/path/to/Slay-the-Spire-2-Archipelago
-export AP_PLACEMENT_STATS_DIR=/absolute/path/to/stats/sts2-v053
-export AP_PLACEMENT_STATS_LABEL=sts2-v053-fixed-ironclad
-export PYTHONPATH="$STS2_AP_REPO/tools/placement_stats${PYTHONPATH:+:$PYTHONPATH}"
-
-python -O fuzz.py \
-  -r 10000 \
-  -j 8 \
-  -n 1 \
-  -t 60 \
-  --sample-from "$STS2_AP_REPO/tools/placement_stats/sample-yamls" \
-  --skip-output \
-  --hook placement_stats_hook:Hook
+```console
+python tools/placement_stats/run_experiment.py
 ```
 
-`--sample-from` is used instead of `-g`: the current fuzzer makes those flags
-mutually exclusive. With one YAML and `-n 1`, every generation uses that YAML.
-Use a directory containing only the intended YAML.
+That one command uses the sibling `../Archipelago` checkout, synchronizes and
+builds the current APWorld, copies `spire2.apworld` to this repository's
+`dist/`, installs the pinned fuzzer in the Archipelago checkout if it is
+missing, and runs 10,000 generations. It configures the hook internally; no
+`export`, manual `PYTHONPATH`, file copy, or directory change is needed.
+
+Results go to a timestamped directory under
+`artifacts/placement_stats/`, which is ignored by Git. The directory and the
+same timestamped dataset label are printed before the run starts.
+
+The runner uses only Python's standard library and handles POSIX and Windows
+virtualenv layouts. For a quick smoke run or a custom checkout:
+
+```console
+python tools/placement_stats/run_experiment.py --runs 10 --jobs 2
+
+python tools/placement_stats/run_experiment.py \
+  --archipelago-root /path/to/Archipelago \
+  --runs 10000 \
+  --jobs 16 \
+  --label sts2-v053-fixed-ironclad \
+  --output /absolute/path/to/stats/sts2-v053
+```
+
+On Windows, `py tools/placement_stats/run_experiment.py` works as well. Run
+`python tools/placement_stats/run_experiment.py --help` for all overrides. The
+runner never replaces an existing `fuzz.py` unless `--fuzzer PATH` is supplied
+explicitly. `--skip-prepare` is available for repeated runs after the APWorld
+and fuzzer are already synchronized.
+
+The runner uses `--sample-from` instead of `-g`: the current fuzzer makes those
+flags mutually exclusive. With one YAML and `-n 1`, every generation uses that
+YAML. Point `--yaml-dir` at a directory containing only the intended YAML.
 
 The fuzzer deletes its own `./fuzz_output` at startup. An absolute
 `AP_PLACEMENT_STATS_DIR` outside that directory makes retention explicit. The
@@ -69,30 +89,45 @@ experiment.
 
 ## Analyze
 
-The directory arguments below are the value of `AP_PLACEMENT_STATS_DIR`:
+Use the output directory printed by the runner as the data argument below:
 
 ```bash
 # Most common locations for an item
-uv run --with duckdb python "$STS2_AP_REPO/tools/placement_stats/analyze.py" \
+uv run --with duckdb python tools/placement_stats/analyze.py \
   item-locations /absolute/path/to/stats/sts2-v053 \
   --item "Ironclad Relic"
 
 # Most common items at a location
-uv run --with duckdb python "$STS2_AP_REPO/tools/placement_stats/analyze.py" \
+uv run --with duckdb python tools/placement_stats/analyze.py \
   location-items /absolute/path/to/stats/sts2-v053 \
   --location "Ironclad Card Reward 1"
 
-# Sphere distribution for an item
-uv run --with duckdb python "$STS2_AP_REPO/tools/placement_stats/analyze.py" \
+# Sphere distribution of every placed copy of an item
+uv run --with duckdb python tools/placement_stats/analyze.py \
   item-spheres /absolute/path/to/stats/sts2-v053 \
   --item "Ironclad Relic"
+
+# Sphere where the first reachable copy appears in each seed
+uv run --with duckdb python tools/placement_stats/analyze.py \
+  item-nth-sphere /absolute/path/to/stats/sts2-v053 \
+  --item "Ironclad Relic" --count 1
+
+# Sphere by which three reachable copies are available in each seed
+uv run --with duckdb python tools/placement_stats/analyze.py \
+  item-nth-sphere /absolute/path/to/stats/sts2-v053 \
+  --item "Ironclad Relic" --count 3
 ```
+
+`item-nth-sphere` ranks reachable copies separately inside every generation.
+Its `not_reached` row includes seeds with fewer than the requested number of
+reachable copies. `cumulative_percent_by_sphere` is the percentage of all
+generated seeds that have reached that many copies by the given sphere.
 
 For faster repeated analysis after generation finishes, compact the shards to
 Parquet without loading the dataset into Python memory:
 
 ```bash
-uv run --with duckdb python "$STS2_AP_REPO/tools/placement_stats/analyze.py" \
+uv run --with duckdb python tools/placement_stats/analyze.py \
   compact /absolute/path/to/stats/sts2-v053 \
   /absolute/path/to/stats/sts2-v053.parquet
 ```
@@ -101,7 +136,7 @@ Every command also accepts that Parquet file as its data argument. For custom
 metrics, the CLI exposes a `placements` view:
 
 ```bash
-uv run --with duckdb python "$STS2_AP_REPO/tools/placement_stats/analyze.py" \
+uv run --with duckdb python tools/placement_stats/analyze.py \
   sql /absolute/path/to/stats/sts2-v053.parquet \
   'SELECT dataset_label, count(DISTINCT generation_id) AS seeds FROM placements GROUP BY 1'
 ```
