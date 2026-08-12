@@ -13,7 +13,6 @@ using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
-using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
@@ -22,8 +21,8 @@ using Newtonsoft.Json.Linq;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Patches;
-using StS2AP.UI;
 using System.Text.Json;
+using StS2AP.UI;
 using static StS2AP.Data.CharTable;
 
 namespace StS2AP.Utils
@@ -361,7 +360,7 @@ namespace StS2AP.Utils
                 // CardReward.OnSelect may replace the selected card while adding it to the deck
                 // (for example through an Egg relic), so identify the actual resulting deck card.
                 var deckCardsBeforeSelection = player.Deck.Cards.ToHashSet();
-                
+
                 // well the decompiled code say we should probably not use this but it seems to work well for our
                 // use case. this replaces the manual card counting we were doing for relics such as pael's wing
                 // but this may impact how easy it is to port to multiplayer

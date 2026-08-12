@@ -8,6 +8,8 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
+using MegaCrit.Sts2.Core.Nodes.Screens;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
@@ -23,34 +25,32 @@ using ItemInfo = Archipelago.MultiClient.Net.Models.ItemInfo;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using StS2AP.Models;
 using System.Reflection;
+using MegaCrit.Sts2.Core.Nodes;
 
 namespace StS2AP.UI
 {
     public partial class APRewardScreenNode : Control, IOverlayScreen
     {
         private bool _hotkeysRegistered;
+        private bool _blocksUnderlyingHotkeys;
 
         public Button? DefaultFocus { get; set; }
         public NetScreenType ScreenType => NetScreenType.Rewards; 
         public bool UseSharedBackstop => true; 
         public Control? DefaultFocusedControl => DefaultFocus; 
 
-        public void AfterOverlayOpened()
-        {
-            ArchipelagoRewardUI.RaiseOverlayAboveMap();
-            RegisterHotkeys();
-        }
+        public void AfterOverlayOpened() { }
 
         public void AfterOverlayClosed()
         {
             UnregisterHotkeys();
-            ArchipelagoRewardUI.RestoreOverlayLayer();
             QueueFree();
         }
 
         public void AfterOverlayShown()
         {
             Visible = true;
+            RegisterHotkeys();
 
             // ActiveScreenContext updates after NOverlayStack invokes this callback.
             // Defer focus so the overlay's recursive focus behavior is enabled first.
@@ -59,50 +59,56 @@ namespace StS2AP.UI
 
         public void AfterOverlayHidden()
         {
-            // NOverlayStack invokes this before adding a new overlay, so defer the
-            // check until its top entry is final. Stay visible only when the map
-            // caused the callback and this reward screen is still the top overlay.
-            Callable.From(() =>
-            {
-                if (!IsInstanceValid(this))
-                {
-                    return;
-                }
-
-                Visible = ReferenceEquals(NOverlayStack.Instance?.Peek(), this) &&
-                    NMapScreen.Instance?.IsOpen == true;
-            }).CallDeferred();
+            // Let the native screen above AP own input. In particular, map and deck
+            // should temporarily hide a card picker exactly as they do elsewhere.
+            UnregisterHotkeys();
+            Visible = false;
         }
 
         internal void UnregisterHotkeys()
         {
-            if (!_hotkeysRegistered)
+            var hotkeyManager = NHotkeyManager.Instance;
+            if (_hotkeysRegistered)
             {
-                return;
+                hotkeyManager?.RemoveHotkeyPressedBinding(MegaInput.cancel, ArchipelagoRewardUI.Hide);
+                hotkeyManager?.RemoveHotkeyPressedBinding(MegaInput.pauseAndBack, ArchipelagoRewardUI.Hide);
+                hotkeyManager?.RemoveHotkeyReleasedBinding(MegaInput.viewMap, ArchipelagoRewardUI.CloseToMap);
+                hotkeyManager?.RemoveHotkeyReleasedBinding(MegaInput.viewDeckAndTabLeft, ArchipelagoRewardUI.CloseToDeck);
+                _hotkeysRegistered = false;
             }
 
-            var hotkeyManager = NHotkeyManager.Instance;
-            hotkeyManager?.RemoveHotkeyPressedBinding(MegaInput.cancel, ArchipelagoRewardUI.Hide);
-            hotkeyManager?.RemoveHotkeyPressedBinding(MegaInput.pauseAndBack, ArchipelagoRewardUI.Hide);
-            hotkeyManager?.RemoveHotkeyReleasedBinding(MegaInput.viewMap, ArchipelagoRewardUI.HideAndShowMap);
-            hotkeyManager?.RemoveBlockingScreen(this);
-            _hotkeysRegistered = false;
+            if (_blocksUnderlyingHotkeys)
+            {
+                hotkeyManager?.RemoveBlockingScreen(this);
+                _blocksUnderlyingHotkeys = false;
+            }
         }
 
         private void RegisterHotkeys()
         {
             var hotkeyManager = NHotkeyManager.Instance;
-            if (_hotkeysRegistered || hotkeyManager == null)
+            if (hotkeyManager == null)
             {
                 return;
             }
 
-            // Block room/map shortcuts below this overlay, then add only the
+            // Block underlying room/top-bar shortcuts, then add only the
             // actions the AP reward screen intentionally supports on top.
-            hotkeyManager.AddBlockingScreen(this);
+            if (!_blocksUnderlyingHotkeys)
+            {
+                hotkeyManager.AddBlockingScreen(this);
+                _blocksUnderlyingHotkeys = true;
+            }
+
+            if (_hotkeysRegistered)
+            {
+                return;
+            }
+
             hotkeyManager.PushHotkeyPressedBinding(MegaInput.cancel, ArchipelagoRewardUI.Hide);
             hotkeyManager.PushHotkeyPressedBinding(MegaInput.pauseAndBack, ArchipelagoRewardUI.Hide);
-            hotkeyManager.PushHotkeyReleasedBinding(MegaInput.viewMap, ArchipelagoRewardUI.HideAndShowMap);
+            hotkeyManager.PushHotkeyReleasedBinding(MegaInput.viewMap, ArchipelagoRewardUI.CloseToMap);
+            hotkeyManager.PushHotkeyReleasedBinding(MegaInput.viewDeckAndTabLeft, ArchipelagoRewardUI.CloseToDeck);
             _hotkeysRegistered = true;
         }
     }
@@ -170,6 +176,13 @@ namespace StS2AP.UI
     /// </summary>
     public static class ArchipelagoRewardUI
     {
+        private enum ReturnDestination
+        {
+            Room,
+            Map,
+            Deck,
+        }
+
         private static APRewardScreenNode? _rootPanel;
         private static VBoxContainer? _itemContainer;
         private static Button? _proceedButton;
@@ -179,10 +192,13 @@ namespace StS2AP.UI
         private static bool _linkedRewardChainTextureResolved;
         private static readonly PropertyInfo? ChainImagePathProperty =
             AccessTools.Property(typeof(NLinkedRewardSet), "ChainImagePath");
-        private static int? _originalOverlayZIndex;
-        private static int? _raisedOverlayZIndex;
-        private static NMapScreen? _mouseSuppressedMapScreen;
-        private static Control.MouseBehaviorRecursiveEnum? _originalMapMouseBehavior;
+
+        private static ReturnDestination _returnDestination;
+
+        // used to differentiate card rewards from AP rewards versus a natural card reward
+        // because they are treated differently due to skips not actually skipping AP stuff
+        private static NCardRewardSelectionScreen? _ownedCardPicker;
+        private static bool _ownedCardPickerSkipRequested;
 
         // UI resource paths sourced from rewards_screen.tscn
         private const string PanelPath   = "res://images/ui/reward_screen/reward_panel.png";
@@ -254,80 +270,40 @@ namespace StS2AP.UI
         public static Action? OnScreenClosed;
 
         /// <summary>
-        /// Raises the game's overlay container above the map while the AP reward
-        /// screen is open. Raising the container also keeps its shared backstop
-        /// above the map, rather than only raising the reward panel itself.
-        /// </summary>
-        internal static void RaiseOverlayAboveMap()
-        {
-            var overlayStack = NOverlayStack.Instance;
-            var mapScreen = NMapScreen.Instance;
-            if (overlayStack == null || mapScreen == null)
-            {
-                return;
-            }
-
-            // make it physically appear above the Map visually
-            _originalOverlayZIndex ??= overlayStack.ZIndex;
-            _raisedOverlayZIndex = Math.Max(overlayStack.ZIndex, mapScreen.ZIndex + 1);
-            overlayStack.ZIndex = _raisedOverlayZIndex.Value;
-
-            SuppressMapMouseInput(mapScreen);
-        }
-
-        /// <summary>
-        /// Prevents the visible map and its child controls from receiving GUI
-        /// mouse events while AP rewards are above it. ActiveScreenContext only
-        /// controls focus; Save the map's behaviour so we can restore it later
-        /// </summary>
-        private static void SuppressMapMouseInput(NMapScreen mapScreen)
-        {
-            if (!mapScreen.IsOpen || _mouseSuppressedMapScreen != null)
-            {
-                return;
-            }
-
-            _mouseSuppressedMapScreen = mapScreen;
-            _originalMapMouseBehavior = mapScreen.MouseBehaviorRecursive;
-            mapScreen.MouseBehaviorRecursive = Control.MouseBehaviorRecursiveEnum.Disabled;
-        }
-
-        /// <summary>
-        /// Restores the overlay container's original draw order after the AP
-        /// reward screen closes, without overwriting a later external change.
-        /// </summary>
-        internal static void RestoreOverlayLayer()
-        {
-            var overlayStack = NOverlayStack.Instance;
-            if (overlayStack != null &&
-                _originalOverlayZIndex.HasValue &&
-                overlayStack.ZIndex == _raisedOverlayZIndex)
-            {
-                overlayStack.ZIndex = _originalOverlayZIndex.Value;
-            }
-
-            _originalOverlayZIndex = null;
-            _raisedOverlayZIndex = null;
-
-            if (GodotObject.IsInstanceValid(_mouseSuppressedMapScreen) &&
-                _originalMapMouseBehavior.HasValue &&
-                _mouseSuppressedMapScreen!.MouseBehaviorRecursive ==
-                    Control.MouseBehaviorRecursiveEnum.Disabled)
-            {
-                _mouseSuppressedMapScreen.MouseBehaviorRecursive =
-                    _originalMapMouseBehavior.Value;
-            }
-
-            _mouseSuppressedMapScreen = null;
-            _originalMapMouseBehavior = null;
-        }
-
-
-        /// <summary>
-        /// Whether the UI is open or not. 
+        /// Whether the UI is open or not.
         /// Note: This is different from IsVisible, which can be false if the UI is hidden temporarily by another overlay.
         /// </summary>
         public static bool IsOpen => _rootPanel != null && IsInstanceValid(_rootPanel) && _rootPanel.IsInsideTree();
+
+        /// <summary>
+        /// True when AP itself is the visible top overlay.
+        /// </summary>
+        internal static bool IsActive =>
+            IsOpen && ActiveScreenContext.Instance.IsCurrent(_rootPanel);
+
+        /// <summary>
+        /// Toggles AP rewards. When the exact card picker launched by AP is active,
+        /// the same request invokes that picker's native Skip action instead.
+        /// </summary>
+        public static void Toggle()
+        {
+            if (!IsOpen)
+            {
+                ShowRewards();
+                return;
+            }
+
+            if (IsActive)
+            {
+                Hide();
+                return;
+            }
+
+            if (!TrySkipOwnedCardPicker())
+            {
+                LogUtility.Debug("Ignoring AP reward toggle while a nested overlay is active");
+            }
+        }
 
         #region Public API
 
@@ -375,7 +351,7 @@ namespace StS2AP.UI
                     ItemName    = "Card Reward",
                     SenderName  = "TestPlayer",
                     IconPath    = IconCard,
-                    GrantAction = () => GameUtility.GrantCardReward(index: -1, rare: false)
+                    GrantAction = () => GrantAPCardReward(index: -1, rare: false)
                 },
             };
             Callable.From(() => ShowRewards(testRewards)).CallDeferred();
@@ -468,7 +444,10 @@ namespace StS2AP.UI
                 {
                     bool isRare = rawId == APItem.RareCardReward;
                     int itemIndex = i.Index;
-                    data.GrantAction = async () => await GameUtility.GrantCardReward(itemIndex, rare: isRare);
+                    // AP Card reward has special handling so we can remember that the card reward
+                    // is an AP one for UI purposes such as hitting AP button to act like a skip cus
+                    // I think its more intuitive, I'd rather not have dead buttons
+                    data.GrantAction = () => GrantAPCardReward(itemIndex, rare: isRare);
                 }
 
                 if(rawId == APItem.Potion)
@@ -511,7 +490,9 @@ namespace StS2AP.UI
             try
             {
                 if (_rootPanel == null || !IsInstanceValid(_rootPanel))
+                {
                     CreateUI();
+                }
 
                 if (_itemContainer == null || !IsInstanceValid(_itemContainer))
                 {
@@ -597,33 +578,34 @@ namespace StS2AP.UI
                 {
                     if (_rootPanel != null && IsInstanceValid(_rootPanel))
                         NOverlayStack.Instance?.Remove(_rootPanel);
-                    if (_rootPanel != null && IsInstanceValid(_rootPanel))
-                        _rootPanel.Modulate = new Color(1f, 1f, 1f, 1f);
+
+                    var destination = _returnDestination;
                     _rootPanel = null;
                     _isClosing = false;
+                    _returnDestination = ReturnDestination.Room;
+                    OnScreenClosed?.Invoke();
+                    RestoreDestination(destination);
                 }));
             }
-            else
-            {
-                _rootPanel.Visible = false;
-            }
-
-            OnScreenClosed?.Invoke();
         }
 
         /// <summary>
-        /// Closes AP rewards and leaves the player on the map. If the map is
-        /// already open behind the rewards, it is deliberately not toggled off.
+        /// Makes the map the last requested destination and closes AP. Used by
+        /// AP's hotkey and by the map-open compatibility patch.
         /// </summary>
-        internal static void HideAndShowMap()
+        internal static void CloseToMap()
         {
-            var mapScreen = NMapScreen.Instance;
+            _returnDestination = ReturnDestination.Map;
             Hide();
+        }
 
-            if (mapScreen?.IsOpen == false)
-            {
-                mapScreen.Open(isOpenedFromTopBar: true);
-            }
+        /// <summary>
+        /// Makes a fresh deck screen the last requested destination and closes AP.
+        /// </summary>
+        internal static void CloseToDeck()
+        {
+            _returnDestination = ReturnDestination.Deck;
+            Hide();
         }
 
         /// <summary>
@@ -636,7 +618,6 @@ namespace StS2AP.UI
             _fadeTween?.Kill();
             _fadeTween = null;
             (_rootPanel as APRewardScreenNode)?.UnregisterHotkeys();
-            RestoreOverlayLayer();
 
             if (_rootPanel != null && IsInstanceValid(_rootPanel))
                 _rootPanel.QueueFree();
@@ -646,6 +627,156 @@ namespace StS2AP.UI
             _proceedButton    = null;
             _remainingRewards = 0;
             _isClosing        = false;
+            _returnDestination = ReturnDestination.Room;
+            _ownedCardPicker = null;
+            _ownedCardPickerSkipRequested = false;
+        }
+
+        #endregion
+
+        #region Navigation Coordination
+
+        /// <summary>
+        /// Runs the native card reward flow while retaining the exact picker instance
+        /// created by this AP action. This prevents an AP toggle from ever skipping a
+        /// normal combat or treasure card reward.
+        /// </summary>
+        private static async Task<bool> GrantAPCardReward(int index, bool rare)
+        {
+            var selectionTask = GameUtility.GrantCardReward(index, rare);
+            var picker = NOverlayStack.Instance?.Peek() as NCardRewardSelectionScreen;
+
+            if (picker == null)
+            {
+                LogUtility.Warn("AP card reward did not expose its native picker for navigation ownership");
+            }
+            else
+            {
+                _ownedCardPicker = picker;
+                _ownedCardPickerSkipRequested = false;
+            }
+
+            try
+            {
+                return await selectionTask;
+            }
+            finally
+            {
+                if (ReferenceEquals(_ownedCardPicker, picker))
+                {
+                    _ownedCardPicker = null;
+                    _ownedCardPickerSkipRequested = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Treats an AP toggle as the native Skip button only for the exact active
+        /// picker launched by <see cref="GrantAPCardReward"/>.
+        /// </summary>
+        private static bool TrySkipOwnedCardPicker()
+        {
+            var picker = _ownedCardPicker;
+            if (picker == null ||
+                !GodotObject.IsInstanceValid(picker) ||
+                !ActiveScreenContext.Instance.IsCurrent(picker))
+            {
+                return false;
+            }
+
+            if (_ownedCardPickerSkipRequested)
+            {
+                return true;
+            }
+
+            // CardRewardAlternative.Generate() inserts the native Skip alternative
+            // first when CanSkip is true. AP card rewards retain that default.
+            var alternatives = picker.GetNodeOrNull<Control>("UI/RewardAlternatives");
+            var skipButton = alternatives?
+                .GetChildren()
+                .OfType<NCardRewardAlternativeButton>()
+                .FirstOrDefault();
+            if (skipButton == null)
+            {
+                LogUtility.Warn("Could not find the native Skip button for the AP card picker");
+                return false;
+            }
+
+            _ownedCardPickerSkipRequested = true;
+            try
+            {
+                LogUtility.Debug("AP reward toggle invoked the owned card picker's native Skip action");
+                skipButton.ForceClick();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _ownedCardPickerSkipRequested = false;
+                LogUtility.Warn($"Failed to skip the AP card picker: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Returns to a room before AP menu is pushed aka opened.
+        /// Map and capstone screens outrank overlays in ActiveScreenContext,
+        /// so leaving either open would make AP or its nested
+        /// native card picker visible but unable to receive input.
+        /// </summary>
+        private static void PrepareForOpen()
+        {
+            // Basically before opening the AP menu, try our best
+            // to find a suitable location to return to
+            _returnDestination = ReturnDestination.Room;
+
+            var capstoneContainer = NCapstoneContainer.Instance;
+            var currentCapstone = capstoneContainer?.CurrentCapstoneScreen;
+            if (currentCapstone is NDeckViewScreen)
+            {
+                _returnDestination = ReturnDestination.Deck;
+            }
+
+            if (currentCapstone != null)
+            {
+                capstoneContainer!.Close();
+            }
+
+            var mapScreen = NMapScreen.Instance;
+            if (mapScreen?.IsOpen != true)
+            {
+                return;
+            }
+
+            // Only remember the map when it was the active high-priority screen.
+            // A deck over a map restores just a fresh deck; unsupported capstones
+            // intentionally return to the room.
+            if (currentCapstone == null)
+            {
+                _returnDestination = ReturnDestination.Map;
+            }
+
+            mapScreen.Close(animateOut: false);
+        }
+
+        private static void RestoreDestination(ReturnDestination destination)
+        {
+            switch (destination)
+            {
+                case ReturnDestination.Map:
+                    NMapScreen.Instance?.Open(isOpenedFromTopBar: true);
+                    break;
+                case ReturnDestination.Deck:
+                    var player = GameUtility.CurrentPlayer;
+                    if (player != null)
+                    {
+                        NDeckViewScreen.ShowScreen(player);
+                        NRun.Instance?.GlobalUi.TopBar.Deck.ToggleAnimState();
+                    }
+                    break;
+                case ReturnDestination.Room:
+                default:
+                    break;
+            }
         }
 
         #endregion
@@ -735,7 +866,7 @@ namespace StS2AP.UI
                     return;
                 }
 
-                var root = sceneTree.Root;
+                PrepareForOpen();
 
                 // Full-screen root panel (blocks input to the game while open)
                 _isClosing = false;
@@ -906,6 +1037,7 @@ namespace StS2AP.UI
             if (choices == null || choices.Count == 0)
                 return CreateRewardButton(data);
 
+            var owningPanel = _rootPanel;
             var chainTexture = GetLinkedRewardChainTexture();
             var group = new Control
             {
@@ -940,7 +1072,10 @@ namespace StS2AP.UI
                         if (granted)
                             data.OnClaimed?.Invoke();
 
-                        if (!GodotObject.IsInstanceValid(group))
+                        if (!GodotObject.IsInstanceValid(group) ||
+                            owningPanel == null ||
+                            !GodotObject.IsInstanceValid(owningPanel) ||
+                            !ReferenceEquals(_rootPanel, owningPanel))
                             return;
 
                         if (!granted)
@@ -957,8 +1092,6 @@ namespace StS2AP.UI
                         group.QueueFree();
                         _remainingRewards--;
                         UpdateProceedButton();
-                        ArchipelagoTopBarUI.RefreshCount();
-
                         if (_remainingRewards <= 0)
                             Hide();
                     }).CallDeferred();
@@ -1055,6 +1188,7 @@ namespace StS2AP.UI
             bool isLinkedChoice = false)
         {
             var btn = new Button { CustomMinimumSize = new Vector2(0, ButtonHeight) };
+            var owningPanel = _rootPanel;
 
             // Apply the in-game reward button texture as the button style
             try
@@ -1187,7 +1321,11 @@ namespace StS2AP.UI
                         {
                             LogUtility.Error($"Grant failed for '{data.ItemName}': {t.Exception.InnerException?.Message ?? t.Exception.Message}");
                             // Re-enable the button on failure so the player can try again
-                            Callable.From(() => { btn.Disabled = false; }).CallDeferred();
+                            Callable.From(() =>
+                            {
+                                if (GodotObject.IsInstanceValid(btn))
+                                    btn.Disabled = false;
+                            }).CallDeferred();
                             return;
                         }
 
@@ -1196,19 +1334,29 @@ namespace StS2AP.UI
                         {
                             if (shouldRemove)
                             {
-                                // Reward was consumed — remove the button
+                                // Reward consumption is authoritative even if this particular
+                                // menu instance was closed or rebuilt while the picker was open.
                                 data.OnClaimed?.Invoke();
+
+                                if (!GodotObject.IsInstanceValid(btn) ||
+                                    owningPanel == null ||
+                                    !GodotObject.IsInstanceValid(owningPanel) ||
+                                    !ReferenceEquals(_rootPanel, owningPanel))
+                                {
+                                    return;
+                                }
+
                                 btn.QueueFree();
                                 _remainingRewards--;
                                 UpdateProceedButton();
-                                ArchipelagoTopBarUI.SetCount(ArchipelagoClient.Progress.UnusedItemCount);
                                 if (_remainingRewards <= 0)
                                     Hide();
                             }
                             else
                             {
                                 // Reward was skipped — re-enable the button so the player can try again
-                                btn.Disabled = false;
+                                if (GodotObject.IsInstanceValid(btn))
+                                    btn.Disabled = false;
                             }
                         }).CallDeferred();
                     });
@@ -1220,8 +1368,6 @@ namespace StS2AP.UI
                     btn.QueueFree();
                     _remainingRewards--;
                     UpdateProceedButton();
-                    ArchipelagoTopBarUI.RefreshCount();
-
                     // Auto-hide once all rewards are dismissed
                     if (_remainingRewards <= 0)
                         Hide();
