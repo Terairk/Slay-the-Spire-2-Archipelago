@@ -187,6 +187,9 @@ namespace StS2AP.Patches
                 // Opening the chest is the interaction that earns this check. Sending it here
                 // avoids inserting an AP rewards screen between the chest-open animation and the
                 // native relic picker. SendCheck is idempotent for an already-checked location.
+                // The alternative was the chest opening 2 times or having to manually generate a relic
+                // I opted to use the native game default way. My rationale was that floor checks automatically send
+                // things out so what's 3 more.
                 GameUtility.SendCheck($"{player.APName()} Relic {rewardNumber}");
 
                 var relicPicker = RunManager.Instance.TreasureRoomRelicSynchronizer;
@@ -208,7 +211,10 @@ namespace StS2AP.Patches
                         ArchipelagoClient.Progress.BankedRelicRewards--;
                         RelicCoupons.RefreshCounter(player);
                         LogUtility.Error(
-                            "Could not suppress the native treasure relic; preserving vanilla without a Relic bank"
+                            """
+                            Could not suppress the native treasure relic; preserving vanilla
+                             without a Relic bank. Please notify the devs. 
+                            """
                         );
                     }
                 }
@@ -216,6 +222,7 @@ namespace StS2AP.Patches
                 {
                     // Receipts delivered after the picker was generated should not suddenly appear
                     // in the chest. They spend the new bank through the AP menu instead.
+                    // Note the logic is only sound because of the GateTreasureRelicPicker prefix
                     RelicRewardUtility.ReconcileBankedRewards(player);
                 }
             }

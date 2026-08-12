@@ -88,7 +88,7 @@ namespace StS2AP.Models
 
         /// <summary>
         /// Eligible Elite, chest, and Black Star rewards encountered this run. Attempts after ten
-        /// are still counted so the caller knows they must stay fully vanilla.
+        /// are still counted so we can give 'natural relics'.
         /// </summary>
         public int RelicRewardsAttempted { get; set; } = 0;
 

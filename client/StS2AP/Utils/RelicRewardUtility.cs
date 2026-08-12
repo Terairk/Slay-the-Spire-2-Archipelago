@@ -83,6 +83,7 @@ namespace StS2AP.Utils
         /// <summary>
         /// Pairs the newly recorded bank with the oldest waiting gated receipt. The AP item is
         /// consumed immediately because the native reward screen now owns the relic grant.
+        /// Returns true if it succeeded consuming a receipt.
         /// </summary>
         public static bool TryConsumeWaitingReceiptForNaturalReward(Player player)
         {

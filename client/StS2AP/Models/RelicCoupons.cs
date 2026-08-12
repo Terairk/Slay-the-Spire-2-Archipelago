@@ -14,6 +14,8 @@ namespace StS2AP.Models;
 /// <summary>
 /// Permanent AP-run indicator for earned natural relic rewards that have not yet been paired
 /// with a received AP Relic item. The authoritative value remains on ArchipelagoProgress.
+/// NOTE: since this is a RitsuLib relic: the appropriate relics.json localization must stay
+/// as ARCHIPELAGO to match the current ModId (even if it goes against the other localization names)
 /// </summary>
 [RegisterRelic(typeof(SharedRelicPool))]
 public sealed class RelicCoupons : ModRelicTemplate
