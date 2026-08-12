@@ -22,6 +22,20 @@ namespace StS2AP.Utils
         private static readonly SemaphoreSlim ReconcileLock = new(1, 1);
 
         /// <summary>
+        /// Returns whether an Ancient relic is reserved for AP's progressive starter tiers and
+        /// therefore must not be offered by either the natural Ancient or an AP-built pool.
+        /// </summary>
+        internal static bool ShouldExcludeAncientRelic(RelicModel? relic)
+        {
+            return relic switch
+            {
+                ArchaicTooth => ArchipelagoClient.Settings?.ProgressiveStarterCard == true,
+                TouchOfOrobas => ArchipelagoClient.Settings?.ProgressiveStarterRelic == true,
+                _ => false,
+            };
+        }
+
+        /// <summary>
         /// Captures supported starter identities while the vanilla starting deck and relics are
         /// still present, then applies the tier already received from Archipelago.
         /// </summary>

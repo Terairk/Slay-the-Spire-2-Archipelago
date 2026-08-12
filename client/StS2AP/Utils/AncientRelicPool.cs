@@ -27,6 +27,9 @@ namespace StS2AP.Utils
         private static bool IsBlacklisted(RelicModel relic) =>
             BlacklistedRelicTypes.Any(type => type.IsInstanceOfType(relic));
 
+        private static bool IsExcluded(RelicModel relic) =>
+            IsBlacklisted(relic) || ProgressiveStarterUtility.ShouldExcludeAncientRelic(relic);
+
         /// <summary>
         /// Selects a stable set of three relics for a reward key without consuming the game's RNG.
         /// </summary>
@@ -248,7 +251,7 @@ namespace StS2AP.Utils
                         // TODO: do model selection in a better way than this
                         if (relic.Id == ModelId.none ||
                             ownedOrReservedRelicIds.Contains(relic.Id) ||
-                            IsBlacklisted(relic))
+                            IsExcluded(relic))
                         {
                             continue;
                         }

@@ -104,19 +104,12 @@ namespace StS2AP.Patches
             }
         }
 
-        private static bool IsBlocked(EventOption option)
-        {
-            return option.Relic switch
-            {
-                ArchaicTooth => ArchipelagoClient.Settings?.ProgressiveStarterCard == true,
-                TouchOfOrobas => ArchipelagoClient.Settings?.ProgressiveStarterRelic == true,
-                _ => false,
-            };
-        }
+        private static bool IsBlocked(EventOption option) =>
+            ProgressiveStarterUtility.ShouldExcludeAncientRelic(option.Relic);
 
         private static bool ShouldFilterProgressiveStarters() =>
-            ArchipelagoClient.Settings?.ProgressiveStarterCard == true ||
-            ArchipelagoClient.Settings?.ProgressiveStarterRelic == true;
+            ProgressiveStarterUtility.ShouldExcludeAncientRelic(ModelDb.Relic<ArchaicTooth>()) ||
+            ProgressiveStarterUtility.ShouldExcludeAncientRelic(ModelDb.Relic<TouchOfOrobas>());
 
         private static List<EventOption> BuildFallbackThirdPool(
             IEnumerable<EventOption> pool1,
