@@ -24,7 +24,10 @@ public sealed class RelicCoupons : ModRelicTemplate
     private int? _activationDisplayAmount;
     private int _activationSequence;
 
-    public override RelicRarity Rarity => RelicRarity.Starter;
+    // This is AP run-state presentation, not a character starter relic. Touch of Orobas
+    // selects the first owned Starter-rarity relic, so classifying the coupon as Starter
+    // can make Touch replace it with Circlet instead of upgrading the real starter relic.
+    public override RelicRarity Rarity => RelicRarity.None;
 
     public override bool ShowCounter => true;
 
