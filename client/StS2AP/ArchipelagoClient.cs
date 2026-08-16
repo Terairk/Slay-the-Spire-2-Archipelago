@@ -254,16 +254,20 @@ namespace StS2AP
         #region Networking
 
         private static ReaderWriterLock ConnectionLock { get; } = new ReaderWriterLock();
+        private static readonly object _connectionStateLock = new();
 
         /// <summary>
         /// Attempts to connect to an Archipelago room
         /// </summary>
         public static void Connect()
         {
-            // Ignore if we're already connected or connecting
-            if (State == ConnectionState.Connected || State == ConnectionState.Connecting)
-                return;
-            State = ConnectionState.Connecting;
+            lock (_connectionStateLock)
+            {
+                // Ignore if we're already connected or connecting
+                if (State == ConnectionState.Connected || State == ConnectionState.Connecting)
+                    return;
+                State = ConnectionState.Connecting;
+            }
 
             // Setup Data
             SlotData?.Clear();
@@ -272,28 +276,41 @@ namespace StS2AP
             ScoutedLocations.Clear();
 
             // Attempt to create the AP Session
+            ArchipelagoSession connectionSession;
             try
             {
-                // Setup the Session
-                Session = ArchipelagoSessionFactory.CreateSession(ServerAddress);
+                connectionSession = ArchipelagoSessionFactory.CreateSession(ServerAddress);
             }
             catch (Exception e)
             {
+                LogUtility.Error($"Failed to create Archipelago session: {e.Message}");
+                Disconnect();
                 return;
             }
 
+            lock (_connectionStateLock)
+            {
+                if (State != ConnectionState.Connecting)
+                {
+                    LogUtility.Debug("Discarding an Archipelago session after connection was cancelled");
+                    _ = Task.Run(() => connectionSession.Socket.DisconnectAsync());
+                    return;
+                }
+                Session = connectionSession;
+            }
+
             // Listen for received items
-            Session.Items.ItemReceived += OnItemReceived;
+            connectionSession.Items.ItemReceived += OnItemReceived;
 
             // Listen for errors
-            Session.Socket.ErrorReceived += OnErrorReceived;
+            connectionSession.Socket.ErrorReceived += OnErrorReceived;
 
             // Listen for connection termination
-            Session.Socket.SocketClosed += OnSocketSessionEnd;
-            Session.MessageLog.OnMessageReceived += OnMessageReceived;
+            connectionSession.Socket.SocketClosed += OnSocketSessionEnd;
+            connectionSession.MessageLog.OnMessageReceived += OnMessageReceived;
 
             // Setup the Death Link Service (even if the player isn't using Death Link)
-            DeathLinkController = Session.CreateDeathLinkService();
+            DeathLinkController = connectionSession.CreateDeathLinkService();
             DeathLinkController.OnDeathLinkReceived += deathLinkInfo =>
             {
                 Callable
@@ -312,7 +329,8 @@ namespace StS2AP
                         try
                         {
                             HandleConnectResult(
-                                Session.TryConnectAndLogin(
+                                connectionSession,
+                                connectionSession.TryConnectAndLogin(
                                     Game,
                                     PlayerName,
                                     ItemsHandlingFlags.AllItems,
@@ -332,7 +350,9 @@ namespace StS2AP
             catch (Exception e)
             {
                 Callable
-                    .From(() => HandleConnectResult(new LoginFailure(e.ToString())))
+                    .From(() =>
+                        HandleConnectResult(connectionSession, new LoginFailure(e.ToString()))
+                    )
                     .CallDeferred();
             }
         }
@@ -340,18 +360,36 @@ namespace StS2AP
         /// <summary>
         /// Handle the outcome of a connection attempt
         /// </summary>
-        private static void HandleConnectResult(LoginResult result)
+        private static void HandleConnectResult(
+            ArchipelagoSession connectionSession,
+            LoginResult result
+        )
         {
             string outText;
+            lock (_connectionStateLock)
+            {
+                if (
+                    State != ConnectionState.Connecting
+                    || !ReferenceEquals(Session, connectionSession)
+                )
+                {
+                    LogUtility.Debug("Ignoring a stale Archipelago login result");
+                    return;
+                }
+
+                if (result.Successful)
+                {
+                    State = ConnectionState.Connected;
+                }
+            }
+
             if (result.Successful)
             {
-                // We are now connected!
                 var success = (LoginSuccessful)result;
-                State = ConnectionState.Connected;
 
                 // Store Session information
                 SlotData = success.SlotData;
-                Seed = Session.RoomState.Seed;
+                Seed = connectionSession.RoomState.Seed;
 
                 // Log all slot data
                 LogUtility.Info("Dumping Slot Data:");
@@ -535,6 +573,10 @@ namespace StS2AP
                 $"Restored {CheckedLocations.Count} previously checked location(s) from server."
             );
 
+            // A fresh session's checked-location list is authoritative, so this is the safe
+            // point to discard confirmed outbox entries and replay anything still missing.
+            PendingCheckUtility.ReconcileAndSend();
+
             try
             {
                 // Enable/Disable the Death Link Service based on user settings
@@ -655,13 +697,35 @@ namespace StS2AP
         /// </summary>
         public static void Disconnect()
         {
-            LogUtility.Debug("Disconnecting from Archipelago...");
-            Task.Run(() => Session?.Socket.DisconnectAsync());
-            Session = null;
-            State = ConnectionState.Disconnected;
+            ArchipelagoSession? session;
+            lock (_connectionStateLock)
+            {
+                if (State == ConnectionState.Disconnected)
+                {
+                    LogUtility.Debug("Ignoring duplicate Archipelago disconnect request");
+                    return;
+                }
 
-            // Clear the buff queue so stale entries from this session don't carry over
+                LogUtility.Debug("Disconnecting from Archipelago...");
+                session = Session;
+                Session = null;
+                State = ConnectionState.Disconnected;
+            }
+
+            if (session != null)
+            {
+                // Stop the socket-close callback from re-entering this workflow after an
+                // intentional disconnect, and release the other session event handlers.
+                session.Items.ItemReceived -= OnItemReceived;
+                session.Socket.ErrorReceived -= OnErrorReceived;
+                session.Socket.SocketClosed -= OnSocketSessionEnd;
+                session.MessageLog.OnMessageReceived -= OnMessageReceived;
+                Task.Run(() => session.Socket.DisconnectAsync());
+            }
+
+            // Clear session queues so stale entries don't carry over after reconnecting
             BuffUtility.ClearQueue();
+            NotificationUtility.ClearQueue();
 
             // Let the game know that we've disconnected
             Callable
@@ -779,7 +843,7 @@ namespace StS2AP
                 //    break;
                 case CommandResultLogMessage:
                 case AdminCommandResultLogMessage:
-                    NotificationUtility.HandleOtherAPMessages(message, true, 3.0, true);
+                    NotificationUtility.HandleOtherAPMessages(message, true, 3.0);
                     break;
                 default:
                     return;
