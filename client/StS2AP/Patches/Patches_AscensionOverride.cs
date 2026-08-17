@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
+using MegaCrit.Sts2.Core.Models;
 
 namespace StS2AP.Patches
 {
@@ -149,6 +150,44 @@ namespace StS2AP.Patches
         #endregion
 
         #region Update Ascension-Related UI
+
+        /// <summary>
+        /// Shows the configured AP ascension count for the selected character without
+        /// changing the base game's ascension or lobby state.
+        /// </summary>
+        public static void UpdateCharacterSelectAscension(
+            NCharacterSelectScreen screen,
+            NCharacterSelectButton characterButton,
+            CharacterModel character
+        )
+        {
+            var panel = AccessTools.Field(typeof(NCharacterSelectScreen), "_ascensionPanel")
+                ?.GetValue(screen) as NAscensionPanel;
+            if (panel == null)
+            {
+                return;
+            }
+
+            if (characterButton.IsLocked
+                || !ArchipelagoClient.Settings.Characters.TryGetValue(
+                    character.Id.Entry,
+                    out var config
+                ))
+            {
+                panel.Visible = false;
+                return;
+            }
+
+            var levelLabel = AccessTools.Field(typeof(NAscensionPanel), "_ascensionLevel")
+                ?.GetValue(panel) as MegaLabel;
+            if (levelLabel == null)
+            {
+                return;
+            }
+
+            levelLabel.SetTextAutoSize(config.Ascension.Count.ToString());
+            panel.Visible = true;
+        }
 
         /// <summary>
         /// Hides the Ascension Arrows from the UI during Character Select
