@@ -67,6 +67,11 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             static void Postfix(ref List<Reward> __result, Player player, AbstractRoom room)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(
+                    MultiplayerFeature.CombatRewardLocations
+                ))
+                    return;
+
                 // We only want to inject for post-combat rewards
                 if (room is CombatRoom)
                 {
@@ -164,6 +169,11 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(RewardsSet __instance, AbstractRoom room)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(
+                    MultiplayerFeature.CombatRewardLocations
+                ))
+                    return;
+
                 var player = __instance.Player;
                 if (player != GameUtility.CurrentPlayer)
                     return;
@@ -255,6 +265,11 @@ namespace StS2AP.Patches
                 ref PlayerVote ____predictedVote
             )
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(
+                    MultiplayerFeature.CombatRewardLocations
+                ))
+                    return true;
+
                 if (____currentRelics != null)
                 {
                     throw new InvalidOperationException(
@@ -303,6 +318,11 @@ namespace StS2AP.Patches
                 int __state
             )
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(
+                    MultiplayerFeature.CombatRewardLocations
+                ))
+                    return;
+
                 if (!__result
                     || player != GameUtility.CurrentPlayer
                     || room?.RoomType != RoomType.Elite)
@@ -328,6 +348,11 @@ namespace StS2AP.Patches
             // Postfix runs after the screen creates and adds the NRewardButton controls.
             static void Postfix(NRewardsScreen __result)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(
+                    MultiplayerFeature.CombatRewardLocations
+                ))
+                    return;
+
                 // Grab the private _rewardsContainer field (where NRewardButton instances are added).
                 FieldInfo? containerField = typeof(NRewardsScreen).GetField("_rewardsContainer", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (containerField == null)

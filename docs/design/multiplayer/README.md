@@ -6,6 +6,9 @@ claim that multiplayer currently works.
 
 ## Documents
 
+- [Baby's first multiplayer steps](babies-first-steps.md) records the agreed
+  gold-only contract, current source scaffold, and required two-client runtime
+  matrix.
 - [Multiplayer synchronization RFC](multiplayer-sync-rfc.md) describes the
   overall execution model, state ownership, synchronization boundaries, and
   unresolved questions.

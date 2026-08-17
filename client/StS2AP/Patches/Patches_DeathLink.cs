@@ -4,6 +4,7 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using StS2AP.Utils;
+using StS2AP.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -33,6 +34,9 @@ namespace StS2AP.Patches
         {
             static bool Prefix(NRun __instance, SerializableRun serializableRun)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink))
+                    return true;
+
                 // If Death Link isn't enabled, there's nothing to do
                 if (!DeathLinkUtility.IsDeathLinkEnabled) return true;
 

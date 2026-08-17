@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using StS2AP.Models;
 using STS2RitsuLib.Settings;
 
 namespace StS2AP.Utils
@@ -16,6 +17,9 @@ namespace StS2AP.Utils
         /// </summary>
         public static NMainMenuSubmenuStack SubmenuStack { get; set; }
 
+        /// <summary>The active main menu instance, used to resume a requested play flow after AP login.</summary>
+        public static NMainMenu? MainMenu { get; set; }
+
         /// <summary>
         /// Initializes and opens the shared single-player character-select screen.
         /// The main menu reuses one screen instance, so pushing it while it is
@@ -24,6 +28,9 @@ namespace StS2AP.Utils
         /// <returns><c>true</c> when the screen was pushed; otherwise <c>false</c>.</returns>
         public static void OpenCharacterSelect()
         {
+            MultiplayerSupport.SelectDestination(ApPlayDestination.Singleplayer);
+            Patches.Patches_ItemProcessor.ProcessDeferredItemsForSingleplayer();
+
             if (SubmenuStack.Peek() is NCharacterSelectScreen)
             {
                 LogUtility.Warn(
@@ -34,6 +41,19 @@ namespace StS2AP.Utils
             var characterSelect = SubmenuStack.GetSubmenuType<NCharacterSelectScreen>();
             characterSelect.InitializeSingleplayer();
             SubmenuStack.Push(characterSelect);
+        }
+
+        /// <summary>Continues through MegaCrit's unmodified multiplayer submenu.</summary>
+        public static void OpenMultiplayer()
+        {
+            MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
+            if (MainMenu == null)
+            {
+                LogUtility.Error("Cannot open multiplayer: the main menu is unavailable");
+                return;
+            }
+
+            MainMenu.OpenMultiplayerSubmenu();
         }
 
         /// <summary>

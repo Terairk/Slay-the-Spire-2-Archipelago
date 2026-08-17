@@ -26,6 +26,12 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             static void Postfix(ref IEnumerable<CharacterModel> __result)
             {
+                // During the lobby this local override controls only this process's selectable
+                // characters. Once a multiplayer run launches, preserve each serialized remote
+                // player's own UnlockState instead of replacing it with the local AP list.
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                    return;
+
                 LogUtility.Debug($"OverrideUnlockedCharacterData: Overriding unlocked characters. UnlockedCharacters count: {ArchipelagoClient.Progress.UnlockedCharacters.Count}");
                 __result = ArchipelagoClient.Progress.UnlockedCharacters;
             }

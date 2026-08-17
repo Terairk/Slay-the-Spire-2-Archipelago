@@ -3,6 +3,7 @@ using Archipelago.MultiClient.Net.Models;
 using Godot;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.DevConsole.ConsoleCommands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -18,6 +19,7 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.ValueProps;
 using Newtonsoft.Json.Linq;
+using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Patches;
@@ -120,22 +122,63 @@ namespace StS2AP.Utils
         /// Grants the specified amount of gold to the current player
         /// </summary>
         /// <param name="amount">The amount of gold to grant.</param>
-        public static async Task GrantGold(int amount)
+        public static async Task<bool> GrantGold(int amount)
         {
             if (CurrentPlayer == null)
             {
                 LogUtility.Warn($"Cannot grant {amount} gold: no active player (not in a run)");
-                return;
+                return false;
+            }
+
+            if (!MultiplayerSupport.CanClaimGold(out string blockedReason))
+            {
+                LogUtility.Warn($"Cannot grant gold: {blockedReason}");
+                return false;
+            }
+
+            if (MultiplayerSupport.IsRealMultiplayerRun && !LocalContext.IsMe(CurrentPlayer))
+            {
+                LogUtility.Error(
+                    $"Refusing to originate AP gold for non-local player {CurrentPlayer.NetId}"
+                );
+                return false;
             }
 
             try
             {
+                int goldBefore = CurrentPlayer.Gold;
                 await PlayerCmd.GainGold(amount, CurrentPlayer);
-                LogUtility.Success($"Granted {amount} gold to player");
+
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                {
+                    try
+                    {
+                        RunManager.Instance.RewardSynchronizer.SyncLocalObtainedGold(amount);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Gold is already authoritative on the local player. Retrying would
+                        // duplicate it, so consume once and fail closed for later claims.
+                        LogUtility.Error(
+                            $"AP gold was applied locally but multiplayer sync failed: {ex.Message}"
+                        );
+                        MultiplayerSupport.InvalidateRunClaims(
+                            "a locally applied AP gold reward could not be synchronized"
+                        );
+                    }
+                }
+
+                LogUtility.Success(
+                    $"AP gold claim applied: localNetId={CurrentPlayer.NetId}, amount={amount}, "
+                        + $"goldBefore={goldBefore}, goldAfter={CurrentPlayer.Gold}, syncSent="
+                        + MultiplayerSupport.IsRealMultiplayerRun
+                );
+                return true;
             }
             catch (Exception ex)
             {
                 LogUtility.Error($"Failed to grant gold: {ex.Message}");
+                return false;
             }
         }
 
@@ -771,14 +814,15 @@ namespace StS2AP.Utils
             await Task.CompletedTask;
         }
 
-        public static void TrySendPressStartCheck()
+        public static void TrySendPressStartCheck(bool includeUnrecognizedCharacters = true)
         {
             // Grab the Character Name
-            var name = GameUtility.CurrentPlayer.APName();
-
-            // Grab the check ID
-            var checkName = $"{name} Press Start";
-            SendCheck(checkName);
+            // This deterministic ID remains available if AP disconnects in the MegaCrit
+            // lobby. PendingCheckUtility can then retain it for a later AP reconnect.
+            var locationId = LocationData.GetPressStartLocation(
+                GameUtility.CurrentPlayer.Character
+            );
+            SendCheck(locationId, includeUnrecognizedCharacters);
 
         }
 

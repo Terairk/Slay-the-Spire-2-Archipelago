@@ -420,6 +420,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(Player player, MerchantInventory __result)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
+                    return;
+
                 if (!ArchipelagoClient.Settings.ShopSanity)
                 {
                     return;
@@ -552,6 +555,9 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool Prefix(MerchantEntry __instance, MerchantInventory? inventory, bool ignoreCost, ref Task<bool> __result)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
+                    return true;
+
                 if (!TryGetApLocationId(__instance, out long locationId))
                 {
                     return true; // Not an AP slot run vanilla purchase logic untouched.

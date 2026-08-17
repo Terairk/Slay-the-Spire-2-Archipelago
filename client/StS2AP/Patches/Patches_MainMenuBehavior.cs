@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using StS2AP.UI;
 using StS2AP.Utils;
+using StS2AP.Models;
 using STS2RitsuLib.Settings;
 
 namespace StS2AP.Patches
@@ -21,6 +22,21 @@ namespace StS2AP.Patches
     /// </summary>
     public static class Patches_MainMenuBehavior
     {
+        private static NMainMenuTextButton? _multiplayerButton;
+
+        /// <summary>Refreshes the opt-in multiplayer button after the local setting changes.</summary>
+        public static void RefreshMultiplayerButton()
+        {
+            if (_multiplayerButton == null || !GodotObject.IsInstanceValid(_multiplayerButton))
+                return;
+
+            _multiplayerButton.Visible = MultiplayerSupport.ExperimentalSettingEnabled;
+            if (_multiplayerButton.Visible)
+                _multiplayerButton.Enable();
+            else
+                _multiplayerButton.Disable();
+        }
+
         #region Clone Target References
 
         // The path that StS2 stores the main menu buttons in
@@ -79,6 +95,7 @@ namespace StS2AP.Patches
             {
                 // Grab reference to the menu stack
                 MenuUtility.SubmenuStack = __instance.SubmenuStack;
+                MenuUtility.MainMenu = __instance;
 
                 // Grab the single player button that we will refactor into "Archipelago"
                 var singleplayerButton = __instance.GetNode<NMainMenuTextButton>(
@@ -110,6 +127,7 @@ namespace StS2AP.Patches
                 var multiplayerButton = __instance.GetNode<NMainMenuTextButton>(
                     MainMenuButtonsPath + "/MultiplayerButton"
                 );
+                _multiplayerButton = multiplayerButton;
                 var abandonRunButton = __instance.GetNode<NMainMenuTextButton>(
                     MainMenuButtonsPath + "/AbandonRunButton"
                 );
@@ -125,7 +143,7 @@ namespace StS2AP.Patches
 
                 // Tweak the visibility of all Main Menu buttons for the overhaul
                 singleplayerButton.Visible = true;
-                multiplayerButton.Visible = false;
+                multiplayerButton.Visible = MultiplayerSupport.ExperimentalSettingEnabled;
                 continueButton.Visible = false;
                 abandonRunButton.Visible = false;
                 compendiumButton.Visible = false;
@@ -134,6 +152,10 @@ namespace StS2AP.Patches
 
                 // Some buttons need this additional Enable()/Disable() call I'm honestly still not sure why this worked
                 singleplayerButton.Enable();
+                if (multiplayerButton.Visible)
+                    multiplayerButton.Enable();
+                else
+                    multiplayerButton.Disable();
                 timelineButton.Disable();
                 compendiumButton.Disable();
 
@@ -283,6 +305,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NSingleplayerSubmenu __result)
             {
+                MultiplayerSupport.SelectDestination(ApPlayDestination.Singleplayer);
+                Patches_ItemProcessor.ProcessDeferredItemsForSingleplayer();
+
                 // Hide the actual sub-menu options
                 var standardButton = __result.GetNode<NSubmenuButton>("StandardButton");
                 var dailyButton = __result.GetNode<NSubmenuButton>("DailyButton");
@@ -341,10 +366,60 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool Prefix(NMainMenu __instance, NButton _)
             {
+                MultiplayerSupport.SelectDestination(ApPlayDestination.Singleplayer);
+                Patches_ItemProcessor.ProcessDeferredItemsForSingleplayer();
+
                 /// Always open the singleplayer submenu,
                 /// regardless of NumberOfRuns.
                 __instance.OpenSingleplayerSubmenu();
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Uses the same AP login overlay for multiplayer, then resumes MegaCrit's normal
+        /// Host/Join flow after a successful connection.
+        /// </summary>
+        [HarmonyPatch(
+            typeof(NMainMenu),
+            nameof(NMainMenu.OpenMultiplayerSubmenu),
+            new[] { typeof(NButton) }
+        )]
+        public static class ConnectBeforeMultiplayer
+        {
+            [HarmonyPrefix]
+            public static bool Prefix()
+            {
+                MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
+                if (ArchipelagoClient.IsConnected)
+                    return true;
+
+                ArchipelagoConnectionUI.InjectUI();
+                ArchipelagoNotificationUI.InjectUI();
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// This first spike supports fresh disposable runs only. An unrelated vanilla save must
+        /// not replace Host with Load/Abandon inside the AP multiplayer entry flow.
+        /// </summary>
+        [HarmonyPatch(typeof(NMultiplayerSubmenu), nameof(NMultiplayerSubmenu._Ready))]
+        public static class FreshMultiplayerRunsOnly
+        {
+            [HarmonyPostfix]
+            public static void Postfix(NMultiplayerSubmenu __instance)
+            {
+                if (MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer
+                    || !MultiplayerSupport.ExperimentalSettingEnabled
+                    || MultiplayerSupport.IsFeatureEnabled(
+                        MultiplayerFeature.SaveAndReconnect
+                    ))
+                    return;
+
+                __instance.GetNode<NSubmenuButton>("ButtonContainer/HostButton").Visible = true;
+                __instance.GetNode<NSubmenuButton>("ButtonContainer/LoadButton").Visible = false;
+                __instance.GetNode<NSubmenuButton>("ButtonContainer/AbandonButton").Visible = false;
             }
         }
 
@@ -362,6 +437,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             private static void HideBackButtonOnCharSelectScreen(NCharacterSelectScreen __instance)
             {
+                if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
+                    return;
+
                 __instance.GetNode<NBackButton>("BackButton").Visible = false;
             }
         }

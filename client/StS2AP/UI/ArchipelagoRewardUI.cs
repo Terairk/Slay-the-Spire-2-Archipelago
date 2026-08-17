@@ -149,6 +149,12 @@ namespace StS2AP.UI
         /// </summary>
         public Func<Task<bool>>? GrantAction { get; set; }
 
+        /// <summary>Whether the row can currently be claimed.</summary>
+        public bool IsEnabled { get; set; } = true;
+
+        /// <summary>Explanation rendered on a disabled reward row.</summary>
+        public string DisabledReason { get; set; } = string.Empty;
+
         /// <summary>
         /// Relics linked to one AP item. When present, the UI renders a single grouped reward
         /// and consumes the AP item only after one of these relics is granted.
@@ -344,7 +350,7 @@ namespace StS2AP.UI
                     ItemName    = "50 Gold",
                     SenderName  = "Archipelago",
                     IconPath    = IconGold,
-                    GrantAction = async () => { await GameUtility.GrantGold(50); return true; }
+                    GrantAction = () => GameUtility.GrantGold(50)
                 },
                 new ArchipelagoRewardData
                 {
@@ -369,11 +375,29 @@ namespace StS2AP.UI
 
             // Normally this happens on receipt or checkpoint load. Retrying here keeps an
             // unexpected assignment failure recoverable without another tracking state.
-            RelicRewardUtility.ReconcileBankedRewards(currentPlayer);
+            if (MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.RelicRewards))
+                RelicRewardUtility.ReconcileBankedRewards(currentPlayer);
 
             // Get Unused items from the Multiworld for our current character
             var availableItems = ArchipelagoClient.Progress.AllReceivedItems
-                .Where(i => ArchipelagoClient.Progress.IsAvailableInRewardMenu(i, currentPlayer));
+                .Concat(MultiplayerSupport.PendingUnsupportedItems)
+                .GroupBy(item => item.Index)
+                .Select(group => group.First())
+                .Where(item =>
+                {
+                    var feature = MultiplayerSupport.GetFeatureForItem(item);
+                    if (MultiplayerSupport.IsFeatureEnabled(feature))
+                        return ArchipelagoClient.Progress.IsAvailableInRewardMenu(
+                            item,
+                            currentPlayer
+                        );
+
+                    bool belongsToCurrentCharacter = item.Item.ItemId < 10000
+                        || item.Item.GetCharacterOffset() == GameUtility.CurrentCharacterID;
+                    return MultiplayerSupport.IsMultiplayerScope
+                        && belongsToCurrentCharacter
+                        && !ArchipelagoClient.Progress.UsedItems.Contains(item.Index);
+                });
             
             // Prepare them for the UI
             var rewardDataList = availableItems.Select(i =>
@@ -388,6 +412,15 @@ namespace StS2AP.UI
                     IconPath    = GetIconForItem(i.Item),
                     GrantAction = GetGrantAction(i.Item),
                 };
+
+                var feature = MultiplayerSupport.GetFeatureForItem(i);
+                if (!MultiplayerSupport.IsFeatureEnabled(feature))
+                {
+                    data.IsEnabled = false;
+                    data.DisabledReason =
+                        $"Unavailable in experimental multiplayer ({feature}).";
+                    return data;
+                }
 
                 // Relic items received from AP offer a stable, persisted choice. This does not
                 // affect relic rewards created by the base game or other mods.
@@ -504,16 +537,35 @@ namespace StS2AP.UI
 
                 if (offer.GrantedAmount > 0)
                 {
+                    bool canClaimGold = MultiplayerSupport.CanClaimGold(out string blockedReason);
                     rewards.Insert(0, new ArchipelagoRewardData
                     {
                         ItemName = $"{offer.GrantedAmount} Gold",
                         SenderName = "",
                         IconPath = IconGold,
+                        IsEnabled = canClaimGold,
+                        DisabledReason = blockedReason,
                         GrantAction = async () =>
                         {
-                            var amountToGrant = ArchipelagoClient.Progress.ConsumeGoldOffer(offer);
-                            
-                            await GameUtility.GrantGold(amountToGrant);
+                            if (!MultiplayerSupport.CanClaimGold(out string reason))
+                            {
+                                LogUtility.Warn($"AP gold claim blocked: {reason}");
+                                return false;
+                            }
+
+                            // Rebuild at click time so live Poverty changes and newly received
+                            // gold use the same calculation as singleplayer. Consume only after
+                            // MegaCrit's local gold command has completed.
+                            ArchipelagoGoldOffer claimOffer =
+                                ArchipelagoClient.Progress.PrepareGoldOffer();
+                            if (claimOffer.GrantedAmount <= 0)
+                                return false;
+
+                            bool granted = await GameUtility.GrantGold(claimOffer.GrantedAmount);
+                            if (!granted)
+                                return false;
+
+                            ArchipelagoClient.Progress.ConsumeGoldOffer(claimOffer);
                             return true;
                         }
                     });
@@ -1180,7 +1232,11 @@ namespace StS2AP.UI
             bool isAncientChoice = false,
             bool isLinkedChoice = false)
         {
-            var btn = new Button { CustomMinimumSize = new Vector2(0, ButtonHeight) };
+            var btn = new Button
+            {
+                CustomMinimumSize = new Vector2(0, ButtonHeight),
+                Disabled = !data.IsEnabled,
+            };
             var owningPanel = _rootPanel;
 
             // Apply the in-game reward button texture as the button style
@@ -1274,6 +1330,16 @@ namespace StS2AP.UI
             {
                 var senderLabel = CreateTextLabel($"from {data.SenderName} ({data.FoundLocation})", RewardSenderFontSize, new Color(0.7f, 0.85f, 1f));
                 vbox.AddChild(senderLabel);
+            }
+
+            if (!string.IsNullOrEmpty(data.DisabledReason))
+            {
+                var disabledLabel = CreateTextLabel(
+                    data.DisabledReason,
+                    RewardSenderFontSize,
+                    new Color(1f, 0.65f, 0.45f)
+                );
+                vbox.AddChild(disabledLabel);
             }
 
             if (data.TooltipRelic is { } tooltipRelic)
@@ -1508,11 +1574,11 @@ namespace StS2AP.UI
         {
             switch (item.GetCharacterSpecificItemID())
             {
-                case APItem.OneGold:      return async () => { await GameUtility.GrantGold(1); return true; };
-                case APItem.FiveGold:     return async () => { await GameUtility.GrantGold(5); return true; };
-                case APItem.CombatGold:   return async () => { await GameUtility.GrantGold(15); return true; };
-                case APItem.EliteGold:    return async () => { await GameUtility.GrantGold(40); return true; };
-                case APItem.BossGold:     return async () => { await GameUtility.GrantGold(100); return true; };
+                case APItem.OneGold:      return () => GameUtility.GrantGold(1);
+                case APItem.FiveGold:     return () => GameUtility.GrantGold(5);
+                case APItem.CombatGold:   return () => GameUtility.GrantGold(15);
+                case APItem.EliteGold:    return () => GameUtility.GrantGold(40);
+                case APItem.BossGold:     return () => GameUtility.GrantGold(100);
                 case APItem.Relic:        return async () => { await GameUtility.GrantRelic(); return true; };
                 // Ancient choices require the received-item index and are built in ShowRewards().
                 // Keep the obsolete AddReward(ItemInfo) path from consuming one as display-only.

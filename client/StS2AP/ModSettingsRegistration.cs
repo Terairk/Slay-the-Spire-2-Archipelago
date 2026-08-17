@@ -32,6 +32,9 @@ public static class ModSettingsRegistration
     private const string RelicRewards_OverrideId = "override_relic_rewards_available_anytime";
     private const string RelicRewards_AvailableAnytimeId = "relic_rewards_available_anytime";
 
+    // Experimental multiplayer
+    private const string Multiplayer_EnableId = "enable_experimental_multiplayer";
+
     #endregion
 
     #region Handle Hotkeys
@@ -98,6 +101,7 @@ public static class ModSettingsRegistration
                 page.WithTitle(ModSettingsText.Literal("Archipelago Settings"))
                     .WithModDisplayName(ModSettingsText.Literal("Archipelago"))
                     .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
+                    .AddSection("experimental_multiplayer", ConfigureExperimentalMultiplayerSection)
                     .AddSection("charnames", ConfigureModdedCharactersSection)
                     .AddSection("keybinds", ConfigureKeybindsSection)
                     .AddSection("notifications", ConfigureNotificationsSection)
@@ -105,6 +109,40 @@ public static class ModSettingsRegistration
                     .AddSection("deathlink", ConfigureDeathLinkSection)
         );
         RegisterHotkeys();
+    }
+
+    private static void ConfigureExperimentalMultiplayerSection(
+        ModSettingsSectionBuilder section
+    )
+    {
+        section
+            .WithTitle(ModSettingsText.Literal("Experimental Multiplayer"))
+            .WithDescription(
+                ModSettingsText.Literal(
+                    "Unsupported development preview. Fresh runs only. The initial profile "
+                        + "supports character unlocks, Press Start, and AP gold rewards; other "
+                        + "AP features are disabled. Every player must use a separate slot in "
+                        + "the same Archipelago room."
+                )
+            )
+            .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
+            .AddToggle(
+                Multiplayer_EnableId,
+                ModSettingsText.Literal("Enable Experimental Multiplayer"),
+                CreateBinding(
+                    static settings => settings.EnableExperimentalMultiplayer,
+                    static (settings, value) =>
+                    {
+                        settings.EnableExperimentalMultiplayer = value;
+                        Patches.Patches_MainMenuBehavior.RefreshMultiplayerButton();
+                    }
+                ),
+                ModSettingsText.Literal(
+                    "Shows the Multiplayer button. This mode is not saveable and requires a "
+                        + "fresh run after any peer disconnect."
+                )
+            )
+            .ConfigureEntryMenu(Multiplayer_EnableId, ModSettingsMenuCapabilities.None);
     }
 
     private static void ConfigureModdedCharactersSection(ModSettingsSectionBuilder section)

@@ -98,6 +98,14 @@ namespace StS2AP.Patches
         /// <param name="index">The index of the item in the Archipelago Multiworld</param>
         private static void ProcessItem(IndexedItemInfo indexedInfo, bool liveDelivery = true)
         {
+            if (MultiplayerSupport.ShouldDeferItem(indexedInfo))
+            {
+                MultiplayerSupport.DeferItem(indexedInfo);
+                if (ArchipelagoRewardUI.IsOpen)
+                    ArchipelagoRewardUI.ShowRewards();
+                return;
+            }
+
             var Progress = ArchipelagoClient.Progress;
             var Settings = ArchipelagoClient.Settings;
             var item = indexedInfo.Item;
@@ -403,6 +411,21 @@ namespace StS2AP.Patches
             finally
             {
                 Paused = false;
+            }
+        }
+
+        /// <summary>
+        /// Applies items that were held by the multiplayer fail-closed profile when the user
+        /// backs out and starts singleplayer in the same AP session.
+        /// </summary>
+        public static void ProcessDeferredItemsForSingleplayer()
+        {
+            foreach (IndexedItemInfo item in MultiplayerSupport.TakeDeferredItemsForSingleplayer())
+            {
+                LogUtility.Info(
+                    $"Processing previously deferred AP item {item.Index} for singleplayer"
+                );
+                ProcessItem(item);
             }
         }
 

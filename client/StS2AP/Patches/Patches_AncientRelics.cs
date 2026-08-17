@@ -29,6 +29,9 @@ namespace StS2AP.Patches
         [HarmonyPrefix]
         private static bool Prefix(Orobas __instance, ref IReadOnlyList<EventOption> __result)
         {
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
+                return true;
+
             if (__instance.Owner is null || !ShouldFilterProgressiveStarters())
                 return true;
 
@@ -167,6 +170,9 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         public static void ReplaceAncientOptions(AncientEventModel __instance, ref IReadOnlyList<EventOption> __result)
         {
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
+                return;
+
             var player = GameUtility.CurrentPlayer;
             if (player == null)
                 return;
@@ -239,6 +245,8 @@ namespace StS2AP.Patches
         [HarmonyPrefix]
         public static void SendAncientCheck()
         {
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
+                return;
 
             var player = GameUtility.CurrentPlayer;
             if(player != null)

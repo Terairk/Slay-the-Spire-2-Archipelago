@@ -24,9 +24,10 @@ namespace StS2AP.Utils
         /// Based on both Client and Server settings, determines if Death Link is enabled for this player.
         /// </summary>
         public static bool IsDeathLinkEnabled =>
-            ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
+            MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
+            && (ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
                 ? ArchipelagoClient.LocalSettings.Value.EnableDeathLink
-                : (ArchipelagoClient.Settings?.IsDeathLinkEnabled ?? false);
+                : (ArchipelagoClient.Settings?.IsDeathLinkEnabled ?? false));
 
         public static void Initialize()
         {
@@ -54,9 +55,10 @@ namespace StS2AP.Utils
         /// Whether or not Death Fragments are enabled
         /// </summary>
         public static bool AreDeathFragmentsEnabled =>
-            ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
+            MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
+            && (ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
                 ? ArchipelagoClient.LocalSettings.Value.EnableDeathFragments
-                : (ArchipelagoClient.Settings?.EnableDeathFragments ?? false);
+                : (ArchipelagoClient.Settings?.EnableDeathFragments ?? false));
 
         /// <summary>
         /// Adds the Death Link Curse to the deck.

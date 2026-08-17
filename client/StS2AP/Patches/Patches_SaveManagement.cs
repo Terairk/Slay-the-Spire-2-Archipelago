@@ -34,6 +34,18 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool replaceSave(AbstractRoom? preFinishedRoom, ref Task __result)
             {
+                if (MultiplayerSupport.IsExperimentalMultiplayerRun
+                    && !MultiplayerSupport.IsFeatureEnabled(
+                        MultiplayerFeature.SaveAndReconnect
+                    ))
+                {
+                    LogUtility.Warn(
+                        "Skipping save for disposable experimental AP multiplayer run"
+                    );
+                    __result = Task.CompletedTask;
+                    return false;
+                }
+
                 LogUtility.Info($"Game attempted to save in room of type '{preFinishedRoom?.RoomType}'");
                 LogUtility.Info($"Current room type {RunManager.Instance.DebugOnlyGetState()?.CurrentRoom?.RoomType}");
                 LogUtility.Info($"Current Map node type {RunManager.Instance.DebugOnlyGetState()?.CurrentMapPoint?.PointType}");
@@ -245,6 +257,8 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool intercept(NCharacterSelectScreen __instance)
             {
+                if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
+                    return true;
 
                 var charName = BetaMainCompatibility.GetLocalCharacter(__instance.Lobby).Id.Entry;
                 foreach(var entry in GameUtility.APSaves)
@@ -313,6 +327,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix()
             {
+                if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
+                    return;
+
                 if (!ArchipelagoClient.IsConnected) return;
                 if (!GameUtility.HasRecoverySave()) return;
 

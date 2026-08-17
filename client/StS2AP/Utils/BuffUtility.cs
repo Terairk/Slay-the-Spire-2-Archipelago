@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
+using StS2AP.Models;
 using STS2RitsuLib;
 using static StS2AP.Data.ItemTable;
 
@@ -134,6 +135,11 @@ namespace StS2AP.Utils
             {
                 // Only process queued buffs when we're in a run, and when it is the player starting their turn
                 if (GameUtility.CurrentPlayer == null || evt.Side != CombatSide.Player)
+                    return;
+
+                // A buff can have been queued before this AP session switched from the
+                // singleplayer flow. Preserve it for later instead of mutating multiplayer combat.
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CombatEffects))
                     return;
 
                 LogUtility.Info(
@@ -302,6 +308,9 @@ namespace StS2AP.Utils
         /// <param name="player">The active Player instance for the current run.</param>
         public static async Task ProcessQueuedBuffsAsync(Player player)
         {
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CombatEffects))
+                return;
+
             /// Safety net: if storage hasn't finished loading yet, wait for it now.
             /// This handles the edge case where the player was already in combat when they
             /// reconnected, and a SideTurnStartingEvent fired before LoadFromStorageAsync

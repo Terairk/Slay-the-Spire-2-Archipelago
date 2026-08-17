@@ -140,6 +140,7 @@ namespace StS2AP
         private static int _rewardCountGoldRemaining = int.MinValue;
         private static int _rewardCountRelicChoiceAssignments = -1;
         private static int _rewardCountRelicsAvailableAnytime = -1;
+        private static int _rewardCountDeferredMultiplayerItems = -1;
         private static int _cachedAvailableRewardCount;
 
         /// <summary>
@@ -173,6 +174,11 @@ namespace StS2AP
                 int goldRemaining = Progress.GoldRemaining;
                 int relicChoiceAssignments = Progress.RelicChoiceAssignments.Count;
                 int relicsAvailableAnytime = Progress.RelicRewardsAvailableAnytimeForRun;
+                int deferredMultiplayerItems =
+                    MultiplayerSupport.PendingUnsupportedItems.Count(item =>
+                        item.Item.ItemId < 10000
+                        || item.Item.GetCharacterOffset() == characterOffset
+                    );
 
                 if (ReferenceEquals(_rewardCountProgress, Progress) &&
                     _rewardCountCharacterOffset == characterOffset &&
@@ -180,7 +186,8 @@ namespace StS2AP
                     _rewardCountUsedItems == usedItems &&
                     _rewardCountGoldRemaining == goldRemaining &&
                     _rewardCountRelicChoiceAssignments == relicChoiceAssignments &&
-                    _rewardCountRelicsAvailableAnytime == relicsAvailableAnytime)
+                    _rewardCountRelicsAvailableAnytime == relicsAvailableAnytime &&
+                    _rewardCountDeferredMultiplayerItems == deferredMultiplayerItems)
                 {
                     return _cachedAvailableRewardCount;
                 }
@@ -188,6 +195,7 @@ namespace StS2AP
                 int count = Progress.UnusedItemCount;
                 if (goldRemaining > 0)
                     count++;
+                count += deferredMultiplayerItems;
 
                 _rewardCountProgress = Progress;
                 _rewardCountCharacterOffset = characterOffset;
@@ -196,6 +204,7 @@ namespace StS2AP
                 _rewardCountGoldRemaining = goldRemaining;
                 _rewardCountRelicChoiceAssignments = relicChoiceAssignments;
                 _rewardCountRelicsAvailableAnytime = relicsAvailableAnytime;
+                _rewardCountDeferredMultiplayerItems = deferredMultiplayerItems;
                 _cachedAvailableRewardCount = count;
                 return _cachedAvailableRewardCount;
             }
@@ -566,6 +575,7 @@ namespace StS2AP
         public static void OnConnected()
         {
             LogUtility.Success("Successfully Connected to Archipelago Server");
+            MultiplayerSupport.OnApSessionConnected();
 
             // Restore checked locations from server so "Claimed" state survives restarts
             CheckedLocations = new List<long>(Session.Locations.AllLocationsChecked);
@@ -575,7 +585,16 @@ namespace StS2AP
 
             // A fresh session's checked-location list is authoritative, so this is the safe
             // point to discard confirmed outbox entries and replay anything still missing.
-            PendingCheckUtility.ReconcileAndSend();
+            if (MultiplayerSupport.IsMultiplayerScope)
+            {
+                LogUtility.Info(
+                    "Deferring the existing location-check outbox in experimental multiplayer"
+                );
+            }
+            else
+            {
+                PendingCheckUtility.ReconcileAndSend();
+            }
 
             try
             {
@@ -732,8 +751,20 @@ namespace StS2AP
                 .From(() => ConnectionStateChanged?.Invoke(ConnectionState.Disconnected))
                 .CallDeferred();
 
-            // If we were in-game when we disconnected, we have to back out to the main menu. Before doing so, we prompt the user on how they want to quit.
-            Callable.From(GameUtility.ShowOptionsOnLostConnection).CallDeferred();
+            // An already-received AP item remains authoritative. The experimental multiplayer
+            // slice may therefore claim banked gold while AP itself is offline; only a MegaCrit
+            // peer disconnect invalidates multiplayer claims.
+            if (MultiplayerSupport.IsExperimentalMultiplayerRun)
+            {
+                Callable.From(() => NotificationUtility.ShowRawText(
+                    "Disconnected from Archipelago. Already received rewards remain available."
+                )).CallDeferred();
+            }
+            else
+            {
+                // Existing singleplayer behavior prompts the user to leave or recover the run.
+                Callable.From(GameUtility.ShowOptionsOnLostConnection).CallDeferred();
+            }
         }
 
         /// <summary>

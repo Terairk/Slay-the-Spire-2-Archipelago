@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Utils;
+using StS2AP.Models;
 
 namespace StS2AP.Patches;
 
@@ -127,6 +128,9 @@ public static class Patches_LastingCandy
         [HarmonyPrefix]
         private static bool Prefix(LastingCandy __instance, ref Task __result)
         {
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CardRewards))
+                return true;
+
             if (!IsOwnedByCurrentArchipelagoPlayer(__instance))
             {
                 return true;
@@ -150,6 +154,9 @@ public static class Patches_LastingCandy
         private static void Prefix(CardReward __instance, out LastingCandy? __state)
         {
             __state = null;
+
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CardRewards))
+                return;
 
             try
             {

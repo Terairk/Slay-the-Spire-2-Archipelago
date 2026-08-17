@@ -3,6 +3,8 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Unlocks;
+using StS2AP.Models;
+using StS2AP.Utils;
 using System.Collections.Generic;
 
 namespace StS2AP.Patches
@@ -26,6 +28,9 @@ namespace StS2AP.Patches
         [HarmonyPrefix]
         static bool AlwaysStartWithNeow(RunManager __instance)
         {
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
+                return true;
+
             var stateProperty = typeof(RunManager).GetProperty("State",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
@@ -44,6 +49,8 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Overgrowth __instance)
         {
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
+                return;
             __result = __instance.AllAncients;
         }
     }
@@ -54,6 +61,8 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Hive __instance)
         {
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
+                return;
             __result = __instance.AllAncients;
         }
     }
@@ -64,6 +73,8 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Glory __instance)
         {
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
+                return;
             __result = __instance.AllAncients;
         }
     }
@@ -74,6 +85,8 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Underdocks __instance)
         {
+            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
+                return;
             __result = __instance.AllAncients;
         }
     }

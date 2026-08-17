@@ -1,6 +1,7 @@
 using Godot;
 using Newtonsoft.Json;
 using StS2AP.Utils;
+using StS2AP.Models;
 using System;
 
 namespace StS2AP.UI
@@ -547,11 +548,14 @@ namespace StS2AP.UI
                 // Set status
                 SetStatus("Connected successfully!");
 
-                // Enter the game
-                MenuUtility.OpenCharacterSelect();
-
                 // Hide the connection UI
                 Hide();
+
+                // Continue the play flow that opened this login overlay.
+                if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
+                    MenuUtility.OpenMultiplayer();
+                else
+                    MenuUtility.OpenCharacterSelect();
             }
             // We failed to connect
             else if (state == ConnectionState.Disconnected)
@@ -569,6 +573,11 @@ namespace StS2AP.UI
         {
             // Hide the connection UI
             Hide();
+
+            // Singleplayer login sits over its hidden submenu. Multiplayer login is opened
+            // directly from the main menu and therefore has no submenu to pop.
+            if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
+                return;
 
             // Pop the submenu stack to return to the main menu
             try

@@ -2,6 +2,7 @@
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Utils;
+using StS2AP.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,6 +25,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(bool isVictory)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.VictoryChecks))
+                    return;
+
                 // Only run if the player cleared their run, not if they died or quit
                 if(isVictory)
                 {

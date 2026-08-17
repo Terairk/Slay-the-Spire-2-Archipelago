@@ -14,6 +14,16 @@ namespace StS2AP.Models
     /// </summary>
     public sealed class ClientSettings
     {
+        #region Experimental Multiplayer
+
+        /// <summary>
+        /// Exposes the unsupported multiplayer vertical slice. The initial hard-coded profile
+        /// supports local character unlocks, Press Start, and synchronized gold rewards only.
+        /// </summary>
+        public bool EnableExperimentalMultiplayer { get; set; } = false;
+
+        #endregion
+
         #region Notifications
 
         /// <summary>

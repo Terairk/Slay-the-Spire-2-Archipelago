@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using StS2AP.Utils;
+using StS2AP.Models;
 
 namespace StS2AP.Patches
 {
@@ -56,6 +57,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NMerchantInventory __instance, MerchantInventory inventory, MerchantDialogueSet dialogue)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
+                    return;
+
                 if (_isSpawning)
                 {
                     return;
@@ -318,6 +322,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix()
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
+                    return;
+
                 NMerchantInventory? apPage = ShopPageUtility.ApPageInstance;
                 if (ShopPageUtility.HasPages && apPage != null && GodotObject.IsInstanceValid(apPage) && !apPage.IsOpen)
                 {

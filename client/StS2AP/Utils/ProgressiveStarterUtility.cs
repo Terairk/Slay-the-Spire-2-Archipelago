@@ -58,6 +58,9 @@ namespace StS2AP.Utils
         {
             Callable.From(() =>
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
+                    return;
+
                 var player = GameUtility.CurrentPlayer;
                 if (player != null)
                     TaskHelper.RunSafely(ReconcileAsync(player));

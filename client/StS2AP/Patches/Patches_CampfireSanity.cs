@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
+using StS2AP.Models;
 using StS2AP.Utils;
 using System.Xml.Linq;
 
@@ -24,6 +25,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             static void AddOptions(Player player, ref List<RestSiteOption> __result)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.RestSites))
+                    return;
+
                 if(!ArchipelagoClient.Settings.CampfireSanity)
                 {
                     return;
@@ -240,6 +244,9 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static void addScrollBar(NRestSiteRoom __instance)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.RestSites))
+                    return;
+
                 HBoxContainer choicesContainer = __instance.GetNode<HBoxContainer>("%ChoicesContainer");
                 Control choicesScreen = __instance.GetNode<Control>("%ChoicesScreen");
 

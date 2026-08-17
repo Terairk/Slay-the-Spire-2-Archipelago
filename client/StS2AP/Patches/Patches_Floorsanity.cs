@@ -64,6 +64,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(IRunState? runState, bool isRestoringRoomStackBase)
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.FloorChecks))
+                    return;
+
                 // Attempt to send a check for the current room we're on
                 if(ArchipelagoClient.Settings.Floorsanity)
                 {
@@ -125,4 +128,3 @@ namespace StS2AP.Patches
         }
     }
 }
-

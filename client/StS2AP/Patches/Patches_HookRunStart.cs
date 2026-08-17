@@ -51,6 +51,21 @@ namespace StS2AP.Patches
                 }
             }
         }
+
+        /// <summary>
+        /// Marks the run as multiplayer before MegaCrit creates every Player. This also covers
+        /// invite/join paths that did not originate from the visible main-menu button.
+        /// </summary>
+        [HarmonyPatch(typeof(NGame), nameof(NGame.StartNewMultiplayerRun))]
+        public static class OnMultiplayerRunPreStart
+        {
+            [HarmonyPrefix]
+            public static void Prefix()
+            {
+                MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
+            }
+        }
+
         /// <summary>
         /// Does a bunch of work we need when a run starts, including caching references, resetting game state/progress, and hooking event listeners.
         /// </summary>
@@ -60,6 +75,11 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(Player __result)
             {
+                // A multiplayer process creates every player before LocalContext is ready.
+                // Bind exactly once from RunManager.Launch instead.
+                if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
+                    return;
+
                 // Get rid of the tracker UI
                 ArchipelagoCharTrackerUI.RemoveUI();
                 ArchipelagoGoalTrackerUI.RemoveUI();
@@ -86,6 +106,58 @@ namespace StS2AP.Patches
         }
 
         /// <summary>
+        /// MegaCrit assigns LocalContext immediately before RunManager.Launch. This is the first
+        /// clean point at which each process can bind its one AP session to its local STS player.
+        /// </summary>
+        [HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]
+        public static class BindLocalMultiplayerPlayer
+        {
+            [HarmonyPostfix]
+            public static void Postfix(RunState __result)
+            {
+                Player? localPlayer = MultiplayerSupport.BeginRun(__result);
+                if (localPlayer == null)
+                    return;
+
+                ArchipelagoCharTrackerUI.RemoveUI();
+                ArchipelagoGoalTrackerUI.RemoveUI();
+                GameUtility.CurrentPlayer = localPlayer;
+
+                string officialName = localPlayer.Character.Id.Entry;
+                if (!ArchipelagoClient.Settings.Characters.TryGetValue(
+                    officialName,
+                    out CharacterConfig? config
+                ))
+                {
+                    LogUtility.Error(
+                        $"Local multiplayer character {officialName} is not configured for "
+                            + "this AP slot; AP rewards are disabled for this run"
+                    );
+                    MultiplayerSupport.InvalidateRunClaims(
+                        $"local character {officialName} is not configured for this AP slot"
+                    );
+                    return;
+                }
+
+                GameUtility.CurrentConfig = config;
+                // Only initialize state used by this profile. The normal initialization reads
+                // AP-backed campfire state, which is both unsupported here and unavailable if
+                // AP disconnects after the lobby login.
+                ArchipelagoClient.Progress.ResetTrackers();
+                ArchipelagoClient.Progress.Ascensions.Initialize(config);
+                ArchipelagoClient.Progress.UsedItems.Clear();
+
+                if (MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.PressStartCheck))
+                    GameUtility.TrySendPressStartCheck(includeUnrecognizedCharacters: false);
+
+                LogUtility.Info(
+                    $"Bound local AP multiplayer player: netId={localPlayer.NetId}, "
+                        + $"character={officialName}, slot={ArchipelagoClient.PlayerName}"
+                );
+            }
+        }
+
+        /// <summary>
         /// Reconciles progressive starters after the base game has finalized starting relic effects,
         /// but before it launches the run scene. At this point each player has a real RunState and
         /// relic removal can pair AfterRemoved with the base game's completed AfterObtained call.
@@ -102,6 +174,9 @@ namespace StS2AP.Patches
             private static async Task ReconcileProgressiveStarters(Task finalizeTask)
             {
                 await finalizeTask;
+
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
+                    return;
 
                 var player = GameUtility.CurrentPlayer;
                 var runState = RunManager.Instance.DebugOnlyGetState();
@@ -136,6 +211,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix()
             {
+                MultiplayerSupport.EndRun();
                 GameUtility.CurrentPlayer = null;
                 GameUtility.CurrentConfig = null;
                 LogUtility.Info("CurrentPlayer cleared (returned to main menu)");
