@@ -61,6 +61,60 @@ namespace StS2AP.Utils
             return CurrentAscension.Contains(level);
         }
 
+        /// <summary>
+        /// Parses the ascension modifiers configured for a character by the APWorld.
+        /// </summary>
+        public ISet<AscensionLevel> GetConfiguredAscensions(CharacterConfig config)
+        {
+            var configured = new HashSet<AscensionLevel>();
+            foreach (var ascension in config.Ascension)
+            {
+                var level = GetLevel(ascension);
+                if (level.HasValue)
+                {
+                    configured.Add(level.Value);
+                }
+            }
+
+            return configured;
+        }
+
+        /// <summary>
+        /// Calculates the modifiers that a new run for <paramref name="config"/> would use,
+        /// after applying every received Ascension Down for that character.
+        /// This is side-effect free so pre-run UI can use the same rules as run initialization.
+        /// </summary>
+        public ISet<AscensionLevel> GetEffectiveAscensions(
+            CharacterConfig config,
+            IEnumerable<IndexedItemInfo> receivedItems
+        )
+        {
+            var effective = new HashSet<AscensionLevel>(GetConfiguredAscensions(config));
+
+            foreach (var indexedItem in receivedItems)
+            {
+                var item = indexedItem.Item;
+                if (item.GetCharacterOffset() != config.CharOffset)
+                {
+                    continue;
+                }
+
+                var itemId = item.GetCharacterSpecificItemID();
+                if ((int)itemId < 19 || (int)itemId > 28)
+                {
+                    continue;
+                }
+
+                var removedLevel = ToAscensionLevel(itemId);
+                if (removedLevel != AscensionLevel.None)
+                {
+                    effective.Remove(removedLevel);
+                }
+            }
+
+            return effective;
+        }
+
         public void Reset()
         {
             ConfiguredAscension.Clear();
@@ -102,20 +156,8 @@ namespace StS2AP.Utils
         {
             // Initialize on new run, save, and update in game.
             Reset();
-            
-            foreach(var asc in currentConfig.Ascension)
-            {
-                var check = GetLevel(asc);
-                if(check != null)
-                {
-                    AscensionLevel level = (AscensionLevel) check;
-                    ConfiguredAscension.Add(level);
-                    if (currentLevels == null)
-                    {
-                        CurrentAscension.Add(level);
-                    }
-                }
-            }
+
+            ConfiguredAscension.UnionWith(GetConfiguredAscensions(currentConfig));
 
             if (currentLevels != null)
             {
@@ -125,16 +167,12 @@ namespace StS2AP.Utils
             else
             {
                 // new run flow
-                foreach (var item in ArchipelagoClient.Progress.AllReceivedItems)
-                {
-                    var id = item.Item.GetCharacterSpecificItemID();
-                    LogUtility.Info($"Checking if item is an ascension {item.Item.ItemName} {id}");
-                    if (((int)id) >= 19 && ((int)id) <= 28)
-                    {
-                        LogUtility.Info($"Removing ascension via item {item.Item.ItemName}");
-                        ProcessAscensionLevel(currentConfig, item.Item, true);
-                    }
-                }
+                CurrentAscension.UnionWith(
+                    GetEffectiveAscensions(
+                        currentConfig,
+                        ArchipelagoClient.Progress.AllReceivedItems
+                    )
+                );
             }
         }
 

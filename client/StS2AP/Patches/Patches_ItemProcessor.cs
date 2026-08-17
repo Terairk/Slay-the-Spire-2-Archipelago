@@ -297,6 +297,9 @@ namespace StS2AP.Patches
                     );
                     Progress.UsedItems.Add(index);
                     Progress.AllReceivedItems.Add(indexedInfo);
+                    Patches_AscensionOverride.RefreshCharacterSelectAscension(
+                        item.GetCharacterOffset()
+                    );
                     break;
 
                 // Everything else ends up in the "reward pool"
