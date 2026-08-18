@@ -15,25 +15,49 @@ namespace StS2AP.Utils
     {
         public override string CmdName => "ap";
 
-        public override string Args => ""; // dunno what this is for
+        public override string Args =>
+            "!command | state [summary|grants|assignments|multiplayer|grant <slot:index>]";
 
-        public override string Description => "Sends an AP command (such as !hint) to the server";
+        public override string Description =>
+            "Sends an AP server command or inspects AP runtime state";
 
         public override bool IsNetworked => false;
 
         public override CmdResult Process(Player? issuingPlayer, string[] args)
         {
-            var sendMe = String.Join(" ", args);
-            if(!sendMe.StartsWith("!"))
+            if (args.Length == 0)
             {
-                return new CmdResult(false, "AP Commands must start with '!'");
+                return new CmdResult(false, "Usage: ap !command | ap state [section]");
             }
-            if(!ArchipelagoClient.IsConnected)
+
+            if (args[0].StartsWith("!", StringComparison.Ordinal))
             {
-                return new CmdResult(false, "Not connected to AP");
+                string sendMe = string.Join(" ", args);
+                if (!ArchipelagoClient.IsConnected)
+                    return new CmdResult(false, "Not connected to AP");
+                ArchipelagoClient.Session.Say(sendMe);
+                return new CmdResult(true);
             }
-            ArchipelagoClient.Session.Say(sendMe);
-            return new CmdResult(true);
+
+            if (!args[0].Equals("state", StringComparison.OrdinalIgnoreCase))
+            {
+                return new CmdResult(
+                    false,
+                    "Unknown AP command. Use ap !command or ap state [section]."
+                );
+            }
+
+            string section = args.Length >= 2 ? args[1] : "summary";
+            string[] sectionArgs = args.Skip(2).ToArray();
+            if (!ApDevStateProviders.TryCapture(
+                section,
+                sectionArgs,
+                out string output,
+                out string error))
+            {
+                return new CmdResult(false, error);
+            }
+            return new CmdResult(true, output);
         }
     }
 

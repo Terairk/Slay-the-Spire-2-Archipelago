@@ -161,6 +161,12 @@ namespace StS2AP.UI
         /// </summary>
         public IReadOnlyList<RelicModel>? LinkedRelicChoices { get; set; }
 
+        /// <summary>
+        /// Optional native mirrored linked-child selector. The integer is the stable child
+        /// position in <see cref="LinkedRelicChoices"/> on every multiplayer peer.
+        /// </summary>
+        public Func<int, Task<bool>>? LinkedRelicGrantAction { get; set; }
+
         /// <summary>Whether linked relic choices should use the Ancient-specific button tint.</summary>
         public bool UseAncientRelicStyle { get; set; }
 
@@ -376,8 +382,10 @@ namespace StS2AP.UI
 
             // Normally this happens on receipt or checkpoint load. Retrying here keeps an
             // unexpected assignment failure recoverable without another tracking state.
-            // AP_MP: Relic assignment stays disabled until native obtained-relic sync is used.
-            if (MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.RelicRewards))
+            // AP_MP: Mirrored relics are populated on every peer only after their Sidecar spec.
+            // Owner-only reconciliation would pull from just this process's relic bag.
+            if (MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.RelicRewards)
+                && !MultiplayerSupport.IsRealMultiplayerRun)
                 RelicRewardUtility.ReconcileBankedRewards(currentPlayer);
 
             // Get Unused items from the Multiworld for our current character
@@ -431,6 +439,16 @@ namespace StS2AP.UI
                 var rawId = i.Item.GetCharacterSpecificItemID();
                 if (rawId == APItem.Relic)
                 {
+                    if (MultiplayerSupport.IsRealMultiplayerRun)
+                    {
+                        data.ItemName = "Relic";
+                        data.GrantAction = () => ApMirroredRewardDispatcher.ExecuteRelicReward(
+                            i.Index,
+                            i.Item.ItemDisplayName
+                        );
+                    }
+                    else
+                    {
                     // AP-menu Relics are deliberately one persisted choice. Normal-screen relics
                     // stay native and never enter this assignment map.
                     var choices = ArchipelagoClient.Progress.GetOrAssignRelicChoices(
@@ -450,16 +468,32 @@ namespace StS2AP.UI
                         data.ItemName = "Relic Choice Unavailable";
                         data.GrantAction = () => Task.FromResult(false);
                     }
+                    }
                 }
 
                 if (rawId == APItem.ProgressiveAncient)
                 {
-                    var choices = ArchipelagoClient.Progress.GetOrAssignAncientRelicChoices(i.Index, currentPlayer);
+                    var choices = MultiplayerSupport.IsRealMultiplayerRun
+                        ? ApMirroredRewardDispatcher.GetOrAssignAncientChoices(i.Index, currentPlayer)
+                        : ArchipelagoClient.Progress.GetOrAssignAncientRelicChoices(i.Index, currentPlayer);
                     if (choices.Count == AncientRelicPool.ChoiceCount)
                     {
                         data.ItemName = "Choose an Ancient Relic";
                         data.LinkedRelicChoices = choices;
                         data.UseAncientRelicStyle = true;
+                        if (MultiplayerSupport.IsRealMultiplayerRun)
+                        {
+                            // TODO AP_MP: Move this presentation to MegaCrit's NLinkedRewardSet
+                            // once the AP overlay can embed native reward rows. The replicated
+                            // selection backend already uses Ritsu's native LinkedRewardSet.
+                            data.LinkedRelicGrantAction = selectedIndex =>
+                                ApMirroredRewardDispatcher.ExecuteAncientReward(
+                                    i.Index,
+                                    i.Item.ItemDisplayName,
+                                    choices,
+                                    selectedIndex
+                                );
+                        }
                     }
                     else
                     {
@@ -477,11 +511,25 @@ namespace StS2AP.UI
                     // AP Card reward has special handling so we can remember that the card reward
                     // is an AP one for UI purposes such as hitting AP button to act like a skip cus
                     // I think its more intuitive, I'd rather not have dead buttons
-                    data.GrantAction = () => GrantAPCardReward(itemIndex, rare: isRare);
+                    data.GrantAction = () => GrantAPCardReward(
+                        itemIndex,
+                        rare: isRare,
+                        itemName: i.Item.ItemDisplayName
+                    );
                 }
 
                 if(rawId == APItem.Potion)
                 {
+                    if (MultiplayerSupport.IsRealMultiplayerRun)
+                    {
+                        data.ItemName = "Potion";
+                        data.GrantAction = () => ApMirroredRewardDispatcher.ExecutePotionReward(
+                            i.Index,
+                            i.Item.ItemDisplayName
+                        );
+                    }
+                    else
+                    {
                     var potion = ArchipelagoClient.Progress.GetOrAssignPotion(i.Index, currentPlayer);
                     if(potion != null)
                     {
@@ -495,6 +543,28 @@ namespace StS2AP.UI
                         data.TooltipPotion = tooltipPotion;
                         data.GrantAction = async () => { return await GameUtility.GrantPotion(potion); };
                     }
+                    }
+                }
+
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                {
+                    ApMirroredRewardKind? mirroredKind = rawId switch
+                    {
+                        APItem.CardReward or APItem.RareCardReward => ApMirroredRewardKind.Card,
+                        APItem.Relic => ApMirroredRewardKind.Relic,
+                        APItem.Potion => ApMirroredRewardKind.Potion,
+                        APItem.ProgressiveAncient => ApMirroredRewardKind.Ancient,
+                        _ => null,
+                    };
+                    if (mirroredKind.HasValue
+                        && !MultiplayerSupport.CanClaimReceivedReward(
+                            mirroredKind.Value,
+                            out string blockedReason
+                        ))
+                    {
+                        data.IsEnabled = false;
+                        data.DisabledReason = blockedReason;
+                    }
                 }
 
                 return data;
@@ -503,7 +573,8 @@ namespace StS2AP.UI
             rewardDataList.ForEach(item => item.OnClaimed ??= () =>
             {
                 // Mark the item as used in the Multiworld so it doesn't show up again if we reopen the screen
-                ArchipelagoClient.Progress.UsedItems.Add(item.Index);
+                if (!ArchipelagoClient.Progress.UsedItems.Contains(item.Index))
+                    ArchipelagoClient.Progress.UsedItems.Add(item.Index);
             });
 
             // Show the UI with these rewards
@@ -713,9 +784,14 @@ namespace StS2AP.UI
         /// created by this AP action. This prevents an AP toggle from ever skipping a
         /// normal combat or treasure card reward.
         /// </summary>
-        private static async Task<bool> GrantAPCardReward(int index, bool rare)
+        private static async Task<bool> GrantAPCardReward(
+            int index,
+            bool rare,
+            string itemName = "Card Reward")
         {
-            var selectionTask = GameUtility.GrantCardReward(index, rare);
+            var selectionTask = MultiplayerSupport.IsRealMultiplayerRun
+                ? ApMirroredRewardDispatcher.ExecuteCardReward(index, rare, itemName)
+                : GameUtility.GrantCardReward(index, rare);
             var picker = NOverlayStack.Instance?.Peek() as NCardRewardSelectionScreen;
 
             if (picker == null)
@@ -1125,7 +1201,7 @@ namespace StS2AP.UI
             var buttons = new List<Button>(choices.Count);
             var resolving = false;
 
-            void ResolveChoice(RelicModel relic)
+            void ResolveChoice(RelicModel relic, int selectedIndex)
             {
                 if (resolving)
                     return;
@@ -1134,7 +1210,10 @@ namespace StS2AP.UI
                 foreach (var button in buttons)
                     button.Disabled = true;
 
-                GameUtility.TryGrantRelic(relic).ContinueWith(task =>
+                Task<bool> grantTask = data.LinkedRelicGrantAction != null
+                    ? data.LinkedRelicGrantAction(selectedIndex)
+                    : GameUtility.TryGrantRelic(relic);
+                grantTask.ContinueWith(task =>
                 {
                     var granted = task.Status == TaskStatus.RanToCompletion && task.Result;
                     var failure = task.Exception?.InnerException?.Message ?? task.Exception?.Message;
@@ -1172,6 +1251,7 @@ namespace StS2AP.UI
 
             for (var index = 0; index < choices.Count; index++)
             {
+                int selectedIndex = index;
                 var relic = choices[index];
                 var choiceData = new ArchipelagoRewardData
                 {
@@ -1186,7 +1266,7 @@ namespace StS2AP.UI
 
                 var button = CreateRewardButton(
                     choiceData,
-                    _ => ResolveChoice(relic),
+                    _ => ResolveChoice(relic, selectedIndex),
                     data.UseAncientRelicStyle,
                     isLinkedChoice: true
                 );

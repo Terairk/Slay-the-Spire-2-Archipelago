@@ -202,7 +202,10 @@ namespace StS2AP.Models
         /// Returns the three Ancient relics assigned to a Progressive Ancient, creating the deterministic
         /// assignment on first use. An empty list indicates that a valid three-relic pool could not be built.
         /// </summary>
-        public IReadOnlyList<RelicModel> GetOrAssignAncientRelicChoices(int index, Player player)
+        public IReadOnlyList<RelicModel> GetOrAssignAncientRelicChoices(
+            int index,
+            Player player,
+            string? stableChoiceKey = null)
         {
             if (AncientRelicChoiceAssignments.TryGetValue(index, out var existing))
                 return existing;
@@ -243,7 +246,9 @@ namespace StS2AP.Models
             var ancientActIndex = rewardOrdinal + 1;
             var poolMode = ArchipelagoClient.Settings?.AncientRelicPool ?? AncientRelicPoolMode.Balanced;
             int? poolActIndex = (poolMode == AncientRelicPoolMode.TrueChaos) ? null : ancientActIndex;
-            var choiceKey = index.ToString();
+            // AP slot + received index is supplied by the multiplayer grant ledger. The
+            // singleplayer fallback retains the historical item-index key.
+            var choiceKey = stableChoiceKey ?? index.ToString();
             AncientEventModel? naturalAncient = null;
             if (poolMode == AncientRelicPoolMode.Balanced)
             {

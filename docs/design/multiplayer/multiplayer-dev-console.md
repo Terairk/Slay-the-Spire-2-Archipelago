@@ -1,6 +1,6 @@
 # Multiplayer developer-console requirements
 
-- **Status:** Requirements only; implementation deferred
+- **Status:** Read-only grant inspection implemented; mutation/JSON providers deferred
 - **Last updated:** 2026-08-18
 
 ## 1. Purpose
@@ -11,6 +11,21 @@ console is a diagnostic entry point, not a second implementation of grant or
 networking behavior.
 
 ## 2. Required behavior
+
+The first implementation intentionally covers only the read-only provider registry and keeps
+the existing server-command passthrough. Its supported commands are:
+
+```text
+ap !command
+ap state
+ap state grants
+ap state assignments
+ap state multiplayer
+ap state grant <AP-slot:received-index>
+```
+
+Synthetic receipts, JSON/file output, and the remaining provider names below are future work.
+This narrower implementation does not introduce a second grant path.
 
 - Preserve the existing `ap !command` shorthand for sending server commands.
 - Allow representative AP receipts to be simulated without an AP connection.
@@ -26,7 +41,7 @@ networking behavior.
   synchronization path.
 - Do not provide a raw "run this executor only on my process" escape hatch.
 - Print stable, useful identifiers including AP slot ID, received-item index,
-  STS owner Net ID, grant kind, assignment domain, and applied/pending state.
+  STS owner Net ID, grant kind, assignment domain, and claimable/applied/blocked state.
 - Never print AP credentials or authentication material.
 
 ## 3. Example command surface
@@ -82,9 +97,9 @@ Initial provider names are:
 
 | Provider | Minimum content |
 |---|---|
-| `summary` | Run, local player, AP slot, connection, protocol, pending/error counts |
+| `summary` | Run, local player, AP slot, connection, protocol, claimable/applied/blocked and error counts |
 | `lobby` | Contributions, Ready blockers, host Ascension set, client mismatch diagnostics |
-| `grants` | Pending/applied IDs, route, owner, last transition, acknowledgment state |
+| `grants` | Claimable/applied/blocked IDs, route, owner, last attempt, acknowledgment state |
 | `buffs` | Per-owner FIFO, next buff, last combat attempt |
 | `assignments` | Grant ID to concrete cached assignment and domain |
 | `rng` | Registered RitsuLib stream names and assignment-domain versions, never mutable RNG internals unless safe |

@@ -192,6 +192,11 @@ namespace StS2AP.Patches
                     MultiplayerSupport.InvalidateRunClaims(bindError);
                     return;
                 }
+                if (!ApMirroredRewardDispatcher.BeginRun(__result, out bindError))
+                {
+                    MultiplayerSupport.InvalidateRunClaims(bindError);
+                    return;
+                }
 
                 if (MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.PressStartCheck))
                     GameUtility.TrySendPressStartCheck(includeUnrecognizedCharacters: false);

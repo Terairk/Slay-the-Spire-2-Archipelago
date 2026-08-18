@@ -57,7 +57,11 @@ public static class Patches_LastingCandy
     private static bool IsOwnedByCurrentArchipelagoPlayer(LastingCandy lastingCandy)
     {
         var currentPlayer = GameUtility.CurrentPlayer;
-        return currentPlayer != null && ReferenceEquals(lastingCandy.Owner, currentPlayer);
+        return (currentPlayer != null && ReferenceEquals(lastingCandy.Owner, currentPlayer))
+            || (lastingCandy.Owner != null
+                && ApMirroredRewardDispatcher.IsBuildingMirroredCardReward(
+                    lastingCandy.Owner
+                ));
     }
 
     private static void LogMissingRewardStateOnce()
@@ -132,6 +136,12 @@ public static class Patches_LastingCandy
             if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CardRewards))
                 return true;
 
+            // Native multiplayer already executes BeforeCombatRewardOffered for every replica.
+            // Mirrored AP rewards do not pass that outer combat boundary, so their one extra
+            // cadence increment is handled narrowly by the Populate patch below.
+            if (MultiplayerSupport.IsRealMultiplayerRun)
+                return true;
+
             if (!IsOwnedByCurrentArchipelagoPlayer(__instance))
             {
                 return true;
@@ -163,7 +173,12 @@ public static class Patches_LastingCandy
             try
             {
                 var currentPlayer = GameUtility.CurrentPlayer;
-                if (currentPlayer == null || !ReferenceEquals(__instance.Player, currentPlayer))
+                bool isLocalApReward = !MultiplayerSupport.IsRealMultiplayerRun
+                    && currentPlayer != null
+                    && ReferenceEquals(__instance.Player, currentPlayer);
+                bool isMirroredApReward =
+                    ApMirroredRewardDispatcher.IsBuildingMirroredCardReward(__instance.Player);
+                if (!isLocalApReward && !isMirroredApReward)
                 {
                     return;
                 }

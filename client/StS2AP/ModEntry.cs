@@ -54,10 +54,19 @@ namespace StS2AP
                     defaultFactory: () => new MultiplayerGoldState(),
                     autoCreateIfMissing: true
                 );
+                store.Register(
+                    key: "multiplayer_grants",
+                    fileName: "multiplayer_grants.json",
+                    scope: SaveScope.Global,
+                    syncToCloud: false,
+                    defaultFactory: () => new MultiplayerGrantState(),
+                    autoCreateIfMissing: true
+                );
             }
             ModSettingsRegistration.Register();
 
             // Initialize Utilities
+            ApMirroredRewardDispatcher.Initialize();
             DeathLinkUtility.Initialize();
             BuffUtility.Initialize();
 

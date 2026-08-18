@@ -31,6 +31,10 @@ public static class MultiplayerSupport
         MultiplayerFeature.CharacterUnlocks,
         MultiplayerFeature.PressStartCheck,
         MultiplayerFeature.GoldRewards,
+        MultiplayerFeature.CardRewards,
+        MultiplayerFeature.RelicRewards,
+        MultiplayerFeature.PotionRewards,
+        MultiplayerFeature.AncientRewardChoices,
     };
 
     private static readonly Dictionary<int, IndexedItemInfo> DeferredItems = new();
@@ -79,6 +83,8 @@ public static class MultiplayerSupport
 
     public static int? PreparedApSlotId => _preparedSessionIdentity?.ApSlotId;
 
+    public static bool InitialItemsLoaded => _apHistoryPrepared;
+
     public static void SelectDestination(ApPlayDestination destination)
     {
         PendingDestination = destination;
@@ -125,7 +131,7 @@ public static class MultiplayerSupport
             APItem.Relic => MultiplayerFeature.RelicRewards,
             APItem.Potion => MultiplayerFeature.PotionRewards,
             APItem.ProgressiveRest or APItem.ProgressiveSmith => MultiplayerFeature.RestSites,
-            APItem.ProgressiveAncient => MultiplayerFeature.Ancients,
+            APItem.ProgressiveAncient => MultiplayerFeature.AncientRewardChoices,
             APItem.ShopCardSlot or APItem.NeutralShopCardSlot or APItem.ShopRelicSlot
                 or APItem.ShopPotionSlot or APItem.ProgressiveShopRemove =>
                     MultiplayerFeature.Shops,
@@ -224,6 +230,8 @@ public static class MultiplayerSupport
 
         DeferredItems.Clear();
         ArchipelagoClient.Progress.AllReceivedItems.Clear();
+        ArchipelagoClient.Progress.ProgressiveAncients.Clear();
+        var ancientCounts = new Dictionary<long, int>();
         for (int index = 0; index < receivedItems.Count; index++)
         {
             ItemInfo item = receivedItems[index];
@@ -233,10 +241,32 @@ public static class MultiplayerSupport
             {
                 GameUtility.UnlockCharacter(item);
             }
-            // AP_MP: The preparation allowlist is still character unlocks plus aggregate gold.
-            else if (feature != MultiplayerFeature.GoldRewards)
+            else if (feature == MultiplayerFeature.GoldRewards)
+            {
+                // Aggregate gold is reconstructed below rather than stored as discrete rows.
+            }
+            else if (!IsFeatureEnabled(feature))
             {
                 DeferItem(indexedItem);
+            }
+            else if (item.ItemId >= 10000
+                && item.GetCharacterSpecificItemID() == APItem.ProgressiveAncient)
+            {
+                long characterOffset = item.GetCharacterOffset();
+                ancientCounts.TryGetValue(characterOffset, out int count);
+                count++;
+                ancientCounts[characterOffset] = count;
+                ArchipelagoClient.Progress.ProgressiveAncients[characterOffset] = count;
+
+                if (ArchipelagoClient.Settings.AncientRelicLocation == AncientRelicLocation.Anytime
+                    && (!ArchipelagoClient.Settings.NeowSanity || count > 1))
+                {
+                    ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
+                }
+            }
+            else
+            {
+                ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
             }
         }
 
@@ -470,6 +500,7 @@ public static class MultiplayerSupport
         ClaimsInvalidated = false;
         _claimInvalidationNoticeShown = false;
         ApGrantDispatcher.EndRun();
+        ApMirroredRewardDispatcher.EndRun();
     }
 
     public static bool CanClaimGold(out string reason)
@@ -511,6 +542,53 @@ public static class MultiplayerSupport
             return false;
         }
 
+        return true;
+    }
+
+    /// <summary>Shared safety gate for discrete mirrored reward flows.</summary>
+    public static bool CanClaimReceivedReward(ApMirroredRewardKind kind, out string reason)
+    {
+        reason = string.Empty;
+        if (!IsRealMultiplayerRun)
+            return true;
+
+        MultiplayerFeature feature = kind switch
+        {
+            ApMirroredRewardKind.Card => MultiplayerFeature.CardRewards,
+            ApMirroredRewardKind.Relic => MultiplayerFeature.RelicRewards,
+            ApMirroredRewardKind.Potion => MultiplayerFeature.PotionRewards,
+            ApMirroredRewardKind.Ancient => MultiplayerFeature.AncientRewardChoices,
+            _ => MultiplayerFeature.UnknownReceivedItems,
+        };
+        if (!IsExperimentalMultiplayerRun)
+        {
+            reason = "Experimental AP multiplayer is not enabled for this run.";
+            return false;
+        }
+        if (!IsFeatureEnabled(feature))
+        {
+            reason = $"{feature} is not enabled for this multiplayer profile.";
+            return false;
+        }
+        if (ClaimsInvalidated)
+        {
+            reason = "A multiplayer peer disconnected. Start a fresh run to claim AP rewards.";
+            return false;
+        }
+        if (CombatManager.Instance.IsInProgress)
+        {
+            reason = "Multiplayer AP rewards can only be claimed outside combat.";
+            return false;
+        }
+
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
+        RunLobby? runLobby = RunManager.Instance.RunLobby;
+        if (runState == null || runLobby == null
+            || runLobby.Players.Count != runState.Players.Count)
+        {
+            reason = "All multiplayer peers must be connected to claim AP rewards.";
+            return false;
+        }
         return true;
     }
 

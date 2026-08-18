@@ -335,7 +335,7 @@ namespace StS2AP.Utils
         /// card-upgrade odds it should use. AP item indices are stable even when the player
         /// waits until a later act to claim the reward.
         /// </summary>
-        private static int? GetCardRewardActIndex(int index, Player player)
+        internal static int? GetCardRewardActIndex(int index, Player player)
         {
             if (index < 0)
                 return null;

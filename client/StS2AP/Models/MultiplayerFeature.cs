@@ -12,16 +12,18 @@ public enum MultiplayerFeature
     PressStartCheck,
     GoldRewards,
 
-    // AP_MP: Enable these next as their native synchronized grant paths are implemented.
+    // Mirrored through RitsuLib Sidecar plus MegaCrit's native reward synchronizers.
     CardRewards,
     RelicRewards,
     PotionRewards,
+    AncientRewardChoices,
 
     // AP_MP: Keep these disabled until their owner-only checks and replicated results agree.
     CombatRewardLocations,
     FloorChecks,
     Shops,
     RestSites,
+    // AP_MP: This broader switch still owns natural Ancient events/start-of-act patches.
     Ancients,
     VictoryChecks,
 
