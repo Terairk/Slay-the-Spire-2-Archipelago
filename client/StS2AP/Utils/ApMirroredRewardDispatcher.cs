@@ -236,6 +236,43 @@ public static class ApMirroredRewardDispatcher
         return await ExecuteOwnerAttempt(spec, selectedChildIndex: null);
     }
 
+    /// <summary>
+    /// Materializes and persists the exact relic that a mirrored AP reward will grant. This lets
+    /// the AP overlay render the native relic title, icon, and hover tips before selection without
+    /// rolling a second relic when the row is clicked.
+    /// </summary>
+    public static RelicModel? GetOrAssignRelic(int itemIndex, string itemName)
+    {
+        var spec = CreateOwnerSpec(itemIndex, ApMirroredRewardKind.Relic, itemName);
+        ApplyPersistedAssignment(spec);
+        RuntimeReward runtime = GetOrBuildRuntimeReward(spec);
+        if (runtime.Root is not RelicReward { Relic: { } relic })
+            return null;
+
+        if (!PersistRuntimeAssignment(spec, runtime, lastAttempt: null))
+            return null;
+
+        return relic;
+    }
+
+    /// <summary>
+    /// Materializes and persists the exact potion that a mirrored AP reward will grant. The
+    /// returned model is also retained by the native mirrored reward runtime for selection.
+    /// </summary>
+    public static PotionModel? GetOrAssignPotion(int itemIndex, string itemName)
+    {
+        var spec = CreateOwnerSpec(itemIndex, ApMirroredRewardKind.Potion, itemName);
+        ApplyPersistedAssignment(spec);
+        RuntimeReward runtime = GetOrBuildRuntimeReward(spec);
+        if (runtime.Root is not PotionReward { Potion: { } potion })
+            return null;
+
+        if (!PersistRuntimeAssignment(spec, runtime, lastAttempt: null))
+            return null;
+
+        return potion;
+    }
+
     public static async Task<bool> ExecuteAncientReward(
         int itemIndex,
         string itemName,

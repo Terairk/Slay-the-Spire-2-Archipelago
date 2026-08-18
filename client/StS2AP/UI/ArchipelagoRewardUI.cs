@@ -441,11 +441,28 @@ namespace StS2AP.UI
                 {
                     if (MultiplayerSupport.IsRealMultiplayerRun)
                     {
-                        data.ItemName = "Relic";
-                        data.GrantAction = () => ApMirroredRewardDispatcher.ExecuteRelicReward(
+                        var relic = ApMirroredRewardDispatcher.GetOrAssignRelic(
                             i.Index,
                             i.Item.ItemDisplayName
                         );
+                        if (relic != null)
+                        {
+                            // The mirrored runtime retains this exact mutable model for the
+                            // native grant, so the menu and the eventual reward cannot diverge.
+                            relic.Owner = currentPlayer;
+                            data.ItemName = relic.Title.GetRawText();
+                            data.IconPath = relic.IconPath;
+                            data.TooltipRelic = relic;
+                            data.GrantAction = () => ApMirroredRewardDispatcher.ExecuteRelicReward(
+                                i.Index,
+                                i.Item.ItemDisplayName
+                            );
+                        }
+                        else
+                        {
+                            data.ItemName = "Relic Unavailable";
+                            data.GrantAction = () => Task.FromResult(false);
+                        }
                     }
                     else
                     {
@@ -522,11 +539,26 @@ namespace StS2AP.UI
                 {
                     if (MultiplayerSupport.IsRealMultiplayerRun)
                     {
-                        data.ItemName = "Potion";
-                        data.GrantAction = () => ApMirroredRewardDispatcher.ExecutePotionReward(
+                        var potion = ApMirroredRewardDispatcher.GetOrAssignPotion(
                             i.Index,
                             i.Item.ItemDisplayName
                         );
+                        if (potion != null)
+                        {
+                            potion.Owner = currentPlayer;
+                            data.ItemName = potion.Title.GetRawText();
+                            data.IconPath = potion.ImagePath;
+                            data.TooltipPotion = potion;
+                            data.GrantAction = () => ApMirroredRewardDispatcher.ExecutePotionReward(
+                                i.Index,
+                                i.Item.ItemDisplayName
+                            );
+                        }
+                        else
+                        {
+                            data.ItemName = "Potion Unavailable";
+                            data.GrantAction = () => Task.FromResult(false);
+                        }
                     }
                     else
                     {
