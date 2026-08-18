@@ -4,77 +4,58 @@
 - **Owners:** Unassigned
 - **Reviewers:** Unassigned
 - **Target release:** Unassigned
-- **Last updated:** 2026-08-17
+- **Last updated:** 2026-08-18
 
 ## 1. Summary
 
-Add Slay the Spire 2 multiplayer support without maintaining a separate
-multiplayer client. Each game process owns one local Archipelago session and
-one local STS player. Every process still maintains MegaCrit's replicated copy
-of the complete run, including remote players.
+Each Slay the Spire 2 process owns one local Archipelago connection for one
+distinct AP slot and one local STS player. Every process also maintains
+MegaCrit's replicated copy of the complete run, including remote players.
 
 The central boundary is:
 
-> Archipelago owns why an effect exists. MegaCrit's multiplayer layer should
-> own how the resulting Slay the Spire state change is reproduced on every
-> peer.
+> Archipelago owns why an effect exists. MegaCrit's multiplayer layer owns how
+> the resulting Slay the Spire state change is reproduced on every peer.
 
-Private AP state should remain private. Only the smallest deterministic result
-needed to reproduce shared game state should cross the STS peer connection.
+AP callbacks must not directly mutate replicated game state. They create a
+stable grant, resolve any random assignment once, and route the concrete result
+through either a native MegaCrit synchronizer or a RitsuLib managed action.
 
-## 2. Motivation
+## 2. Goals
 
-The current client deliberately starts and loads singleplayer runs. Its AP
-session, progress, current-player reference, reward menu, and item processing
-were designed around one STS player in one process.
-
-MegaCrit multiplayer does not continuously replicate authoritative snapshots.
-It combines:
-
-- a full `RunState` on every peer;
-- host-ordered combat actions;
-- per-player choice and reward sequence IDs;
-- index-based reward, rest-site, and event selection messages;
-- explicit concrete payloads for non-deterministic reward contexts;
-- shared RNG streams and counters; and
-- combat-state checksums that detect, but do not repair, divergence.
-
-AP item delivery is external, asynchronous, and known initially only to the
-receiving AP client. The port must convert that private event into a MegaCrit
-operation that every peer can reproduce.
-
-## 3. Goals
-
-- Support one AP connection per participating STS player.
+- Support one AP connection and AP slot per participating STS player.
 - Preserve the existing singleplayer experience.
-- Use MegaCrit synchronization where its lifecycle matches the AP feature.
-- Keep credentials, AP socket state, scouted data, and unrelated AP progress
-  local to the owning process.
-- Make every AP-originated game-state effect deterministic or explicitly
-  synchronized.
-- Provide stable transaction identity for duplicate prevention and reconnect.
-- Keep reward, rest-site, event, and nested-choice sequence state aligned.
-- Fail safely when a peer has an incompatible mod protocol.
+- Use native card, relic, potion, and gold synchronization where it already
+  models the required operation.
+- Use RitsuLib managed actions for AP-specific mutations from the beginning of
+  multiplayer implementation, rather than growing an ad hoc message layer.
+- Make AP grant executors deterministic and idempotent.
+- Consume at most one queued AP buff per player per combat, in FIFO order.
+- Keep private AP state private while sharing the concrete inputs required to
+  reproduce STS state.
+- Let each process persist its private AP state independently of the STS host so
+  leaving multiplayer does not discard its AP session or deferred receipts.
+- Stage and validate the multiplayer launch contract before Ready is accepted.
+- Refuse to launch when peers use incompatible AP multiplayer protocols.
 
-## 4. Non-goals for the first multiplayer release
+## 3. Non-goals for the first multiplayer release
 
 - Allowing a peer without the Archipelago mod to join.
 - Sharing one AP socket among several STS players.
-- Host migration while an AP-specific synchronized operation is in flight.
-- Supporting different AP client protocol versions in the same party.
-- Preserving experimental multiplayer saves across protocol changes.
 - Replacing MegaCrit networking with an independent networking stack.
+- Preserving experimental multiplayer saves across protocol changes.
+- Making random assignments stable across different game versions.
+- Distributed rollback or an all-peer success acknowledgment protocol.
+- Converting an in-progress multiplayer `RunState` into a singleplayer save.
 
-## 5. Proposed topology
-
-Each process owns the AP session associated with its local STS player:
+## 4. Topology and authority
 
 ```text
 Alice's process                         Bob's process
 ---------------                         -------------
 Local STS player: Alice                 Local STS player: Bob
 AP session: Alice's AP slot             AP session: Bob's AP slot
-AP progress: Alice's progress           AP progress: Bob's progress
+Private AP queue/save                   Private AP queue/save
 
 Replicated RunState:                    Replicated RunState:
   Alice                                  Alice
@@ -82,365 +63,531 @@ Replicated RunState:                    Replicated RunState:
   shared run data                        shared run data
 ```
 
-`LocalContext.GetMe(runState)` is the authoritative MegaCrit mechanism for
-resolving the local STS player. A process-global AP context is acceptable when
-it deliberately represents that local player. It must not be assigned from
-`Players[0]` or whichever `Player.CreateForNewRun` happens to run last.
+`LocalContext.GetMe(runState)` resolves the local STS player. The AP slot to STS
+player mapping is established in the lobby and is stable for the run. A process
+must never infer ownership from `Players[0]` or from the last
+`Player.CreateForNewRun` call.
 
-See ADR 001.
+Authority is split as follows:
 
-## 6. MegaCrit synchronization concepts
+| State | Authority | Replication rule |
+|---|---|---|
+| AP socket, credentials, received history, checks | Owning AP process | Persist through the owner's AP server, slot-scoped DataStorage, or local save; never transmit credentials. |
+| AP slot settings | Owning AP process | Keep local unless a derived value is required for launch or a concrete effect. |
+| AP slot to STS Net ID mapping | Lobby contract | Every peer needs the same mapping. |
+| Effective Ascension set | STS host | Host value overwrites each client's local run value. |
+| Character selection | Native STS lobby | Players may choose any character unlocked for their AP slot; choices need not match. |
+| Gold, deck, relics, potions, powers | Replicated `RunState` | Every peer must reproduce each mutation. |
+| Pending AP buffs and AP acknowledgment | Owning AP process | Restore from the owner's AP save/server. |
+| Live applied-grant set | Every process | Updated by the same ordered managed actions. |
 
-### 6.1 Replicated execution
+See ADR 001, ADR 002, and ADR 004.
 
-Every peer contains all players and applies shared game-state mutations to its
-own copy. `PlayerCmd.GainGold`, `RelicCmd.Obtain`, and similar commands mutate
-the local copy; they do not inherently broadcast themselves. They are safe
-when invoked by a synchronized caller or paired with the correct synchronizer.
+## 5. MegaCrit and RitsuLib execution model
 
-### 6.2 Reward-set IDs
+### 5.1 Replicated local execution
 
-Each player has an independent, increasing reward-set sequence. Beginning a
-`RewardsSet` assigns the next ID for that player. A reward-selection message is
-conceptually:
+Every peer contains a replica of every `Player`. Commands such as
+`PlayerCmd.GainGold`, `RelicCmd.Obtain`, and `CardPileCmd.Add` only mutate the
+copy on the process where they run. Synchronization therefore means arranging
+for every peer to execute the same concrete mutation against its replica of the
+same owning player.
+
+### 5.2 Native synchronizers
+
+Use MegaCrit's existing reward and choice protocols when their lifecycle fits:
+
+- `RewardSynchronizer` for obtained or skipped cards, relics, potions, and gold;
+- `RewardsSetSynchronizer` for native selectable reward sets;
+- player-choice IDs for asynchronous selections; and
+- native index messages for rest-site and event choices after every peer has
+  constructed the same ordered option list.
+
+Reward and choice sequence IDs are per player. Peers must create them in the
+same logical order for a given player.
+
+### 5.3 RitsuLib managed actions
+
+Use `RitsuLibManagedNetActions` for concrete AP effects that have no suitable
+native transport. Registration uses a stable module ID and action key. A local
+owner calls `Request`; the host orders the action through the vanilla action
+queue, broadcasts it, and every peer executes a local copy. The initiating
+client does not separately apply the effect before its queued copy arrives.
+
+The executor receives `context.Player`, which is the owning player's replica on
+that process. The payload must contain a resolved result, not instructions to
+query AP or roll randomness.
+
+`Request(...) == true` means that the enqueue request was issued. It does not
+mean that the executor completed successfully.
+
+Recommended registrations are deliberately few and typed:
 
 ```text
-(owning player, reward-set ID, reward index)
+module: sts2ap
+action: grant.non_combat     GameActionType.NonCombat
+action: grant.combat_buff    GameActionType.Combat
 ```
 
-The ID distinguishes nested or temporally overlapping reward screens and lets
-a slower peer buffer a selection until it constructs the matching backend set.
-Peers must begin the same reward sets for a player in the same order.
+Add a new action key only when its ordering or execution contract is genuinely
+different.
 
-### 6.3 Player-choice IDs
+### 5.4 Checksum and failure behavior
 
-Each player also has an independent, increasing choice sequence. A choice ID
-correlates an asynchronous answer with a question such as:
+The base action executor logs an action exception and still finishes/pops the
+failed action. During combat, the game sends a post-action checksum covering
+replicated combat state, RNG state, and sequence counters. A mismatch enters
+the game's divergence flow and may disconnect the mismatched peer. The checksum
+detects divergence; it does not repair it.
 
-- which card was selected;
-- which relic was selected;
-- which player Mend targeted; or
-- which event option was chosen.
+`NonCombat` actions do not receive the same immediate post-action combat
+checksum. Their executors therefore require explicit validation and focused
+two-client tests.
 
-Every peer must reserve the same choice ID at the same logical point. The local
-owner publishes the result while remote peers wait for it.
+## 6. Lobby lifecycle and RitsuLib run data
 
-### 6.4 Option indexes
+MegaCrit's lobby layer is not only the pre-run waiting screen. `StartRunLobby`
+handles players beginning a new run, `LoadRunLobby` handles players assembling
+to resume a saved run, and `RunLobby` handles connection, disconnection, and
+rejoin while a run is active. The three lobby types have different messages and
+responsibilities.
 
-Rest-site and event messages communicate option indexes. Every process must
-therefore construct the same ordered backend option list for a particular
-player and interaction. The lists may differ between players; they may not
-differ between peers for the same player.
+For a new run, RitsuLib `RunSavedData<T>` and `PlayerRunSavedData<T>` are the
+selected `StartRunLobby` staging mechanism. Register the slots early and enable
+`SyncLobbyOnChange` so each contribution is visible before launch. The option
+only pushes writes made through the pre-run `.Lobby` accessor; it is not a
+general mid-run broadcast mechanism.
 
-### 6.5 Checksums
+```csharp
+public sealed record ApLobbyRunState(
+    int ProtocolVersion,
+    IReadOnlyList<int> HostEffectiveAscensions);
 
-Combat checksums include replicated combat state, RNG state, and next reward
-and choice IDs. They detect divergence after it occurs. They are not a state
-repair mechanism and cannot make mismatched reward or option lists safe.
+public sealed record ApLobbyPlayerState(
+    int ApSlotId,
+    bool ApHistoryComplete,
+    IReadOnlyList<int> LocallyCalculatedAscensions,
+    string PerPlayerRulesFingerprint);
+```
 
-## 7. State ownership
+The exact serializer shape may change, but the responsibilities must not:
 
-| State | Authority | Needed on remote peers? | Notes |
-|---|---|---:|---|
-| AP socket and credentials | Local AP process | No | Never transmit credentials. |
-| AP slot settings | Local AP process | Only derived gameplay inputs | Raw settings may remain private. |
-| Received item history | Local AP process | No | Synchronize resulting game effect instead. |
-| Scouted location details | Local AP process | Only display payload if required | Do not make remote simulation depend on local scouting calls. |
-| AP checked locations | Local AP process | Usually no | Index-based option/reward structures still need matching derived specs. |
-| AP consumed item indexes | Local AP process | Usually no | Custom grant transport may mirror transaction IDs for idempotency. |
-| STS player gold/deck/relics/potions | MegaCrit `RunState` | Yes | Every process must reproduce mutations. |
-| Reward-set and choice sequences | MegaCrit synchronizers | Yes | Must advance in the same logical order. |
-| Rest-site/event backend option order | MegaCrit synchronizers | Yes | Build from replicated vanilla state plus an AP-derived spec. |
-| AP notification/UI state | Local AP process | No | Presentation only. |
+- `RunSavedData<ApLobbyRunState>` stores the host-owned launch contract:
+  protocol version and the effective Ascension set used by the actual run.
+- `PlayerRunSavedData<ApLobbyPlayerState>` stores each player's AP slot identity,
+  readiness, and a diagnostic summary of locally derived per-player rules. Its
+  values are keyed by STS player Net ID.
+- Shared mod settings that later become part of run generation belong in the
+  host run record. Per-player mod/AP settings may be published as derived
+  capabilities or fingerprints when useful for lobby diagnostics; they do not
+  become equality requirements merely because RitsuLib can synchronize them.
+- A player cannot become Ready until the AP connection has loaded slot data and
+  processed received-item history.
+- An incompatible multiplayer protocol version blocks launch.
+- The host's effective Ascension set overwrites every client's local effective
+  set. A disagreement is logged and shown in lobby diagnostics so forceful
+  normalization does not silently hide a calculation bug. Failure to apply or
+  validate the host set blocks launch.
+- Shopsanity, campfire sanity, shuffled card rewards, and other settings that
+  mainly add per-player checks may differ. They are not included in the shared
+  equality rule.
+- Native STS lobby state already communicates selected characters. AP only
+  validates locally that the chosen character is currently unlocked for that
+  slot; no duplicate AP character payload is required.
 
-See ADR 002.
+Progressive Starter does not need a special lobby payload. Its items ultimately
+change the owner's real deck or relic collection. Synchronize those concrete
+card/relic transitions when they occur. Prefer the native card/relic path; use a
+managed action only for a removal or transformation for which STS has no
+appropriate synchronizer.
 
-### 7.1 Shared-run compatibility profile
+When the run launches, the staged values are committed into the run snapshot.
+RitsuLib also preserves registered run data through `LoadRunLobby` save loading
+and `RunLobby` rejoin snapshots. This makes it useful for durable shared run
+state, but not a substitute for live `RunState` synchronization: mid-run writes
+must still occur through a native synchronizer or ordered managed action.
 
-One AP slot per player does not imply that every slot-data value may differ.
-Slay the Spire co-op has one shared run seed, map, act sequence, room state, and
-set of shared gameplay rules. Before the run begins, the mod must compare or
-negotiate a compatibility profile containing every AP setting that affects
-shared generation or replicated hooks.
+The protocol version, AP-slot mapping, and host effective Ascension set form a
+frozen launch contract by design. That immutability is an AP invariant, not a
+claim that all data associated with the broader lobby layer becomes frozen.
 
-Likely profile fields include:
+## 7. Grant identity, payload, and persistence
 
-- mod multiplayer protocol version;
-- APWorld/mod compatibility version;
-- game build and required library versions;
-- shared seed policy;
-- shared ascension or modifier policy;
-- act and map-generation settings; and
-- any AP option that changes shared encounters, rewards, or room structure.
+### 7.1 Stable identity
 
-Per-player capability and location settings may differ when their consequences
-are expressed through per-owner specs. A shared-generation setting must either
-match, be resolved by an accepted host policy, or reject the party before run
-creation. The exact profile is an open design item and must be proven against
-the APWorld slot-data contract.
-
-## 8. Proposed data contracts
-
-These records describe intent, not a finalized wire format.
+A discrete receipt-backed grant is globally identified within this multiplayer
+run by the receiving AP slot and the AP received-item index:
 
 ```csharp
 public readonly record struct ApGrantId(
-    ulong OwnerNetId,
-    int Team,
-    int Slot,
+    int ApSlotId,
     int ReceivedItemIndex);
+```
 
-public readonly record struct ApGrantSpec(
-    ApGrantId Id,
+The STS Net ID is intentionally not part of the identifier. The lobby mapping
+resolves `ApSlotId` to an owning player, while the AP receipt index provides
+stable deduplication across callback retries and save/load.
+
+### 7.2 Concrete payload
+
+The managed-action payload is a tagged concrete result:
+
+```csharp
+public enum ApGrantKind
+{
+    NonCombatMutation,
+    CombatBuff,
+}
+
+public sealed record ApGrantPayload(
+    int ProtocolVersion,
+    ApGrantId GrantId,
     ApGrantKind Kind,
-    int? Amount,
-    string? ModelId);
-
-public readonly record struct ApLocationRewardSpec(
-    ulong OwnerNetId,
-    long LocationId,
-    string DisplayClassification,
-    string DisplayText);
-
-public readonly record struct ApRestSiteSpec(
-    ulong OwnerNetId,
-    bool RestUnlocked,
-    bool SmithUnlocked,
-    IReadOnlyList<ApCampfireCheckSpec> AvailableChecks);
+    string EffectId,
+    int Amount,
+    string? ModelId,
+    string AssignmentDomain);
 ```
 
-Before adopting these contracts, decide:
+Examples are `EffectId = "strength", Amount = 2` and a concrete model ID for a
+mod-specific mutation. Deserializers reject unknown protocol versions, kinds,
+or effect IDs before mutation.
 
-- whether AP team and slot numbers are sufficiently stable for save/reconnect;
-- whether an opaque per-run owner identity is preferable;
-- which payloads need persistence in the MegaCrit run save;
-- how protocol versions are negotiated; and
-- whether transport messages can be registered through a supported mod API.
+Native card, relic, and potion paths do not need to serialize this exact record,
+but discrete claims use the same `ApGrantId`, assignment cache, and owner
+acknowledgment rules. Gold is intentionally different: multiple gold receipts
+are materialized by one aggregate button claim and use the cumulative redemption
+contract below rather than one applied ID per receipt.
 
-## 9. Synchronization strategies
+### 7.3 Owner-private persistence
 
-### 9.1 Local-only AP operations
+The owning process persists private AP state in a schema-versioned local save or
+slot-scoped DataStorage document. Existing `SerializableAP` fields may be reused
+or split into a dedicated private overlay, but that document is not the
+canonical STS run save and does not become host-owned merely because the
+associated run is multiplayer.
 
-Use for effects that do not mutate shared STS state:
+Discrete grants use equivalent fields to:
 
-- send an AP location check;
-- update local checked/used state;
-- display notifications;
-- cache private reward candidates generated without MegaCrit state; and
-- save local AP connection state.
+```csharp
+public sealed record ApGrantPersistence(
+    HashSet<ApGrantId> AppliedGrantIds,
+    Queue<QueuedBuffGrant> PendingBuffs,
+    IReadOnlyList<ResolvedGrantAssignment> Assignments);
+```
 
-### 9.2 `RewardSynchronizer`
+- `AppliedGrantIds` is one set for discrete grant kinds. Split it only if a
+  proven requirement appears; aggregate gold is not part of this set.
+- `PendingBuffs` is owner-local FIFO state.
+- `Assignments` contains one concrete random result per `ApGrantId`; runtime
+  code may index the serialized list as a dictionary.
+- The owning process persists these fields in its private AP overlay and
+  recovers AP receipt history from its AP server.
 
-Use for concrete, out-of-combat results already supported by MegaCrit:
+Every peer may still need an in-memory applied set for managed actions it
+executes. Replay/rejoin must reconstruct that shared execution state, but it is
+separate from the owner's private AP receipt and acknowledgment state. Use
+RitsuLib run data only when a value genuinely belongs to the replicated run.
 
-- card obtained or skipped;
-- relic obtained or skipped;
-- potion obtained or skipped;
-- gold obtained; and
-- gold lost.
+### 7.4 Aggregate gold redemption
 
-The local process applies the operation and calls the corresponding
-`SyncLocal...` method, mirroring MegaCrit merchant behavior. It does not carry
-an AP transaction ID and rejects reward synchronization during combat.
+Gold receipts accumulate in the owner's raw per-character AP bank. The reward
+menu materializes all currently unredeemed raw gold as one immutable button
+claim:
 
-### 9.3 `RewardsSetSynchronizer` and RitsuLib custom rewards
+```csharp
+public sealed record ApGoldClaim(
+    int SourceAmount,
+    int GrantedAmount,
+    int RedeemedRawAfter);
+```
 
-Use when the AP interaction genuinely participates in a reward lifecycle:
+`SourceAmount` is the raw AP bank consumed by this click. `GrantedAmount` is the
+concrete wallet mutation after run-specific effects such as Poverty.
+`RedeemedRawAfter` is the owner's cumulative redemption cursor. Only
+`GrantedAmount` is sent through `RewardSynchronizer.SyncLocalObtainedGold`.
 
-- an AP location replacing a combat card/gold/potion reward;
-- a received card reward using the native card picker; or
-- another selectable/skippable reward whose backend set should be tracked.
+The owner persists the raw cursor privately so AP history replay cannot recreate
+an already claimed button. Other peers do not need the raw source or cursor. A
+later gold receipt simply creates a new aggregate claim for the remaining raw
+balance. The first multiplayer implementation does not refund previously
+withheld gold when Poverty is removed; adding that correction requires a later
+explicit contract.
 
-Every peer must construct the same reward set and payload for the owning
-player. Only the owner displays `NRewardsScreen`; every peer executes the
-logical selection. Owner-only branches send AP checks and update AP progress.
+## 8. AP callback and idempotent execution
 
-RitsuLib supplies custom reward registration, presentation, and save payload
-support. It does not automatically broadcast an AP-derived payload to peers.
+### 8.1 Callback pipeline
 
-### 9.4 Final-result synchronization for private choices
-
-Use when rejected candidates never affect MegaCrit RNG, pools, or `RunState`:
+The following pipeline is for discrete receipt-backed grants. Aggregate gold
+uses the button-claim and redemption-cursor contract in section 7.4.
 
 ```text
-local AP UI chooses Vajra
--> synchronize concrete "Alice obtained Vajra"
--> every peer applies Vajra to Alice
+AP callback on owning process
+  -> enqueue work on the established main-thread boundary
+  -> derive ApGrantId from AP slot ID and received-item index
+  -> ignore/ack if owner-persisted AppliedGrantIds already contains it
+  -> classify the grant
+  -> resolve or load its concrete assignment
+  -> persist assignment/pending state
+  -> route now, or schedule it for its required safe execution boundary
+  -> wait for the synchronized local execution
+  -> persist AppliedGrantIds on the owner
+  -> perform owner-only AP/DataStorage acknowledgment
 ```
 
-This is a strong candidate for linked relic choices. Candidate generation must
-not privately advance replicated RNG or remove models from replicated bags.
+No remote peer queries AP, acknowledges the receipt, or independently chooses a
+model.
 
-### 9.5 AP-derived option specifications
+### 8.2 Executor pseudocode
 
-Use for index-based native interactions whose AP contribution differs by
-owner, especially campfires and Start-of-Act Ancients.
+```csharp
+async Task ExecuteManagedGrant(RitsuLibManagedNetActionContext<ApGrantPayload> context)
+{
+    var grant = context.Message;
+    ValidateProtocolAndPayload(grant);
+    ValidateSlotOwnsPlayer(grant.GrantId.ApSlotId, context.Player.NetId);
 
-Every peer first generates the vanilla list from replicated `RunState`. Vanilla
-relic/card additions such as Dig, Kindle, Cook, Lift, Clone, and Hatch should
-already agree. Every peer then applies the same compact AP specification to
-that list in a deterministic order.
+    if (LiveAppliedGrantIds.Contains(grant.GrantId))
+        return;
 
-Do not hard-code a universal fixed option list. Preserve whatever vanilla and
-other deterministic model hooks generated.
+    // Uses only the concrete payload and context.Player. No AP reads or RNG.
+    await ApplyConcreteEffect(context.Player, grant);
 
-### 9.6 Synchronized combat actions
+    LiveAppliedGrantIds.Add(grant.GrantId);
 
-AP combat buffs cannot use `RewardSynchronizer`: its payload is limited to
-standard rewards and it rejects combat use. Strength, Dexterity, Buffer,
-Artifact, Free Attack, and similar effects need a host-ordered action or an
-equivalent deterministic hook entered by every peer.
+    if (IsLocalApOwner(grant.GrantId.ApSlotId))
+    {
+        Progress.AppliedGrantIds.Add(grant.GrantId);
+        PersistSerializableAp();
+        AcknowledgeApGrant(grant.GrantId);
+    }
+}
+```
 
-## 10. Feature assessment
+The ledger entry is written only after the primary effect succeeds. Secondary
+visuals, notifications, or telemetry are best effort and must not reopen or
+duplicate the grant.
 
-| Feature | Current boundary | Proposed multiplayer direction | Initial risk |
+### 8.3 Owner acknowledgment table
+
+| Boundary | Owner state | Remote peer state | AP acknowledgment |
 |---|---|---|---|
-| AP connection and item queue | Local process/main-thread queue | Retain; bind to local STS player | Medium |
-| Gold claim | Local AP reward UI | Apply locally plus `SyncLocalObtainedGold` | Low |
-| Relic claim | Local AP reward UI | Apply locally plus `SyncLocalObtainedRelic` | Medium |
-| Potion claim | Local AP reward UI | Apply locally plus `SyncLocalObtainedPotion` | Medium |
-| Card claim | Calls `SelectUnsynchronized` | Native reward/choice synchronization or explicit final card payload | High |
-| Linked relic choice | Local AP UI | Keep candidates private; synchronize final relic if generation is isolated | Medium |
-| AP combat reward location | Replaces a native reward | Same custom backend reward on every peer; owner sends check | High |
-| Shop slot unlocks | Local merchant generation | Keep private; synchronize gold loss and any obtained standard item | Medium |
-| AP shop purchase | Owner sends check and loses gold locally | Owner-only check plus `SyncLocalGoldLost` | Medium |
-| Progressive Rest/Smith | Mutates generated option list from local AP state | Publish/apply per-owner `ApRestSiteSpec` | High |
-| Campfire AP checks | Custom `RestSiteOption`s | Same ordered backend options; owner-only AP check | High |
-| Progressive Ancient | Mutates native event choices or private AP choice | Event spec for native choices; final-result sync for private choices | High |
-| Progressive starters | Reconciles deck/relic from local progress | Synchronize concrete deck/relic transition and ownership | High |
-| Ascension AP items | Modifies gameplay configuration | Define per-player versus shared scope; synchronize derived rule state | High |
-| Universal combat buffs | Applies powers at turn start | Host-ordered synchronized action | Very high |
-| Death Link | External AP event mutates HP/death | Owner-only AP send/receive plus synchronized concrete STS effect | Very high |
-| Floor and goal checks | Owner sends AP checks from shared progression | Keep AP operation owner-only; verify exactly-once local lifecycle | Medium |
-| Save/load/reconnect | Singleplayer service and first player | Resolve local player by Net ID; persist protocol state | Very high |
+| Receipt observed | Create `ApGrantId`; do not mark applied | None | No |
+| Assignment resolved | Cache concrete assignment | None | No |
+| Managed request issued | Retain pending grant | Wait for ordered action | No; `Request == true` is not completion |
+| Executor succeeds | Add live ID; persist owner ID | Add live ID | Owner acknowledges once |
+| Selectable card/potion is skipped or cannot be taken | Keep claimable under existing item semantics | Apply the synchronized no-selection result if required | No |
+| Duplicate callback after success | Do not execute again | No new action | Reassert owner acknowledgment if needed |
+| Executor throws | Keep grant pending and log context | Game logs/pops action; combat may checksum-diverge | No |
 
-## 11. Detailed flows
+Gold and relic grants retain their existing infallible reward-boundary
+semantics. Do not add speculative distributed rollback.
 
-### 11.1 Simple gold grant
+## 9. Routing table
 
-```text
-Alice AP client receives item index 73
-Alice validates that 73 is not consumed
-Alice applies GainGold(50, Alice)
-Alice calls RewardSynchronizer.SyncLocalObtainedGold(50)
-Bob receives the concrete amount and applies GainGold(50, Alice)
-Alice commits AP item 73 as consumed
-```
+| AP-derived effect | When it may execute | Transport | Payload/result |
+|---|---|---|---|
+| Gold obtained/lost | Safe noncombat reward boundary | `RewardSynchronizer` | Concrete amount |
+| Relic obtained/skipped | Native reward boundary | `RewardSynchronizer` or synchronized reward set | Concrete relic ID/result |
+| Potion obtained/skipped | Native reward boundary | `RewardSynchronizer` or synchronized reward set | Concrete potion ID/result |
+| Card obtained/skipped | Native card reward/choice boundary | Native reward/choice synchronization | Concrete card/result |
+| Progressive Starter card/relic | Run initialization or live receipt | Synchronize the concrete deck/relic transition; managed action only where native removal/transform support is absent | Concrete model IDs and transition |
+| Linked/private reward choice | After owner chooses | Native final-result synchronization | Chosen concrete model, never rejected candidates |
+| AP location in native reward set | Matching reward lifecycle | `RewardsSetSynchronizer` plus RitsuLib custom reward | Deterministic reward-set entry and owner-only AP check |
+| Rest-site/AP option list | Before native option indexes are used | Publish compact per-owner option specification, then native index synchronization | Ordered AP additions/removals |
+| Ascension Down | Next safe noncombat boundary | RitsuLib managed `NonCombat` action | Concrete Ascension level to remove from the host-authoritative shared set |
+| AP combat buff | Next combat start | RitsuLib managed `Combat` action | Concrete power/effect ID and amount |
+| AP-only UI, checks, scouting, notifications | Any safe local boundary | Local only | No replicated mutation |
 
-The exact commit order and failure behavior must preserve the existing
-authoritative-item semantics and avoid speculative rollback.
+If a native synchronizer rejects execution during combat, the grant remains
+pending until its next supported noncombat boundary.
 
-### 11.2 AP location replacing a combat reward
+## 10. Combat buff contract
+
+Each player independently consumes at most one buff per combat from that
+player's own AP received-item queue:
 
 ```text
-All peers generate Alice's combat rewards
-Alice publishes or all peers derive the same AP location reward spec
-All peers replace the same reward at the same index
-All peers begin the same Alice reward-set ID
-Alice selects the AP reward index
-All peers complete that logical reward
-Only Alice sends the AP location check
+AP receipt arrives for Alice
+  -> Alice appends the concrete buff to her persisted FIFO
+
+At the next combat start
+  -> Alice marks that she has attempted a buff for this combat
+  -> Alice peeks at most one FIFO entry
+  -> Alice requests grant.combat_buff owned by Alice's STS Net ID
+  -> host orders Alice's request with any other players' requests
+  -> every peer applies Alice's concrete buff to its Alice replica
+  -> Alice removes the FIFO head, persists AppliedGrantIds, and acknowledges AP
 ```
 
-The AP item delivered in response is a later, independent AP receipt. It may be
-delivered to a different AP slot.
+A buff received after combat has begun waits until the next combat. Five queued
+buffs for Alice are consumed over five successive combats, while Bob's queue is
+consumed independently. A failed attempt does not advance to a second buff in
+the same combat.
 
-### 11.3 Rest site
+The combat-start integration must use a stable combat identity or an equivalent
+one-shot guard so scene re-entry and repeated callbacks cannot submit two buffs
+for the same player and combat.
+
+### 10.1 Ascension Down boundary
+
+The lobby initializes every peer from the host's effective Ascension set. An
+Ascension Down received after launch is a requested transition of that shared
+set, not permission for a client to replace the set with its private AP view:
 
 ```text
-All peers generate vanilla options for every player from replicated RunState
-Local AP owner publishes the current AP rest-site spec
-All peers apply that spec to the matching player's vanilla option list
-Local owner displays and selects an option
-RestSiteSynchronizer broadcasts the selected index
-All peers execute the same logical option
-Only the owner sends an AP check or updates AP progress
+Alice receives Ascension Down: Poverty
+  -> Alice records the pending concrete remove-Poverty grant
+  -> if combat is active, the grant waits
+  -> at the next safe noncombat boundary Alice requests grant.non_combat
+  -> the host orders the accepted action
+  -> every peer removes Poverty from the shared effective set
+  -> no retrospective multiplayer gold refund is issued in the first implementation
+  -> Alice persists and acknowledges the grant
 ```
 
-The spec must be available before `RestSiteSynchronizer.BeginRestSite()` or the
-message must be buffered until the matching run location is ready.
+This preserves host authority over the actual run while allowing an Ascension
+Down delivered to any participating AP slot to affect that run. Duplicate
+removal is rejected by `ApGrantId`, not by assuming that removing an already
+absent level is harmless.
 
-### 11.4 Combat buff
+## 11. RNG and assignment stability
+
+### 11.1 Default: AP-owned keyed RNG
+
+Use an AP-owned, order-independent RNG for assignments tied to a grant. Derive
+it from stable inputs such as:
 
 ```text
-Alice AP client queues received buff with ApGrantId
-At the supported combat boundary, Alice requests a synchronized AP buff action
-Host establishes action order and broadcasts it
-Every peer applies the same power to Alice
-Applied transaction state prevents duplicate execution
-Alice commits AP consumption/data-storage state
+run seed
++ AP slot ID
++ received-item index
++ assignment domain/version
 ```
 
-## 12. Persistence and reconnect
+Example domains:
 
-The design must specify persistence for:
+```text
+sts2ap/reward/relic/v1
+sts2ap/reward/potion/v1
+sts2ap/reward/card/v1
+sts2ap/buff/v1
+```
 
-- pending private AP reward assignments;
-- consumed AP receipt indexes;
-- custom applied-grant IDs, if custom transport is used;
-- AP-derived option or reward specs that can remain open across a save;
-- protocol version; and
-- any in-flight operation that can survive a peer reconnect.
+This gives the mod control over assignment rules and avoids coupling a result
+to callback timing or to another player's random draws. Cache the resolved
+assignment by `ApGrantId` before requesting execution. The cache, not repeated
+rolling, is the primary stability guarantee. This follows the existing Ancient
+choice pattern of stable seed material plus an assignment cache.
 
-Prefer restoring shared STS state from MegaCrit's serialized run and restoring
-private AP state from the owning AP save/server. Do not make multiple peers
-write the same AP data-storage key.
+```csharp
+ResolvedGrantAssignment ResolveAssignment(
+    ApGrantId grantId,
+    string domain,
+    IEnumerable<string> candidateModelIds)
+{
+    if (Progress.Assignments.TryGetValue(grantId, out var cached))
+        return cached;
 
-Joining or rejoining peers must obtain enough current AP-derived backend state
-to reconstruct any active reward, rest-site, or event conversation before
-buffered index messages are processed.
+    var candidates = candidateModelIds.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+    Require(candidates.Length > 0);
+    var material = $"{domain}|{RunSeed}|{grantId.ApSlotId}|{grantId.ReceivedItemIndex}";
+    var digest = SHA256.HashData(Encoding.UTF8.GetBytes(material));
+    var selected = candidates[(int)(ReadStableUInt64(digest) % (ulong)candidates.Length)];
 
-## 13. Compatibility and failure policy
+    var assignment = new ResolvedGrantAssignment(grantId, domain, selected);
+    Progress.Assignments.Add(grantId, assignment);
+    PersistSerializableAp();
+    return assignment;
+}
+```
 
-- Require every peer to run the same accepted AP multiplayer protocol version.
-- Reject or disable AP multiplayer before a run begins when versions differ.
-- Never silently apply an unknown model ID or grant kind.
-- Owner-only AP network failures must not cause remote peers to apply a
-  different STS result.
-- Compatibility patches should fail open only when doing so cannot corrupt
-  replicated state.
-- Log owner Net ID, AP receipt index, run location, operation kind, and protocol
-  version without logging credentials.
+Assignments must remain stable within the same supported game version. No
+cross-game-version stability promise is required; bump the assignment domain
+when a compatibility change intentionally alters the algorithm or pool.
 
-## 14. Open questions
+### 11.2 RitsuLib named streams
 
-1. What supported mod API can transport AP-specific peer messages?
-2. Can existing `RewardSynchronizer` calls be used safely from mod code in all
-   supported public game builds?
-3. Does RitsuLib expose a peer-payload channel, or only reward save payloads?
-4. Should linked relic choices remain private or become native reward choices?
-5. Should progressive Rest/Smith remove backend options, disable them, or use
-   AP placeholders with semantic IDs?
-6. How are AP specs restored for a peer joining while a choice is active?
-7. Which ascension effects are per-player, and which change shared generation?
-8. What happens when the AP owner disconnects after STS peers apply a grant but
-   before AP consumption is persisted?
-9. Can an opaque owner/session identity avoid persisting AP team and slot
-   numbers in shared run data?
-10. What version handshake is available before custom models/messages are
-    deserialized?
-11. Which slot-data fields must match across participating AP slots?
-12. Which seed owns shared map generation when AP slots specify different
-    character or seed configuration?
-13. Is Death Link scoped to the local STS player, the full co-op party, or a
-    configurable policy, and how is feedback-loop suppression shared?
+Use `RitsuLibFramework.GetModRunRng` or `GetModPlayerRng` only when the mechanic
+is inherently sequential and should participate in a named run/player stream.
+Stable example stream IDs are:
+
+```text
+sts2ap/sequential/run/v1
+sts2ap/sequential/player/v1
+```
+
+All peers must consume a replicated sequential stream in the same synchronized
+order. Private AP callback timing must never advance a shared stream. Even when
+a RitsuLib stream is used, persist the concrete assignment by `ApGrantId` before
+exposing it to execution or UI.
+
+## 12. Crash windows and recovery
+
+| Crash/failure window | Recovery rule | Residual risk |
+|---|---|---|
+| Before assignment is persisted | Recompute with keyed RNG or load the existing cache | Sequential RNG must not be used unless its state is safely committed. |
+| After assignment persistence, before request | Retry the same concrete payload | None beyond normal reconnect delay. |
+| After request, before executor | Do not acknowledge; allow queue/replay or owner retry to deliver it | Transport behavior requires two-client proof. |
+| After primary effect, before owner consumption persistence | Live peers' in-memory set rejects a duplicate discrete request | Owner process loss is the highest-risk window; discrete grants and aggregate gold claims both require replay/rejoin tests. |
+| After owner consumption persistence, before AP acknowledgment | Owner sees the applied ID or cumulative cursor and reasserts acknowledgment without reapplying | AP/DataStorage acknowledgment must be idempotent. |
+| One peer's executor throws | Do not roll back successful peers | Combat checksum detects divergence and follows native failure UX; noncombat needs explicit validation. |
+
+The first implementation should follow native STS2 error handling and observe
+player reaction before designing custom recovery UI.
+
+## 13. Persistence, reconnect, and compatibility
+
+- Restore shared STS state from the MegaCrit run snapshot.
+- Restore each process's private pending buffs, assignments, applied IDs, gold
+  redemption cursors, and AP acknowledgment state from its owner-controlled
+  local/slot-scoped save plus the AP server.
+- Rebuild live peer ledgers through recorded managed-action replay.
+- Never let multiple peers write the same AP DataStorage acknowledgment.
+- Leaving multiplayer preserves the AP session and private deferred receipts but
+  discards that multiplayer `RunState`. Starting singleplayer creates a fresh
+  run and replays deferred items through the existing owner-local processor; it
+  does not convert or fork the multiplayer save.
+- Reject unknown grant kinds, model IDs, and action protocol versions.
+- Refuse AP multiplayer when peers use incompatible multiplayer protocols.
+- Let native STS2 compatibility rules own game-version compatibility.
+- Log AP slot ID, received-item index, owner Net ID, effect kind, execution
+  boundary, and protocol version without logging credentials.
+
+## 14. Open implementation proofs
+
+1. Verify managed `Combat` and `NonCombat` actions with two real clients,
+   including requester-local execution, host ordering, replay, and exceptions.
+2. Prove the exact safe combat-start point and one-shot combat identity for
+   submitting one buff per owner.
+3. Verify native synchronization for each Progressive Starter transition,
+   especially removal and Orobas transformations during run initialization.
+4. Verify that RitsuLib `StartRunLobby` contributions arrive before Ready
+   validation and that the host Ascension set is committed identically on every
+   peer.
+5. Test every crash window in the table, especially owner loss after an effect
+   but before private AP persistence.
+6. Prove host and client owners can restore their own AP overlays independently
+   of the host's canonical MegaCrit run save.
+7. Leave a multiplayer run, start a fresh singleplayer run in the same AP
+   session, and verify deferred items are processed exactly once without loading
+   the discarded multiplayer `RunState`.
+8. Decide the detailed synchronization contract for Death Link separately.
 
 ## 15. Evidence and validation boundaries
 
-The initial model is based on static inspection of the public-branch game API,
-including these MegaCrit types:
+This architecture is based on static inspection of the current game,
+RitsuLib, and client sources, including:
 
 - `ActionQueueSynchronizer`
-- `PlayerChoiceSynchronizer`
 - `RewardSynchronizer`
 - `RewardsSetSynchronizer`
-- `RestSiteSynchronizer`
-- `EventSynchronizer`
-- `CombatStateSynchronizer`
 - `ChecksumTracker`
-- `NetFullCombatState`
-- `LocalContext`
+- `RitsuLibManagedNetActions`
+- `RunSavedData<T>` and `PlayerRunSavedData<T>`
+- `RitsuLibFramework.GetModRunRng` and `GetModPlayerRng`
 
-Static evidence does not prove modded rewards, models, or messages serialize
-correctly between real peers. The RFC remains Draft until the Phase 0 spike
-captures two-client runtime evidence.
+Static evidence does not prove that modded payloads serialize or execute
+correctly between real peers. C# compilation and two-client in-game validation
+are not available from this design-only update. The RFC remains Draft until the
+runtime proof matrix succeeds.

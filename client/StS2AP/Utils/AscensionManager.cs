@@ -254,6 +254,13 @@ namespace StS2AP.Utils
                     }
                     break;
                 case AscensionLevel.Poverty:
+                    if (MultiplayerSupport.IsRealMultiplayerRun)
+                    {
+                        LogUtility.Warn(
+                            "Poverty removal refunds are not supported in AP multiplayer yet"
+                        );
+                        break;
+                    }
                     int refund = ArchipelagoClient.Progress.CalculatePovertyRefund();
                     if(refund > 0)
                     {

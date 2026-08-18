@@ -42,6 +42,11 @@ that its JSON payload is automatically sent from the AP owner to STS peers.
 Every peer must construct the same custom reward before MegaCrit broadcasts a
 selected reward index.
 
+For the custom action-queue path, use RitsuLib managed net actions rather than
+an AP-owned message implementation. Register stable `sts2ap` action keys early,
+carry only concrete resolved payloads, and retain MegaCrit host ordering and
+replay behavior.
+
 ## When custom AP transport is justified
 
 - Publishing an AP-derived reward spec before remote reward-set construction.
@@ -66,7 +71,7 @@ mutable game models, AP sessions, or credentials.
 ## Validation required
 
 - Verify each selected MegaCrit API is callable and stable on the supported
-  public game build.
+  beta game build.
 - Verify custom models and payloads serialize between real peers.
 - Verify sequence IDs remain aligned through nested reward and choice flows.
 - Verify singleplayer continues through the same high-level dispatcher.

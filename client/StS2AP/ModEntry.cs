@@ -46,6 +46,14 @@ namespace StS2AP
                     defaultFactory: () => new ClientSettings(),
                     autoCreateIfMissing: true
                 );
+                store.Register(
+                    key: "multiplayer_gold",
+                    fileName: "multiplayer_gold.json",
+                    scope: SaveScope.Global,
+                    syncToCloud: false,
+                    defaultFactory: () => new MultiplayerGoldState(),
+                    autoCreateIfMissing: true
+                );
             }
             ModSettingsRegistration.Register();
 

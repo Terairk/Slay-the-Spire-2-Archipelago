@@ -2,6 +2,8 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
@@ -60,9 +62,18 @@ namespace StS2AP.Patches
         public static class OnMultiplayerRunPreStart
         {
             [HarmonyPrefix]
-            public static void Prefix()
+            public static void Prefix(StartRunLobby lobby)
             {
                 MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
+                if (!MultiplayerSupport.CanEmbark(
+                        lobby.LocalPlayer.character,
+                        out string blockedReason))
+                {
+                    NotificationUtility.ShowRawText(blockedReason);
+                    throw new InvalidOperationException(
+                        $"AP multiplayer run launch refused: {blockedReason}"
+                    );
+                }
             }
         }
 
@@ -112,6 +123,34 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]
         public static class BindLocalMultiplayerPlayer
         {
+            [HarmonyPrefix]
+            public static void Prefix(RunManager __instance)
+            {
+                if (__instance.NetService.Type == NetGameType.Singleplayer
+                    || MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer)
+                {
+                    return;
+                }
+
+                RunState? state = __instance.DebugOnlyGetState();
+                if (state == null)
+                {
+                    const string unavailableReason = "The STS multiplayer run state was unavailable.";
+                    NotificationUtility.ShowRawText(unavailableReason);
+                    throw new InvalidOperationException(
+                        $"AP multiplayer final launch check failed: {unavailableReason}"
+                    );
+                }
+
+                if (!MultiplayerSupport.CanLaunchRun(state, out string blockedReason))
+                {
+                    NotificationUtility.ShowRawText(blockedReason);
+                    throw new InvalidOperationException(
+                        $"AP multiplayer final launch check failed: {blockedReason}"
+                    );
+                }
+            }
+
             [HarmonyPostfix]
             public static void Postfix(RunState __result)
             {
@@ -146,6 +185,11 @@ namespace StS2AP.Patches
                 ArchipelagoClient.Progress.ResetTrackers();
                 ArchipelagoClient.Progress.Ascensions.Initialize(config);
                 ArchipelagoClient.Progress.UsedItems.Clear();
+                if (!ApGrantDispatcher.BeginRun(__result, config.CharOffset, out string bindError))
+                {
+                    MultiplayerSupport.InvalidateRunClaims(bindError);
+                    return;
+                }
 
                 if (MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.PressStartCheck))
                     GameUtility.TrySendPressStartCheck(includeUnrecognizedCharacters: false);

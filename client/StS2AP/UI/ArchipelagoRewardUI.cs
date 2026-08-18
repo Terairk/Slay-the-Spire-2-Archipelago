@@ -194,6 +194,7 @@ namespace StS2AP.UI
         private static Button? _proceedButton;
         private static Tween? _fadeTween;
         private static bool _isClosing;
+        private static ApGoldClaim? _activeGoldClaim;
         private static Texture2D? _linkedRewardChainTexture;
         private static bool _linkedRewardChainTextureResolved;
         private static readonly PropertyInfo? ChainImagePathProperty =
@@ -532,43 +533,64 @@ namespace StS2AP.UI
 
                 _remainingRewards = 0;
 
-                // Inject a reward for any remaining gold (if applicable)
-                ArchipelagoGoldOffer offer = ArchipelagoClient.Progress.PrepareGoldOffer();
-
-                if (offer.GrantedAmount > 0)
+                // Inject one immutable aggregate row for all currently unredeemed raw gold.
+                // New receipts never change an already materialized multiplayer claim.
+                if (MultiplayerSupport.IsRealMultiplayerRun)
                 {
-                    bool canClaimGold = MultiplayerSupport.CanClaimGold(out string blockedReason);
-                    rewards.Insert(0, new ArchipelagoRewardData
+                    _activeGoldClaim ??= ApGrantDispatcher.MaterializeGoldClaim();
+                    ApGoldClaim? claim = _activeGoldClaim;
+                    if (claim != null)
                     {
-                        ItemName = $"{offer.GrantedAmount} Gold",
-                        SenderName = "",
-                        IconPath = IconGold,
-                        IsEnabled = canClaimGold,
-                        DisabledReason = blockedReason,
-                        GrantAction = async () =>
+                        bool canClaimGold = MultiplayerSupport.CanClaimGold(
+                            out string blockedReason
+                        );
+                        rewards.Insert(0, new ArchipelagoRewardData
                         {
-                            if (!MultiplayerSupport.CanClaimGold(out string reason))
+                            ItemName = $"{claim.GrantedAmount} Gold",
+                            SenderName = "",
+                            IconPath = IconGold,
+                            IsEnabled = canClaimGold,
+                            DisabledReason = blockedReason,
+                            GrantAction = async () =>
                             {
-                                LogUtility.Warn($"AP gold claim blocked: {reason}");
-                                return false;
+                                bool granted = await ApGrantDispatcher.ExecuteGoldClaim(claim);
+                                if (granted && ReferenceEquals(_activeGoldClaim, claim))
+                                    _activeGoldClaim = null;
+                                return granted;
                             }
+                        });
+                    }
+                }
+                else
+                {
+                    ArchipelagoGoldOffer offer = ArchipelagoClient.Progress.PrepareGoldOffer();
+                    if (offer.GrantedAmount > 0)
+                    {
+                        rewards.Insert(0, new ArchipelagoRewardData
+                        {
+                            ItemName = $"{offer.GrantedAmount} Gold",
+                            SenderName = "",
+                            IconPath = IconGold,
+                            GrantAction = async () =>
+                            {
+                                // Singleplayer retains its live recalculation and Poverty-refund
+                                // behavior. Multiplayer deliberately uses the immutable claim above.
+                                ArchipelagoGoldOffer claimOffer =
+                                    ArchipelagoClient.Progress.PrepareGoldOffer();
+                                if (claimOffer.GrantedAmount <= 0)
+                                    return false;
 
-                            // Rebuild at click time so live Poverty changes and newly received
-                            // gold use the same calculation as singleplayer. Consume only after
-                            // MegaCrit's local gold command has completed.
-                            ArchipelagoGoldOffer claimOffer =
-                                ArchipelagoClient.Progress.PrepareGoldOffer();
-                            if (claimOffer.GrantedAmount <= 0)
-                                return false;
+                                bool granted = await GameUtility.GrantGold(
+                                    claimOffer.GrantedAmount
+                                );
+                                if (!granted)
+                                    return false;
 
-                            bool granted = await GameUtility.GrantGold(claimOffer.GrantedAmount);
-                            if (!granted)
-                                return false;
-
-                            ArchipelagoClient.Progress.ConsumeGoldOffer(claimOffer);
-                            return true;
-                        }
-                    });
+                                ArchipelagoClient.Progress.ConsumeGoldOffer(claimOffer);
+                                return true;
+                            }
+                        });
+                    }
                 }
 
                 foreach (var data in rewards)
@@ -626,6 +648,7 @@ namespace StS2AP.UI
 
                     var destination = _returnDestination;
                     _rootPanel = null;
+                    _activeGoldClaim = null;
                     _isClosing = false;
                     _returnDestination = ReturnDestination.Room;
                     OnScreenClosed?.Invoke();
@@ -672,6 +695,7 @@ namespace StS2AP.UI
             _proceedButton    = null;
             _remainingRewards = 0;
             _isClosing        = false;
+            _activeGoldClaim  = null;
             _returnDestination = ReturnDestination.Room;
             _ownedCardPicker = null;
             _ownedCardPickerSkipRequested = false;

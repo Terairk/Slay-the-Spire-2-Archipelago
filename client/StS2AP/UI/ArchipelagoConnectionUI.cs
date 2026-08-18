@@ -34,7 +34,9 @@ namespace StS2AP.UI
         /// Injects the Archipelago connection UI into the current scene tree.
         /// Should be called when the main menu is ready.
         /// </summary>
-        public static void InjectUI()
+        public static void InjectUI(
+            string? serverOverride = null,
+            string? slotNameOverride = null)
         {
             try
             {
@@ -60,6 +62,7 @@ namespace StS2AP.UI
                     SetStatus("");
                     SetConnectButtonEnabled(true);
                     SetCloseButtonEnabled(true);
+                    ApplyConnectionOverrides(serverOverride, slotNameOverride);
                     _rootPanel.Visible = true;
                     FocusFirstInput();
                     return;
@@ -67,6 +70,7 @@ namespace StS2AP.UI
 
                 // Create the UI
                 _rootPanel = CreateUI();
+                ApplyConnectionOverrides(serverOverride, slotNameOverride);
 
                 // Add to the root as a CanvasLayer so it renders on top
                 var canvasLayer = new CanvasLayer();
@@ -84,6 +88,20 @@ namespace StS2AP.UI
             {
                 LogUtility.Error($"Failed to inject Archipelago UI: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Applies process-local developer launch values after loading the shared cached form.
+        /// These values are persisted only if the user presses Connect.
+        /// </summary>
+        private static void ApplyConnectionOverrides(
+            string? serverOverride,
+            string? slotNameOverride)
+        {
+            if (!string.IsNullOrWhiteSpace(serverOverride) && _urlInput != null)
+                _urlInput.Text = serverOverride;
+            if (!string.IsNullOrWhiteSpace(slotNameOverride) && _slotNameInput != null)
+                _slotNameInput.Text = slotNameOverride;
         }
 
         /// <summary>
@@ -553,7 +571,10 @@ namespace StS2AP.UI
 
                 // Continue the play flow that opened this login overlay.
                 if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
-                    MenuUtility.OpenMultiplayer();
+                {
+                    if (!ApFastMpLaunchController.TryResumeAfterApPrepared())
+                        MenuUtility.OpenMultiplayer();
+                }
                 else
                     MenuUtility.OpenCharacterSelect();
             }
