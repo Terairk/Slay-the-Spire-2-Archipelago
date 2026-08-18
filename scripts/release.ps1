@@ -31,8 +31,33 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Windows PowerShell 5.1 defaults Set-Content to UTF-16. Write release-managed
+# text as UTF-8 without a BOM consistently across Windows PowerShell and pwsh.
+$Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding($false)
+function Set-Utf8NoBomContent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Content
+    )
+
+    [System.IO.File]::WriteAllText($Path, $Content, $Utf8NoBomEncoding)
+}
+
 # Resolve repo root
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..") | Select-Object -ExpandProperty Path
+$ReleaseRemote = "upstream"
+$ReleaseRepo = "dlueben1/Slay-the-Spire-2-Archipelago"
+$ReleasePaths = @(
+    "client/StS2AP/StS2AP.csproj"
+    "client/StS2AP/local.props.template"
+    "client/StS2AP/Archipelago.json"
+    "world/spire2/archipelago.json"
+    "world/spire2/world.py"
+)
 
 # Extract semver (X.Y.Z) from the input version string
 if ($Version -match '(\d+\.\d+\.\d+)') {
@@ -57,6 +82,114 @@ if ($currentBranch -ne 'main') {
 }
 Write-Host "  On branch: main" -ForegroundColor Green
 
+# ~ Verify the release starts from official upstream/main without staged or
+# release-file changes. Unstaged changes elsewhere remain local and are not
+# included in the version commit. ~
+Write-Host "`nChecking official release target and local Git state..." -ForegroundColor Cyan
+
+$releaseRemoteUrl = git -C $RepoRoot remote get-url $ReleaseRemote 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Release remote '$ReleaseRemote' is not configured."
+    exit 1
+}
+if ($releaseRemoteUrl -notmatch 'github\.com[:/]dlueben1/Slay-the-Spire-2-Archipelago(?:\.git)?$') {
+    Write-Error "Remote '$ReleaseRemote' points to '$releaseRemoteUrl', not the official $ReleaseRepo repository."
+    exit 1
+}
+Write-Host "  Release repository: $ReleaseRepo ($ReleaseRemote)" -ForegroundColor Green
+
+git -C $RepoRoot diff --cached --quiet
+$stagedDiffExit = $LASTEXITCODE
+if ($stagedDiffExit -eq 1) {
+    Write-Error "Staged changes are present. Unstage them before releasing so they cannot enter the release commit."
+    exit 1
+} elseif ($stagedDiffExit -ne 0) {
+    Write-Error "Failed to inspect staged changes (exit code $stagedDiffExit)."
+    exit 1
+}
+
+git -C $RepoRoot diff --quiet -- @ReleasePaths
+$releasePathDiffExit = $LASTEXITCODE
+if ($releasePathDiffExit -eq 1) {
+    Write-Error "One or more release-managed version files already have local changes. Commit, stash, or revert them before releasing."
+    exit 1
+} elseif ($releasePathDiffExit -ne 0) {
+    Write-Error "Failed to inspect release-managed files (exit code $releasePathDiffExit)."
+    exit 1
+}
+
+Write-Host "  Fetching official upstream/main..." -ForegroundColor Cyan
+git -C $RepoRoot fetch $ReleaseRemote "refs/heads/main:refs/remotes/$ReleaseRemote/main"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to fetch $ReleaseRemote/main."
+    exit 1
+}
+
+$releaseBaseCommit = git -C $RepoRoot rev-parse "$ReleaseRemote/main" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to resolve $ReleaseRemote/main."
+    exit 1
+}
+$localHead = git -C $RepoRoot rev-parse HEAD 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to resolve local HEAD."
+    exit 1
+}
+if ($localHead -eq $releaseBaseCommit) {
+    $resumingRelease = $false
+    Write-Host "  Local HEAD matches $ReleaseRemote/main: $releaseBaseCommit" -ForegroundColor Green
+} else {
+    # A previous run may have created the controlled version-only commit and
+    # local tag before a later publish step failed. Permit exactly that state.
+    $localParent = git -C $RepoRoot rev-parse HEAD^ 2>&1
+    $localSubject = git -C $RepoRoot log -1 --format=%s 2>&1
+    $unexpectedLocalCommitPaths = @(git -C $RepoRoot diff-tree --no-commit-id --name-only -r HEAD | Where-Object { $_ -notin $ReleasePaths })
+    $localCommitPaths = @(git -C $RepoRoot diff-tree --no-commit-id --name-only -r HEAD)
+    if ($LASTEXITCODE -ne 0 -or
+        $localParent -ne $releaseBaseCommit -or
+        $localSubject -ne $Version -or
+        $localCommitPaths.Count -eq 0 -or
+        $unexpectedLocalCommitPaths.Count -gt 0) {
+        Write-Error "Local HEAD is neither $ReleaseRemote/main nor the controlled '$Version' version-only commit based directly on it. Local-only commits will not be published."
+        exit 1
+    }
+    $resumingRelease = $true
+    Write-Host "  Resuming controlled release commit: $localHead" -ForegroundColor Yellow
+}
+
+git -C $RepoRoot show-ref --verify --quiet "refs/tags/$Version"
+if ($LASTEXITCODE -eq 0) {
+    $localTagCommit = git -C $RepoRoot rev-parse "refs/tags/$Version^{commit}" 2>&1
+    if (-not $resumingRelease -or $LASTEXITCODE -ne 0 -or $localTagCommit -ne $localHead) {
+        Write-Error "Local tag '$Version' already exists but does not identify the verified resumable release commit."
+        exit 1
+    }
+    Write-Host "  Reusing local tag '$Version' at the verified release commit." -ForegroundColor Yellow
+}
+
+git -C $RepoRoot ls-remote --exit-code --tags $ReleaseRemote "refs/tags/$Version" | Out-Null
+$remoteTagExit = $LASTEXITCODE
+if ($remoteTagExit -eq 0) {
+    Write-Error "Tag '$Version' already exists in $ReleaseRepo."
+    exit 1
+} elseif ($remoteTagExit -ne 2) {
+    Write-Error "Failed to check whether tag '$Version' exists in $ReleaseRepo (exit code $remoteTagExit)."
+    exit 1
+}
+
+if (-not $skipGitHub) {
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+        Write-Error "GitHub CLI (gh) is required. Install from https://cli.github.com/"
+        exit 1
+    }
+
+    $templatePath = Join-Path $PSScriptRoot "release-notes-template.md"
+    if (-not (Test-Path $templatePath)) {
+        Write-Error "Release notes template not found at $templatePath"
+        exit 1
+    }
+}
+
 Write-Host "`nUpdating files..." -ForegroundColor Cyan
 
 # ~ Update StS2AP.csproj ModVersion ~
@@ -70,7 +203,7 @@ $csprojPattern = '<ModVersion Condition=".*?">[^<]*</ModVersion>'
 $csprojReplacement = "<ModVersion Condition=`"'`$(ModVersion)' == ''`">$SemVer</ModVersion>"
 $csprojNew = $csprojContent -replace $csprojPattern, $csprojReplacement
 if ($csprojNew -ne $csprojContent) {
-    Set-Content $csprojPath -Value $csprojNew -NoNewline
+    Set-Utf8NoBomContent -Path $csprojPath -Content $csprojNew
     Write-Host "  Updated: StS2AP.csproj (ModVersion)" -ForegroundColor Green
 } elseif ($csprojContent -match $csprojPattern) {
     Write-Host "  Already up to date: StS2AP.csproj (ModVersion)" -ForegroundColor Yellow
@@ -89,7 +222,7 @@ $localPropsTemplatePattern = '<ModVersion>[^<]*</ModVersion>'
 $localPropsTemplateReplacement = "<ModVersion>$SemVer</ModVersion>"
 $localPropsTemplateNew = $localPropsTemplateContent -replace $localPropsTemplatePattern, $localPropsTemplateReplacement
 if ($localPropsTemplateNew -ne $localPropsTemplateContent) {
-    Set-Content $localPropsTemplatePath -Value $localPropsTemplateNew -NoNewline
+    Set-Utf8NoBomContent -Path $localPropsTemplatePath -Content $localPropsTemplateNew
     Write-Host "  Updated: local.props.template (ModVersion)" -ForegroundColor Green
 } elseif ($localPropsTemplateContent -match $localPropsTemplatePattern) {
     Write-Host "  Already up to date: local.props.template (ModVersion)" -ForegroundColor Yellow
@@ -107,7 +240,7 @@ if (-not (Test-Path $localPropsPath)) {
     $localPropsReplacement = "<ModVersion>$SemVer</ModVersion>"
     $localPropsNew = $localPropsContent -replace $localPropsPattern, $localPropsReplacement
     if ($localPropsNew -ne $localPropsContent) {
-        Set-Content $localPropsPath -Value $localPropsNew -NoNewline
+        Set-Utf8NoBomContent -Path $localPropsPath -Content $localPropsNew
         Write-Host "  Updated: local.props (ModVersion)" -ForegroundColor Green
     } elseif ($localPropsContent -match $localPropsPattern) {
         Write-Host "  Already up to date: local.props (ModVersion)" -ForegroundColor Yellow
@@ -127,7 +260,7 @@ $worldJsonPattern = '"world_version"\s*:\s*"[^"]+"'
 $worldJsonReplacement = "`"world_version`": `"$SemVer`""
 $worldJsonNew = $worldJsonContent -replace $worldJsonPattern, $worldJsonReplacement
 if ($worldJsonNew -ne $worldJsonContent) {
-    Set-Content $worldJsonPath -Value $worldJsonNew -NoNewline
+    Set-Utf8NoBomContent -Path $worldJsonPath -Content $worldJsonNew
     Write-Host "  Updated: world/spire2/archipelago.json (world_version)" -ForegroundColor Green
 } elseif ($worldJsonContent -match $worldJsonPattern) {
     Write-Host "  Already up to date: world/spire2/archipelago.json (world_version)" -ForegroundColor Yellow
@@ -146,7 +279,7 @@ $clientJsonPattern = '"version"\s*:\s*"[^"]+"'
 $clientJsonReplacement = "`"version`": `"$SemVer`""
 $clientJsonNew = $clientJsonContent -replace $clientJsonPattern, $clientJsonReplacement
 if ($clientJsonNew -ne $clientJsonContent) {
-    Set-Content $clientJsonPath -Value $clientJsonNew -NoNewline
+    Set-Utf8NoBomContent -Path $clientJsonPath -Content $clientJsonNew
     Write-Host "  Updated: client/StS2AP/Archipelago.json (version)" -ForegroundColor Green
 } elseif ($clientJsonContent -match $clientJsonPattern) {
     Write-Host "  Already up to date: client/StS2AP/Archipelago.json (version)" -ForegroundColor Yellow
@@ -165,7 +298,7 @@ $worldPyPattern = '(mod_compat_version\s*=\s*")[^"]+"'
 $worldPyReplacement = "`${1}$SemVer`""
 $worldPyNew = $worldPyContent -replace $worldPyPattern, $worldPyReplacement
 if ($worldPyNew -ne $worldPyContent) {
-    Set-Content $worldPyPath -Value $worldPyNew -NoNewline
+    Set-Utf8NoBomContent -Path $worldPyPath -Content $worldPyNew
     Write-Host "  Updated: world/spire2/world.py (mod_compat_version)" -ForegroundColor Green
 } elseif ($worldPyContent -match $worldPyPattern) {
     Write-Host "  Already up to date: world/spire2/world.py (mod_compat_version)" -ForegroundColor Yellow
@@ -197,6 +330,17 @@ if ($gitDiffExit -eq 0) {
     $gitCommitExit = $LASTEXITCODE
     if ($gitCommitExit -ne 0) {
         Write-Error "git commit failed (exit code $gitCommitExit)."
+        exit 1
+    }
+
+    $commitParent = git -C $RepoRoot rev-parse HEAD^ 2>&1
+    if ($LASTEXITCODE -ne 0 -or $commitParent -ne $releaseBaseCommit) {
+        Write-Error "The version commit is not based directly on the verified $ReleaseRemote/main commit. Nothing has been pushed."
+        exit 1
+    }
+    $unexpectedCommitPaths = @(git -C $RepoRoot diff-tree --no-commit-id --name-only -r HEAD | Where-Object { $_ -notin $ReleasePaths })
+    if ($unexpectedCommitPaths.Count -gt 0) {
+        Write-Error "The version commit contains unexpected paths: $($unexpectedCommitPaths -join ', '). Nothing has been pushed."
         exit 1
     }
     Write-Host "  Committed: $Version" -ForegroundColor Green
@@ -340,31 +484,37 @@ if (-not (Test-Path $apworldPath)) {
 }
 
 # ~ Tag the version commit ~
-# Tag HEAD (the version-bump commit we just created) with the release version.
-git -C $RepoRoot tag $Version HEAD
-$gitTagExit = $LASTEXITCODE
-if ($gitTagExit -ne 0) {
-    Write-Error "git tag failed (exit code $gitTagExit). Does the tag '$Version' already exist?"
-    exit 1
+# Tag HEAD (the version-bump commit we just created) with the release version,
+# or reuse the verified tag from an interrupted release run.
+git -C $RepoRoot show-ref --verify --quiet "refs/tags/$Version"
+if ($LASTEXITCODE -eq 0) {
+    $localTagCommit = git -C $RepoRoot rev-parse "refs/tags/$Version^{commit}" 2>&1
+    $currentHead = git -C $RepoRoot rev-parse HEAD 2>&1
+    if ($LASTEXITCODE -ne 0 -or $localTagCommit -ne $currentHead) {
+        Write-Error "Existing local tag '$Version' does not point to the verified release commit."
+        exit 1
+    }
+    Write-Host "  Reusing existing local tag: $Version" -ForegroundColor Yellow
+} else {
+    git -C $RepoRoot tag $Version HEAD
+    $gitTagExit = $LASTEXITCODE
+    if ($gitTagExit -ne 0) {
+        Write-Error "git tag failed (exit code $gitTagExit)."
+        exit 1
+    }
+    Write-Host "  Tagged HEAD as: $Version" -ForegroundColor Green
 }
-Write-Host "  Tagged HEAD as: $Version" -ForegroundColor Green
 
 if ($skipGitHub) {
     Write-Host "`nSkipping GitHub push and release (-skipGitHub specified)." -ForegroundColor Yellow
     Write-Host "  Commit and tag '$Version' created locally only." -ForegroundColor Yellow
 } else {
-    # ~ Push commit and tag, then create GitHub Release ~
-    Write-Host "`nPushing commit and tag to GitHub..." -ForegroundColor Cyan
+    # ~ Push only the release tag, then create the GitHub Release. The tag
+    # carries the controlled version-only commit while protected main remains
+    # unchanged. ~
+    Write-Host "`nPushing release tag to GitHub..." -ForegroundColor Cyan
 
-    git -C $RepoRoot push origin main
-    $gitPushExit = $LASTEXITCODE
-    if ($gitPushExit -ne 0) {
-        Write-Error "git push failed (exit code $gitPushExit)."
-        exit 1
-    }
-    Write-Host "  Pushed: main" -ForegroundColor Green
-
-    git -C $RepoRoot push origin $Version
+    git -C $RepoRoot push $ReleaseRemote "refs/tags/$Version"
     $gitPushTagExit = $LASTEXITCODE
     if ($gitPushTagExit -ne 0) {
         Write-Error "git push tag failed (exit code $gitPushTagExit)."
@@ -375,34 +525,31 @@ if ($skipGitHub) {
     # ~ Create GitHub Release ~
     Write-Host "`nCreating GitHub release..." -ForegroundColor Cyan
 
-    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        Write-Error "GitHub CLI (gh) is required. Install from https://cli.github.com/"
-        exit 1
-    }
-
     # Generate release notes from template
-    $templatePath = Join-Path $PSScriptRoot "release-notes-template.md"
-    if (-not (Test-Path $templatePath)) {
-        Write-Error "Release notes template not found at $templatePath"
-        exit 1
-    }
     $releaseNotes = (Get-Content $templatePath -Raw) -replace '\{\{VERSION\}\}', $Version
 
     $releaseNotesFile = Join-Path $env:TEMP "sts2-release-notes-$(Get-Random).md"
-    Set-Content $releaseNotesFile -Value $releaseNotes -NoNewline
+    Set-Utf8NoBomContent -Path $releaseNotesFile -Content $releaseNotes
 
     try {
-        # Collect all files in dist to upload
-        $distFiles = Get-ChildItem -Path $distDir -File
-        $assetArgs = @()
-        foreach ($f in $distFiles) {
-            $assetArgs += $f.FullName
+        # Upload only the two intended release artifacts. Other local files in
+        # dist must never be published implicitly.
+        $assetArgs = @($zipPath, $apworldPath)
+        $missingAssets = @($assetArgs | Where-Object { -not (Test-Path $_) })
+        if ($missingAssets.Count -gt 0) {
+            Write-Error "Required release assets are missing: $($missingAssets -join ', ')"
+            exit 1
         }
 
         # Create the release
-        gh release create $Version @assetArgs --title $Version --notes-file $releaseNotesFile --latest
+        gh release create $Version @assetArgs --repo $ReleaseRepo --title $Version --notes-file $releaseNotesFile --latest
+        $ghReleaseExit = $LASTEXITCODE
+        if ($ghReleaseExit -ne 0) {
+            Write-Error "GitHub release creation failed for $ReleaseRepo (exit code $ghReleaseExit)."
+            exit 1
+        }
 
-        Write-Host "  Release '$Version' created and marked as latest." -ForegroundColor Green
+        Write-Host "  Release '$Version' created in $ReleaseRepo and marked as latest." -ForegroundColor Green
         Write-Host "  Don't forget to update the Changelist in the release notes on GitHub!" -ForegroundColor Yellow
     } finally {
         Remove-Item $releaseNotesFile -ErrorAction SilentlyContinue

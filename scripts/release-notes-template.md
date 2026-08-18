@@ -9,15 +9,19 @@
 
 ## Pre-Requisites
 
-- **Your Slay the Spire II client must be running on Windows**. The debug terminal we use uses Win32 APIs.
-  - This will not be a requirement long-term, but for early Alpha development it's necessary.
 - **Your host MUST use Archipelago Client v0.6.7+**.
-- This version of the mod is intended to be used for **v0.103.2** of Slay the Spire II
-  - **You must be on the "Default Public Version" of the game, _NOT_ the public beta branch**
-  - If your installation of Slay the Spire II is higher or lower than this, the mod _may_ not work.
-  - We will do our best to keep up with game updates as they release, so please be patient.
+- This version of the mod is intended to be used for **v0.107.1**  of Slay the Spire II
+  - While we have experimental support for the public beta branch **v0.111.0**, we recommend **the "Default Public/Main Version"** of the game to most players. Since the beta branch is updated more frequently and is more volatile, it's less likely to be bug-free. Please use it at your own risk. However numerous players have used it just fine, @Terairk is the maintainer for this and he mostly develops here.
+  - We will do our best to keep up with game updates as they release, so please be patient when encountering issues.
 
-## Installing the Mod
+## Installing the Mod from Steam Workshop (Recommended)
+
+1. Ensure that you have [RitsuLib](https://steamcommunity.com/sharedfiles/filedetails/?id=3747602295) installed. The easiest way to obtain it is from Steam Workshop.
+2. Subscribe to the [Slay the Spire II Archipelago Client](https://steamcommunity.com/sharedfiles/filedetails/?id=3748826296) on Steam Workshop.
+3. Make sure that any other unnecessary mods are turned off, unless you're trying to use a specific modded character for your Archipelago session.
+4. Start the game
+
+## Manually Installing the Mod from GitHub
 
 1. Ensure that you have [RitsuLib](https://steamcommunity.com/sharedfiles/filedetails/?id=3747602295) installed. The easiest way to obtain it is from Steam Workshop.
 2. Download the "sts2-client.zip" from the [Releases](https://github.com/dlueben1/Slay-the-Spire-2-Archipelago/releases/latest) section of the Repo
@@ -45,7 +49,7 @@
 
 ## Known Issues/Limitations
 
-- If you receive a Character Unlock while you're on the Character Select screen, they won't unlock until you revisit that screen after doing a run (likely an edge case for most)
+- Switching Slay the Spire II branches during an active run may make that run's checkpoint incompatible with the other branch.
 
 ## Common Q&A
 
@@ -56,7 +60,3 @@ No.
 ### I installed the AP World but it's not working
 
 Is your Archipelago Launcher v0.6.7 or later? If not it **won't work**.
-
-### (Your-Feature-Here) looks really ugly or isn't polished
-
-We probably know and are going to work on it, but if it's egregious or an edge case, please reach out and let us know more about it so we can look into it!
