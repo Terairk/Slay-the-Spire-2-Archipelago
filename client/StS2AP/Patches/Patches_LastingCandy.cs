@@ -128,6 +128,7 @@ public static class Patches_LastingCandy
         [HarmonyPrefix]
         private static bool Prefix(LastingCandy __instance, ref Task __result)
         {
+            // AP_MP: Card reward interception needs a synchronized final card selection.
             if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CardRewards))
                 return true;
 
@@ -155,6 +156,7 @@ public static class Patches_LastingCandy
         {
             __state = null;
 
+            // AP_MP: Card reward cleanup follows the same synchronized-selection gate.
             if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CardRewards))
                 return;
 

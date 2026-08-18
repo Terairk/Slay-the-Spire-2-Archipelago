@@ -64,6 +64,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(IRunState? runState, bool isRestoringRoomStackBase)
             {
+                // AP_MP: Floor checks need explicit local-owner attribution before enabling.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.FloorChecks))
                     return;
 

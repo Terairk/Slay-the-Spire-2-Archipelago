@@ -179,6 +179,8 @@ namespace StS2AP.Patches
                 }
 
                 GameUtility.CurrentConfig = config;
+                // AP_MP: Restore full run initialization after RestSites and the remaining
+                // AP-backed per-run state have multiplayer-safe ownership and persistence.
                 // Only initialize state used by this profile. The normal initialization reads
                 // AP-backed campfire state, which is both unsupported here and unavailable if
                 // AP disconnects after the lobby login.
@@ -219,6 +221,7 @@ namespace StS2AP.Patches
             {
                 await finalizeTask;
 
+                // AP_MP: Starter reconciliation needs synchronized deck/relic transitions.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
                     return;
 

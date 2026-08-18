@@ -479,6 +479,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NMultiplayerSubmenu __instance)
             {
+                // AP_MP: Keep Continue/Load hidden until SaveAndReconnect is supported.
                 if (MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer
                     || !MultiplayerSupport.ExperimentalSettingEnabled
                     || MultiplayerSupport.IsFeatureEnabled(

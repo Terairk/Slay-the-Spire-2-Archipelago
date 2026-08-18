@@ -420,6 +420,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(Player player, MerchantInventory __result)
             {
+                // AP_MP: Fake AP inventory entries stay local until shop sync is implemented.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
                     return;
 
@@ -555,6 +556,7 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool Prefix(MerchantEntry __instance, MerchantInventory? inventory, bool ignoreCost, ref Task<bool> __result)
             {
+                // AP_MP: Purchases need owner-only checks plus native synchronized gold loss.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
                     return true;
 

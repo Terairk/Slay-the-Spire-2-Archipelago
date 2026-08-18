@@ -24,6 +24,8 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class MultiplayerSupport
 {
+    // AP_MP: This is the master feature switchboard. Add a capability only after every
+    // AP_MP gate for it has a synchronized implementation and two-client runtime evidence.
     private static readonly HashSet<MultiplayerFeature> EnabledExperimentalFeatures = new()
     {
         MultiplayerFeature.CharacterUnlocks,
@@ -137,6 +139,7 @@ public static class MultiplayerSupport
         };
     }
 
+    // AP_MP: Unsupported receipt types are held here instead of mutating replicated state.
     public static bool ShouldDeferItem(IndexedItemInfo item) =>
         IsMultiplayerScope && !IsFeatureEnabled(GetFeatureForItem(item));
 
@@ -230,6 +233,7 @@ public static class MultiplayerSupport
             {
                 GameUtility.UnlockCharacter(item);
             }
+            // AP_MP: The preparation allowlist is still character unlocks plus aggregate gold.
             else if (feature != MultiplayerFeature.GoldRewards)
             {
                 DeferItem(indexedItem);

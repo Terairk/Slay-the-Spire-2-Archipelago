@@ -12,12 +12,12 @@ public enum MultiplayerFeature
     PressStartCheck,
     GoldRewards,
 
-    // Planned standard reward conversions.
+    // AP_MP: Enable these next as their native synchronized grant paths are implemented.
     CardRewards,
     RelicRewards,
     PotionRewards,
 
-    // Planned AP location and option conversions.
+    // AP_MP: Keep these disabled until their owner-only checks and replicated results agree.
     CombatRewardLocations,
     FloorChecks,
     Shops,
@@ -25,16 +25,16 @@ public enum MultiplayerFeature
     Ancients,
     VictoryChecks,
 
-    // Planned derived-state and combat conversions.
+    // AP_MP: Keep these disabled until their managed/native synchronization is implemented.
     ProgressiveStarters,
     AscensionEffects,
     CombatEffects,
     DeathLink,
 
-    // Planned durability work.
+    // AP_MP: Keep this disabled while multiplayer runs are intentionally disposable.
     SaveAndReconnect,
 
-    // Unknown received items fail closed until explicitly classified.
+    // AP_MP: Unknown received items fail closed until explicitly classified.
     UnknownReceivedItems,
 }
 

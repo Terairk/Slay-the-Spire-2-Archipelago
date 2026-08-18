@@ -58,6 +58,7 @@ namespace StS2AP.Utils
         {
             Callable.From(() =>
             {
+                // AP_MP: Starter mutations need synchronized concrete deck/relic transitions.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
                     return;
 

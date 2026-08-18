@@ -98,6 +98,7 @@ namespace StS2AP.Patches
         /// <param name="index">The index of the item in the Archipelago Multiworld</param>
         private static void ProcessItem(IndexedItemInfo indexedInfo, bool liveDelivery = true)
         {
+            // AP_MP: This is the receipt-level fail-closed gate for unconverted features.
             if (MultiplayerSupport.ShouldDeferItem(indexedInfo))
             {
                 MultiplayerSupport.DeferItem(indexedInfo);

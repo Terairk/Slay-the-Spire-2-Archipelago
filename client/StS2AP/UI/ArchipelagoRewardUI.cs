@@ -376,6 +376,7 @@ namespace StS2AP.UI
 
             // Normally this happens on receipt or checkpoint load. Retrying here keeps an
             // unexpected assignment failure recoverable without another tracking state.
+            // AP_MP: Relic assignment stays disabled until native obtained-relic sync is used.
             if (MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.RelicRewards))
                 RelicRewardUtility.ReconcileBankedRewards(currentPlayer);
 
@@ -387,6 +388,7 @@ namespace StS2AP.UI
                 .Where(item =>
                 {
                     var feature = MultiplayerSupport.GetFeatureForItem(item);
+                    // AP_MP: Hide unconverted multiplayer receipts from the actionable list.
                     if (MultiplayerSupport.IsFeatureEnabled(feature))
                         return ArchipelagoClient.Progress.IsAvailableInRewardMenu(
                             item,
@@ -415,6 +417,7 @@ namespace StS2AP.UI
                 };
 
                 var feature = MultiplayerSupport.GetFeatureForItem(i);
+                // AP_MP: Render unconverted receipts as disabled backlog rows, not actions.
                 if (!MultiplayerSupport.IsFeatureEnabled(feature))
                 {
                     data.IsEnabled = false;

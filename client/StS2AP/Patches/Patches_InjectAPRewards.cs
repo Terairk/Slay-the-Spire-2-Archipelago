@@ -67,6 +67,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             static void Postfix(ref List<Reward> __result, Player player, AbstractRoom room)
             {
+                // AP_MP: AP reward specs must reach all peers before reward-set creation.
                 if (!MultiplayerSupport.IsFeatureEnabled(
                     MultiplayerFeature.CombatRewardLocations
                 ))
@@ -169,6 +170,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(RewardsSet __instance, AbstractRoom room)
             {
+                // AP_MP: Reward replacement needs matching owner and reward-set IDs.
                 if (!MultiplayerSupport.IsFeatureEnabled(
                     MultiplayerFeature.CombatRewardLocations
                 ))
@@ -265,6 +267,7 @@ namespace StS2AP.Patches
                 ref PlayerVote ____predictedVote
             )
             {
+                // AP_MP: Boss relic selection waits for synchronized reward choices.
                 if (!MultiplayerSupport.IsFeatureEnabled(
                     MultiplayerFeature.CombatRewardLocations
                 ))
@@ -318,6 +321,7 @@ namespace StS2AP.Patches
                 int __state
             )
             {
+                // AP_MP: Location completion must be attributed to the local AP owner only.
                 if (!MultiplayerSupport.IsFeatureEnabled(
                     MultiplayerFeature.CombatRewardLocations
                 ))
@@ -348,6 +352,7 @@ namespace StS2AP.Patches
             // Postfix runs after the screen creates and adds the NRewardButton controls.
             static void Postfix(NRewardsScreen __result)
             {
+                // AP_MP: Reward-screen presentation follows the replicated reward-set gate.
                 if (!MultiplayerSupport.IsFeatureEnabled(
                     MultiplayerFeature.CombatRewardLocations
                 ))

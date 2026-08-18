@@ -139,6 +139,7 @@ namespace StS2AP.Utils
 
                 // A buff can have been queued before this AP session switched from the
                 // singleplayer flow. Preserve it for later instead of mutating multiplayer combat.
+                // AP_MP: Preserve queued buffs until a host-ordered managed action exists.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CombatEffects))
                     return;
 
@@ -308,6 +309,7 @@ namespace StS2AP.Utils
         /// <param name="player">The active Player instance for the current run.</param>
         public static async Task ProcessQueuedBuffsAsync(Player player)
         {
+            // AP_MP: Combat buffs require the per-owner FIFO managed-action pipeline.
             if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CombatEffects))
                 return;
 

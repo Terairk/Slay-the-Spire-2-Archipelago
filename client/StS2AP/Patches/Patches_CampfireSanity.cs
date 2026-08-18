@@ -25,6 +25,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             static void AddOptions(Player player, ref List<RestSiteOption> __result)
             {
+                // AP_MP: Rest-site options need a shared spec and deterministic ordering.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.RestSites))
                     return;
 
@@ -244,6 +245,7 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static void addScrollBar(NRestSiteRoom __instance)
             {
+                // AP_MP: Keep AP rest-site presentation off with the underlying options.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.RestSites))
                     return;
 

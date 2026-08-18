@@ -254,6 +254,8 @@ namespace StS2AP.Utils
                     }
                     break;
                 case AscensionLevel.Poverty:
+                    // AP_MP: Define and synchronize any retrospective Poverty refund before
+                    // replacing this deliberate no-refund behavior.
                     if (MultiplayerSupport.IsRealMultiplayerRun)
                     {
                         LogUtility.Warn(

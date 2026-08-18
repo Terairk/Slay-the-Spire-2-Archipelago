@@ -57,6 +57,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NMerchantInventory __instance, MerchantInventory inventory, MerchantDialogueSet dialogue)
             {
+                // AP_MP: AP shop pages wait for owner-only slots and synchronized purchases.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
                     return;
 
@@ -322,6 +323,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix()
             {
+                // AP_MP: AP shop presentation follows the synchronized purchase gate.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
                     return;
 

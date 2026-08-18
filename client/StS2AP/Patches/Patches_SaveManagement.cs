@@ -34,6 +34,8 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool replaceSave(AbstractRoom? preFinishedRoom, ref Task __result)
             {
+                // AP_MP: Remove this disposable-run save block only after owner overlays,
+                // protocol compatibility, save/load, and reconnect are implemented.
                 if (MultiplayerSupport.IsExperimentalMultiplayerRun
                     && !MultiplayerSupport.IsFeatureEnabled(
                         MultiplayerFeature.SaveAndReconnect

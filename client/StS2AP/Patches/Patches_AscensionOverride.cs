@@ -31,6 +31,7 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool Prefix(NTopBarPortraitTip __instance)
             {
+                // AP_MP: Ascension presentation stays native until the shared set is staged.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.AscensionEffects))
                     return true;
 
@@ -74,6 +75,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void PostFix(MegaLabel ____ascensionLabel)
             {
+                // AP_MP: Ascension UI overrides require a host-authoritative shared set.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.AscensionEffects))
                     return;
 
@@ -94,6 +96,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(AscensionLevel level, ref bool __result)
             {
+                // AP_MP: Ascension queries require a host-authoritative shared set.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.AscensionEffects))
                     return;
 
@@ -115,6 +118,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(ref MapPoint? __result)
             {
+                // AP_MP: Double-boss map changes must be identical on every peer.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.AscensionEffects))
                     return;
 
@@ -135,6 +139,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(ref SerializableMapPoint? __result)
             {
+                // AP_MP: Double-boss serialization waits for synchronized ascension state.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.AscensionEffects))
                     return;
 
@@ -155,6 +160,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(ref MapPoint? __result)
             {
+                // AP_MP: Double-boss restore waits for synchronized ascension state.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.AscensionEffects))
                     return;
 
@@ -180,6 +186,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NAscensionPanel __instance)
             {
+                // AP_MP: Ascension controls require host overwrite and mismatch diagnostics.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.AscensionEffects))
                     return;
 

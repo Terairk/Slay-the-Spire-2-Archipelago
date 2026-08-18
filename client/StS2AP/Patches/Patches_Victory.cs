@@ -25,6 +25,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(bool isVictory)
             {
+                // AP_MP: Victory checks need explicit local-owner attribution before enabling.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.VictoryChecks))
                     return;
 

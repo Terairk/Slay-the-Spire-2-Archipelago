@@ -23,6 +23,7 @@ namespace StS2AP.Utils
         /// <summary>
         /// Based on both Client and Server settings, determines if Death Link is enabled for this player.
         /// </summary>
+        // AP_MP: Death Link remains off until incoming effects sync without feedback loops.
         public static bool IsDeathLinkEnabled =>
             MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
             && (ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
@@ -54,6 +55,7 @@ namespace StS2AP.Utils
         /// <summary>
         /// Whether or not Death Fragments are enabled
         /// </summary>
+        // AP_MP: Death fragments share the disabled multiplayer Death Link transport.
         public static bool AreDeathFragmentsEnabled =>
             MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
             && (ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions

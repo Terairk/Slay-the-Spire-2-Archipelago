@@ -34,6 +34,7 @@ namespace StS2AP.Patches
         {
             static bool Prefix(NRun __instance, SerializableRun serializableRun)
             {
+                // AP_MP: Death Link restore needs synchronized ownership and loop suppression.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink))
                     return true;
 

@@ -29,6 +29,7 @@ namespace StS2AP.Patches
         [HarmonyPrefix]
         private static bool Prefix(Orobas __instance, ref IReadOnlyList<EventOption> __result)
         {
+            // AP_MP: Progressive starter filtering needs synchronized starter transitions.
             if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
                 return true;
 
@@ -170,6 +171,7 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         public static void ReplaceAncientOptions(AncientEventModel __instance, ref IReadOnlyList<EventOption> __result)
         {
+            // AP_MP: Ancient options need a replicated native-event spec before construction.
             if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
                 return;
 
@@ -245,6 +247,7 @@ namespace StS2AP.Patches
         [HarmonyPrefix]
         public static void SendAncientCheck()
         {
+            // AP_MP: Ancient checks remain owner-only and disabled until option sync exists.
             if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
                 return;
 
