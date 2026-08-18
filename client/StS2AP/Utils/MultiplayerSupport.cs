@@ -338,7 +338,7 @@ public static class MultiplayerSupport
             NConfirmButton embarkButton = screen.GetNode<NConfirmButton>("ConfirmButton");
             if (!CanEnterMultiplayerLobby(out _))
             {
-                if (screen.Lobby.LocalPlayer.isReady)
+                if (BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
                 {
                     // Use the native beta UI transition so auto-unready restores character
                     // buttons and the waiting panel as well as changing the lobby flag.
@@ -365,10 +365,10 @@ public static class MultiplayerSupport
                 return;
             }
 
-            if (screen.Lobby.LocalPlayer.isReady)
+            if (BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
                 return;
 
-            if (CanEmbark(screen.Lobby.LocalPlayer.character, out _))
+            if (CanEmbark(BetaMainCompatibility.GetLocalCharacter(screen.Lobby), out _))
                 embarkButton.Enable();
             else
                 embarkButton.Disable();
@@ -501,7 +501,7 @@ public static class MultiplayerSupport
         var runState = RunManager.Instance.DebugOnlyGetState();
         var runLobby = RunManager.Instance.RunLobby;
         if (runState == null || runLobby == null
-            || runLobby.ConnectedPlayerIds.Count != runState.Players.Count)
+            || runLobby.Players.Count != runState.Players.Count)
         {
             reason = "All multiplayer peers must be connected to claim AP rewards.";
             return false;

@@ -17,6 +17,10 @@ internal static class ApFastMpLaunchController
     private const string LaunchArgument = "apFastmp";
     private const string ServerArgument = "apServer";
     private const string SlotArgument = "apSlot";
+    private const string HostSlotArgument = "apHostSlot";
+    private const string ClientSlotArgument = "apClientSlot";
+    private const string HostClientIdArgument = "apHostClientId";
+    private const string ClientClientIdArgument = "apClientClientId";
 
     private enum LaunchRole
     {
@@ -53,8 +57,8 @@ internal static class ApFastMpLaunchController
             return true;
         }
 
-        if (!CommandLineHelper.HasArg("fastmp")
-            || CommandLineHelper.GetValue("fastmp") != null)
+        if (!CommandLineHelper.TryGetValue("fastmp", out string? fastMpValue)
+            || !string.IsNullOrEmpty(fastMpValue))
         {
             Fail(
                 "-apFastmp requires bare -fastmp with no native action value. "
@@ -123,6 +127,35 @@ internal static class ApFastMpLaunchController
     }
 
     /// <summary>
+    /// Maps the native non-Steam player IDs to the AP identities supplied by the
+    /// two-process harness. This is presentation-only; native IDs remain authoritative.
+    /// </summary>
+    public static bool TryGetHarnessPlayerLabel(ulong playerId, out string label)
+    {
+        label = string.Empty;
+        if (!CommandLineHelper.HasArg(LaunchArgument))
+            return false;
+
+        if (TryGetHarnessIdentity(
+                HostClientIdArgument,
+                HostSlotArgument,
+                "HOST",
+                playerId,
+                out label))
+        {
+            return true;
+        }
+
+        return TryGetHarnessIdentity(
+            ClientClientIdArgument,
+            ClientSlotArgument,
+            "CLIENT",
+            playerId,
+            out label
+        );
+    }
+
+    /// <summary>
     /// Handles the successful AP-login continuation when an AP fast-multiplayer
     /// request is active. The request is consumed even when resumption fails so
     /// a later reconnect cannot launch a second lobby unexpectedly.
@@ -182,6 +215,28 @@ internal static class ApFastMpLaunchController
 
     private static string? NormalizeOptionalArgument(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static bool TryGetHarnessIdentity(
+        string idArgument,
+        string slotArgument,
+        string role,
+        ulong playerId,
+        out string label)
+    {
+        label = string.Empty;
+        if (!ulong.TryParse(CommandLineHelper.GetValue(idArgument), out ulong expectedId)
+            || expectedId != playerId)
+        {
+            return false;
+        }
+
+        string? slot = NormalizeOptionalArgument(CommandLineHelper.GetValue(slotArgument));
+        if (slot == null)
+            return false;
+
+        label = $"AP {slot} [{role}]";
+        return true;
+    }
 
     private static void Fail(string reason)
     {

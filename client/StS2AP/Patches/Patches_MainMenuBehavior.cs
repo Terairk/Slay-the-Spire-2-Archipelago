@@ -6,8 +6,10 @@ using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using MegaCrit.Sts2.addons.mega_text;
 using StS2AP.UI;
 using StS2AP.Utils;
 using StS2AP.Models;
@@ -434,15 +436,36 @@ namespace StS2AP.Patches
                 if (MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer)
                     return true;
 
-                CharacterModel character = __instance.Lobby.LocalPlayer.character;
+                CharacterModel character = BetaMainCompatibility.GetLocalCharacter(__instance.Lobby);
                 if (MultiplayerSupport.CanEmbark(character, out string blockedReason))
                     return true;
 
-                if (__instance.Lobby.LocalPlayer.isReady)
+                if (BetaMainCompatibility.IsLocalPlayerReady(__instance.Lobby))
                     __instance.Lobby.SetReady(ready: false);
                 NotificationUtility.ShowRawText(blockedReason);
                 LogUtility.Warn($"Blocked AP multiplayer embark: {blockedReason}");
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Replaces the null-platform test names with the AP slot and harness role while
+        /// leaving the native lobby player IDs and ready synchronization untouched.
+        /// </summary>
+        [HarmonyPatch(typeof(NRemoteLobbyPlayer), nameof(NRemoteLobbyPlayer._Ready))]
+        public static class LabelLocalHarnessPlayers
+        {
+            [HarmonyPostfix]
+            public static void Postfix(NRemoteLobbyPlayer __instance)
+            {
+                if (!ApFastMpLaunchController.TryGetHarnessPlayerLabel(
+                        __instance.PlayerId,
+                        out string label))
+                {
+                    return;
+                }
+
+                __instance.GetNode<MegaLabel>("%NameplateLabel").SetTextAutoSize(label);
             }
         }
 

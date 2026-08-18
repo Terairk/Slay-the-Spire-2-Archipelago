@@ -28,13 +28,7 @@ public static class BetaMainCompatibility
     /// </summary>
     public static CharacterModel GetLocalCharacter(object lobby)
     {
-        ArgumentNullException.ThrowIfNull(lobby);
-
-        // LocalPlayer's declared return type changed from LobbyPlayer to
-        // StartRunLobbyPlayer. Calling the property directly would bind this mod to
-        // whichever return type was present in the sts2.dll used for compilation.
-        object localPlayer = AccessTools.Property(lobby.GetType(), "LocalPlayer")?.GetValue(lobby)
-            ?? throw new MissingMemberException(lobby.GetType().FullName, "LocalPlayer");
+        object localPlayer = GetLocalPlayer(lobby);
 
         // Both player types retain the same character field, so only the containing
         // player type needs to be resolved at runtime.
@@ -42,5 +36,28 @@ public static class BetaMainCompatibility
             ?? throw new InvalidCastException(
                 $"Could not read a {nameof(CharacterModel)} from {localPlayer.GetType().FullName}.character."
             );
+    }
+
+    /// <summary>
+    /// Gets the local lobby player's ready flag without binding to the changed
+    /// StartRunLobby.LocalPlayer return type.
+    /// </summary>
+    public static bool IsLocalPlayerReady(object lobby)
+    {
+        object localPlayer = GetLocalPlayer(lobby);
+        return AccessTools.Field(localPlayer.GetType(), "isReady")?.GetValue(localPlayer) as bool?
+            ?? throw new InvalidCastException(
+                $"Could not read a Boolean from {localPlayer.GetType().FullName}.isReady."
+            );
+    }
+
+    private static object GetLocalPlayer(object lobby)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+
+        // Calling this property directly embeds its declared return type in the method
+        // token, which breaks when LobbyPlayer and StartRunLobbyPlayer are exchanged.
+        return AccessTools.Property(lobby.GetType(), "LocalPlayer")?.GetValue(lobby)
+            ?? throw new MissingMemberException(lobby.GetType().FullName, "LocalPlayer");
     }
 }

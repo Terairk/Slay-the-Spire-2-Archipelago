@@ -6,6 +6,8 @@
   Starts one native fastmp host and one native fastmp client with distinct
   client IDs and AP slot names. Steam is disabled so each client ID receives an
   independent StS2 account root, including RitsuLib settings and AP gold state.
+  Native lobby rows are labeled with the corresponding AP slot and launch role.
+  Each process also writes a separate log under logs\multiplayer.
 
   By default, the game executable is discovered from client/StS2AP/local.props.
   If that file is unavailable, the standard Steam installation path is tried.
@@ -153,6 +155,7 @@ function Start-Sts2Process {
     )
 
     $arguments = @(
+        "--log-file", (Join-Path $script:LogDirectory "$Role-$ClientId.log"),
         "-force-steam", "off",
         "-clientId", $ClientId.ToString()
     )
@@ -162,13 +165,18 @@ function Start-Sts2Process {
             "-fastmp",
             "-apFastmp", $Role,
             "-apServer", $ApServer,
-            "-apSlot", $Slot
+            "-apSlot", $Slot,
+            "-apHostSlot", $HostSlot,
+            "-apClientSlot", $ClientSlot,
+            "-apHostClientId", $HostClientId.ToString(),
+            "-apClientClientId", $ClientClientId.ToString()
         )
     }
 
     $argumentLine = ConvertTo-NativeArgumentLine -Arguments $arguments
     $slotDetail = if ($Slot) { ", AP slot=$Slot" } else { "" }
     Write-Host "Starting $Label (clientId=$ClientId$slotDetail)..." -ForegroundColor Cyan
+    Write-Host "  Log: $(Join-Path $script:LogDirectory "$Role-$ClientId.log")"
     $process = Start-Process `
         -FilePath $script:ResolvedExePath `
         -WorkingDirectory (Split-Path $script:ResolvedExePath -Parent) `
@@ -188,6 +196,8 @@ if (-not $SettingsOnly -and [string]::Equals(
 }
 
 $ResolvedExePath = Resolve-Sts2Executable
+$LogDirectory = Join-Path $RepoRoot "logs\multiplayer"
+New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
 $steamAppIdPath = Join-Path (Split-Path $ResolvedExePath -Parent) "steam_appid.txt"
 $expectedSteamAppId = "2868840"
 $currentSteamAppId = if (Test-Path -LiteralPath $steamAppIdPath -PathType Leaf) {
