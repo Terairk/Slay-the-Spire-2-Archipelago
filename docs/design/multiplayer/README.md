@@ -12,6 +12,9 @@ claim that multiplayer currently works.
 - [Multiplayer synchronization RFC](multiplayer-sync-rfc.md) describes the
   overall execution model, state ownership, synchronization boundaries, and
   unresolved questions.
+- [Multiplayer developer-console requirements](multiplayer-dev-console.md)
+  defines safe grant simulation and extensible state inspection, with
+  implementation deferred until the multiplayer grant pipeline exists.
 - [Implementation roadmap](implementation-roadmap.md) breaks the design into
   reviewable phases and supplies a two-client validation matrix.
 - [ADR 001: One AP slot per STS player](adr/001-one-ap-slot-per-sts-player.md)

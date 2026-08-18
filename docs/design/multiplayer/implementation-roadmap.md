@@ -23,18 +23,19 @@ Prove the minimum supported path without converting AP features.
   `RewardSynchronizer.SyncLocalObtainedGold` pattern.
 - Prove both peers observe the same resulting gold.
 - Capture the behavior on peer disconnect and rejoin.
-- Determine the supported mechanism, if any, for mod-specific peer messages.
-- Confirm whether RitsuLib custom reward payloads are save-only or can cross
-  the peer connection.
-- Inventory APWorld slot-data fields that affect shared run generation and
-  draft the multiplayer compatibility profile.
+- Prove one RitsuLib managed `NonCombat` action and one managed `Combat` action,
+  including requester-local execution, host ordering, and executor failure.
+- Prove RitsuLib `RunSavedData` and `PlayerRunSavedData` lobby contributions
+  arrive before Ready validation and commit into the launched run.
+- Verify the host Ascension set can overwrite and validate every client's local
+  calculated set while retaining visible mismatch diagnostics.
 
 ### Exit evidence
 
 - Host and client logs identifying the same players with opposite local owner.
 - A 25-gold test grant applied exactly once on both copies of the owner.
 - No combat divergence or duplicate grant after reconnect.
-- A written transport feasibility decision added to the RFC.
+- Managed-action and lobby-staging behavior recorded against the RFC contracts.
 
 ## Phase 1: Local AP player ownership
 
@@ -71,7 +72,7 @@ Synchronize the lowest-risk received items through existing MegaCrit APIs.
 - Relics via `SyncLocalObtainedRelic`.
 - Potions via `SyncLocalObtainedPotion`, preserving the no-slot retry contract.
 - Already-selected cards via `SyncLocalObtainedCard` where semantically valid.
-- Add owner-side duplicate tests keyed by received item index.
+- Add owner-side duplicate tests keyed by AP slot ID plus received-item index.
 - Document failure behavior for AP disconnect during a grant.
 
 ### Exit evidence
@@ -116,7 +117,7 @@ Handle card and relic choices without private MegaCrit RNG or pool divergence.
   the final selected relic.
 - Isolate private candidate generation from replicated RNG and relic bags, or
   make all peers execute the same generation.
-- Preserve stable assignments by AP received item index.
+- Preserve stable assignments by AP slot ID plus received-item index.
 - Verify card-selection choice IDs advance identically.
 
 ### Exit evidence
@@ -161,14 +162,18 @@ Convert effects that do not fit the standard reward transport.
 
 ### Tasks
 
-- Specify concrete starter deck/relic transitions.
-- Classify each ascension item as per-player or shared-run behavior.
-- Replicate the derived ascension rule state needed by remote simulation.
-- Define a host-ordered AP combat action with transaction identity.
-- Apply universal powers through the synchronized combat action.
+- Synchronize concrete Progressive Starter deck/relic transitions through the
+  native path where available and a managed action where it is not.
+- Initialize from the host Ascension set and route each later Ascension Down as
+  a concrete managed noncombat removal at the next safe boundary.
+- Register the host-ordered RitsuLib combat-buff action with `ApGrantId`.
+- Persist one FIFO per AP owner and submit at most its head at combat start.
+- Apply at most one universal buff per player per combat through the synchronized
+  action, with receipts during combat deferred to the next combat.
 - Define Death Link ownership, incoming effect synchronization, and
   feedback-loop suppression.
-- Define commit/idempotency behavior around AP data-storage persistence.
+- Implement the single applied-grant set, assignment cache, owner-only AP
+  acknowledgment, and crash-window diagnostics from the RFC.
 
 ### Exit evidence
 
@@ -185,9 +190,11 @@ Make the supported topology durable rather than demo-only.
 
 ### Tasks
 
-- Add a multiplayer protocol version and pre-run compatibility gate.
-- Reject incompatible shared-run slot-data profiles before run creation.
-- Persist pending AP reward assignments and required applied-grant IDs.
+- Add the RitsuLib lobby protocol contribution and refuse incompatible peers.
+- Block Ready until local AP slot data and received-item history are complete.
+- Force the host effective Ascension set while surfacing client mismatches.
+- Persist pending buffs, concrete assignments, and the applied-grant set in the
+  equivalent `SerializableAP` fields.
 - Restore active AP-derived reward/option conversations on rejoin.
 - Verify host and client save ownership.
 - Add targeted diagnostics for owner, transaction, run location, and sequence
@@ -219,7 +226,12 @@ Run each relevant row with both host ownership assignments when possible.
 | Six campfire checks | Recipient | Observer | Same AP option count/order and selected operation. |
 | Shop AP purchase | Recipient | Observer | Owner-only check, matching gold loss. |
 | Ancient native choice | Recipient | Observer | Same event options and selected relic. |
+| Lobby protocol mismatch | Host | Client | Ready/run launch is refused with a clear reason. |
+| Lobby Ascension mismatch | Host set A | Client calculates B | Client is overwritten with A and the mismatch remains visible in diagnostics. |
 | Combat buff | Recipient | Observer | Same power and checksum after ordered action. |
+| Five queued combat buffs | Recipient | Observer | Exactly one FIFO buff applies per combat for five combats. |
+| Buff received during combat | Recipient | Observer | No current-combat mutation; buff applies once next combat. |
+| Ascension Down during combat | Recipient | Observer | Shared set changes once at the next safe noncombat boundary. |
 | Death Link receive | Recipient | Observer | Same HP/death state and no outgoing feedback loop. |
 | Floor/goal check | Both | Both | Each AP owner reports its own location exactly once. |
 | Duplicate AP callback | Recipient | Observer | Grant applied once. |

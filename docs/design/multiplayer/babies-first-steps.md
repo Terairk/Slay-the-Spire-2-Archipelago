@@ -16,6 +16,35 @@ This is the smallest useful multiplayer milestone for the Archipelago client:
 calculation remains authoritative, so the amount displayed and granted may be
 lower. The milestone intentionally does not hard-code 25 gold.
 
+## Relationship to the synchronization RFC
+
+This document describes the already implemented gold transport spike. It
+predates the RFC's unified callback, `ApGrantId`, assignment, ledger, lobby, and
+acknowledgment requirements. Its successful parts remain valid:
+
+- gold is a standard STS result and should continue through
+  `RewardSynchronizer`, not a RitsuLib managed action;
+- AP ownership remains local to the receiving process; and
+- every peer must mutate its replica of the same owning player.
+
+The spike is not yet the final gold implementation. Before it becomes the base
+for additional received items, its existing claim path must sit behind the
+RFC's common grant dispatcher:
+
+```text
+AP receipt
+  -> ApGrantId(AP slot ID, received-item index)
+  -> duplicate lookup and concrete amount resolution
+  -> native gold route
+  -> synchronized local execution
+  -> owner AppliedGrantIds persistence
+  -> owner-only AP acknowledgment
+```
+
+This milestone does not exercise RitsuLib managed actions, lobby run data, the
+host Ascension contract, or replay reconstruction of remote in-memory ledgers.
+Those remain separate runtime proofs.
+
 ## Agreed first-spike contract
 
 - A visible RitsuLib setting, `Enable Experimental Multiplayer`, defaults off.
@@ -23,8 +52,10 @@ lower. The milestone intentionally does not hard-code 25 gold.
 - With it on, Multiplayer opens the existing AP login directly. A successful
   login continues immediately into MegaCrit's normal Host/Join submenu.
 - Every local process connects to its own AP slot in the same AP room/seed.
-- MegaCrit owns the lobby, player list, ascension selection, character
-  selection, `RunState`, network transport, and synchronization.
+- In this narrow spike, MegaCrit owns the lobby, player list, ascension
+  selection, character selection, `RunState`, network transport, and
+  synchronization. The target architecture adds the RFC's AP lobby staging and
+  host-forced effective Ascension set before launch.
 - Each process may select only characters unlocked by its own AP slot. Existing
   live unlock updates remain active in the lobby.
 - The supported AP capabilities are hard-coded in an enum/profile. Initially
@@ -112,6 +143,12 @@ remains unconsumed. If synchronization unexpectedly fails after local
 application, the offer is consumed once and all later claims fail closed; a
 retry would duplicate Alice's already-applied gold.
 
+This is the current scaffold behavior. The RFC replacement closes the ordinary
+duplicate-callback path with the composite `ApGrantId` and applied ledger, but
+does not add speculative rollback after gold has been applied. A failure after
+the native mutation remains a diagnostic/catastrophic condition under the
+existing authoritative-item semantics.
+
 ### Gold-only safety gates
 
 The initial profile bypasses AP combat reward replacement, card/relic/potion
@@ -122,6 +159,28 @@ save/rejoin behavior. These features remain unchanged in singleplayer.
 This is scaffolding, not a claim that every future AP feature is multiplayer
 safe. Each enum entry must receive its own ownership and synchronization review
 before moving into the allowlist.
+
+### Requirements before expanding the allowlist
+
+Before another received-item category builds on this spike:
+
+1. Introduce the common AP callback/grant dispatcher and composite `ApGrantId`.
+2. Route gold through that dispatcher while retaining
+   `RewardSynchronizer.SyncLocalObtainedGold` as its transport.
+3. Persist the owner applied-grant set and any resolved assignments in the
+   equivalent `SerializableAP` fields.
+4. Stage the multiplayer protocol, AP readiness, slot-to-Net-ID mapping, and
+   host effective Ascension set through RitsuLib lobby run data.
+5. Prove duplicate callback and acknowledgment boundaries in both
+   host-recipient and client-recipient directions.
+
+Save/rejoin durability remains a later roadmap phase and is not a prerequisite
+for the next disposable-run capability. Until that phase succeeds, the spike's
+fresh-run restriction remains in force.
+
+RitsuLib managed actions should be introduced in the same early architecture
+work, but the first use should be an AP effect without a suitable native
+synchronizer rather than gold.
 
 ## Two-client runtime matrix
 
@@ -138,8 +197,10 @@ Run once with the host receiving gold and once with the client receiving gold:
 9. Before another combat, verify both processes show the same increase for
    Alice and no change for Bob.
 10. Reopen Alice's reward menu and verify the offer cannot be claimed twice.
-11. Repeat with Bob as the recipient.
-12. Repeat an equivalent claim in singleplayer as a regression test.
+11. Replay the same AP callback/index and verify the composite grant is not
+    applied or synchronized again once the RFC ledger is implemented.
+12. Repeat with Bob as the recipient.
+13. Repeat an equivalent claim in singleplayer as a regression test.
 
 Additional safety cases:
 
@@ -201,3 +262,7 @@ This milestone tests one architectural rule:
 Runtime success in both host/client directions is required before enabling the
 next capability. Decompiled-source and static-diff evidence alone do not prove
 the multiplayer behavior works.
+
+It proves only the native gold transport boundary. It does not by itself prove
+the unified grant executor, RitsuLib managed actions, lobby staging, combat
+buffs, Ascension transitions, or reconnect idempotency described by the RFC.
