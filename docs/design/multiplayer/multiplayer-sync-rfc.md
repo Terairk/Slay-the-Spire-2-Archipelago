@@ -33,6 +33,8 @@ through either a native MegaCrit synchronizer or a RitsuLib managed action.
 - Consume at most one queued AP buff per player per combat, in FIFO order.
 - Keep private AP state private while sharing the concrete inputs required to
   reproduce STS state.
+- Let each process persist its private AP state independently of the STS host so
+  leaving multiplayer does not discard its AP session or deferred receipts.
 - Stage and validate the multiplayer launch contract before Ready is accepted.
 - Refuse to launch when peers use incompatible AP multiplayer protocols.
 
@@ -44,6 +46,7 @@ through either a native MegaCrit synchronizer or a RitsuLib managed action.
 - Preserving experimental multiplayer saves across protocol changes.
 - Making random assignments stable across different game versions.
 - Distributed rollback or an all-peer success acknowledgment protocol.
+- Converting an in-progress multiplayer `RunState` into a singleplayer save.
 
 ## 4. Topology and authority
 
@@ -69,7 +72,7 @@ Authority is split as follows:
 
 | State | Authority | Replication rule |
 |---|---|---|
-| AP socket, credentials, received history, checks | Owning AP process | Never transmit raw connection state or credentials. |
+| AP socket, credentials, received history, checks | Owning AP process | Persist through the owner's AP server, slot-scoped DataStorage, or local save; never transmit credentials. |
 | AP slot settings | Owning AP process | Keep local unless a derived value is required for launch or a concrete effect. |
 | AP slot to STS Net ID mapping | Lobby contract | Every peer needs the same mapping. |
 | Effective Ascension set | STS host | Host value overwrites each client's local run value. |
@@ -78,7 +81,7 @@ Authority is split as follows:
 | Pending AP buffs and AP acknowledgment | Owning AP process | Restore from the owner's AP save/server. |
 | Live applied-grant set | Every process | Updated by the same ordered managed actions. |
 
-See ADR 001 and ADR 002.
+See ADR 001, ADR 002, and ADR 004.
 
 ## 5. MegaCrit and RitsuLib execution model
 
@@ -141,11 +144,19 @@ detects divergence; it does not repair it.
 checksum. Their executors therefore require explicit validation and focused
 two-client tests.
 
-## 6. Lobby staging with RitsuLib run data
+## 6. Lobby lifecycle and RitsuLib run data
 
-RitsuLib `RunSavedData<T>` and `PlayerRunSavedData<T>` are the selected lobby
-staging mechanism. Register the slots early and enable `SyncLobbyOnChange` so
-each contribution is visible before launch.
+MegaCrit's lobby layer is not only the pre-run waiting screen. `StartRunLobby`
+handles players beginning a new run, `LoadRunLobby` handles players assembling
+to resume a saved run, and `RunLobby` handles connection, disconnection, and
+rejoin while a run is active. The three lobby types have different messages and
+responsibilities.
+
+For a new run, RitsuLib `RunSavedData<T>` and `PlayerRunSavedData<T>` are the
+selected `StartRunLobby` staging mechanism. Register the slots early and enable
+`SyncLobbyOnChange` so each contribution is visible before launch. The option
+only pushes writes made through the pre-run `.Lobby` accessor; it is not a
+general mid-run broadcast mechanism.
 
 ```csharp
 public sealed record ApLobbyRunState(
@@ -190,16 +201,22 @@ card/relic transitions when they occur. Prefer the native card/relic path; use a
 managed action only for a removal or transformation for which STS has no
 appropriate synchronizer.
 
-Lobby run data is not a substitute for live `RunState` synchronization. Its
-values are committed as a frozen launch contract. Mid-run AP grants still use
-the routing and execution pipeline below.
+When the run launches, the staged values are committed into the run snapshot.
+RitsuLib also preserves registered run data through `LoadRunLobby` save loading
+and `RunLobby` rejoin snapshots. This makes it useful for durable shared run
+state, but not a substitute for live `RunState` synchronization: mid-run writes
+must still occur through a native synchronizer or ordered managed action.
+
+The protocol version, AP-slot mapping, and host effective Ascension set form a
+frozen launch contract by design. That immutability is an AP invariant, not a
+claim that all data associated with the broader lobby layer becomes frozen.
 
 ## 7. Grant identity, payload, and persistence
 
 ### 7.1 Stable identity
 
-A grant is globally identified within this multiplayer run by the receiving AP
-slot and the AP received-item index:
+A discrete receipt-backed grant is globally identified within this multiplayer
+run by the receiving AP slot and the AP received-item index:
 
 ```csharp
 public readonly record struct ApGrantId(
@@ -236,13 +253,21 @@ Examples are `EffectId = "strength", Amount = 2` and a concrete model ID for a
 mod-specific mutation. Deserializers reject unknown protocol versions, kinds,
 or effect IDs before mutation.
 
-Native card/relic/potion/gold paths do not need to serialize this exact record,
-but they use the same `ApGrantId`, assignment cache, and owner acknowledgment
-rules.
+Native card, relic, and potion paths do not need to serialize this exact record,
+but discrete claims use the same `ApGrantId`, assignment cache, and owner
+acknowledgment rules. Gold is intentionally different: multiple gold receipts
+are materialized by one aggregate button claim and use the cumulative redemption
+contract below rather than one applied ID per receipt.
 
-### 7.3 Phase-one persistence
+### 7.3 Owner-private persistence
 
-Keep the following equivalent fields in `SerializableAP` initially:
+The owning process persists private AP state in a schema-versioned local save or
+slot-scoped DataStorage document. Existing `SerializableAP` fields may be reused
+or split into a dedicated private overlay, but that document is not the
+canonical STS run save and does not become host-owned merely because the
+associated run is multiplayer.
+
+Discrete grants use equivalent fields to:
 
 ```csharp
 public sealed record ApGrantPersistence(
@@ -251,24 +276,50 @@ public sealed record ApGrantPersistence(
     IReadOnlyList<ResolvedGrantAssignment> Assignments);
 ```
 
-- `AppliedGrantIds` is one set for every grant kind. Split ledgers only if a
-  proven requirement appears.
+- `AppliedGrantIds` is one set for discrete grant kinds. Split it only if a
+  proven requirement appears; aggregate gold is not part of this set.
 - `PendingBuffs` is owner-local FIFO state.
 - `Assignments` contains one concrete random result per `ApGrantId`; runtime
   code may index the serialized list as a dictionary.
-- The owning process persists these fields in `SerializableAP` and recovers AP
-  receipt history from its AP server.
-- Every peer also maintains an in-memory applied set for every managed action it
-  executes. Replay/rejoin must reconstruct that set while replaying actions.
+- The owning process persists these fields in its private AP overlay and
+  recovers AP receipt history from its AP server.
 
-If two-client save/rejoin testing shows that action replay cannot reliably
-reconstruct the shared in-memory set, migrate the shared ledger to RitsuLib run
-data. Do not make that migration pre-emptively while `SerializableAP` remains
-manageable.
+Every peer may still need an in-memory applied set for managed actions it
+executes. Replay/rejoin must reconstruct that shared execution state, but it is
+separate from the owner's private AP receipt and acknowledgment state. Use
+RitsuLib run data only when a value genuinely belongs to the replicated run.
+
+### 7.4 Aggregate gold redemption
+
+Gold receipts accumulate in the owner's raw per-character AP bank. The reward
+menu materializes all currently unredeemed raw gold as one immutable button
+claim:
+
+```csharp
+public sealed record ApGoldClaim(
+    int SourceAmount,
+    int GrantedAmount,
+    int RedeemedRawAfter);
+```
+
+`SourceAmount` is the raw AP bank consumed by this click. `GrantedAmount` is the
+concrete wallet mutation after run-specific effects such as Poverty.
+`RedeemedRawAfter` is the owner's cumulative redemption cursor. Only
+`GrantedAmount` is sent through `RewardSynchronizer.SyncLocalObtainedGold`.
+
+The owner persists the raw cursor privately so AP history replay cannot recreate
+an already claimed button. Other peers do not need the raw source or cursor. A
+later gold receipt simply creates a new aggregate claim for the remaining raw
+balance. The first multiplayer implementation does not refund previously
+withheld gold when Poverty is removed; adding that correction requires a later
+explicit contract.
 
 ## 8. AP callback and idempotent execution
 
 ### 8.1 Callback pipeline
+
+The following pipeline is for discrete receipt-backed grants. Aggregate gold
+uses the button-claim and redemption-cursor contract in section 7.4.
 
 ```text
 AP callback on owning process
@@ -391,6 +442,7 @@ Alice receives Ascension Down: Poverty
   -> at the next safe noncombat boundary Alice requests grant.non_combat
   -> the host orders the accepted action
   -> every peer removes Poverty from the shared effective set
+  -> no retrospective multiplayer gold refund is issued in the first implementation
   -> Alice persists and acknowledges the grant
 ```
 
@@ -477,8 +529,8 @@ exposing it to execution or UI.
 | Before assignment is persisted | Recompute with keyed RNG or load the existing cache | Sequential RNG must not be used unless its state is safely committed. |
 | After assignment persistence, before request | Retry the same concrete payload | None beyond normal reconnect delay. |
 | After request, before executor | Do not acknowledge; allow queue/replay or owner retry to deliver it | Transport behavior requires two-client proof. |
-| After primary effect, before owner ledger persistence | Live peers' in-memory set rejects a duplicate request | Owner process loss is the highest-risk window; replay/rejoin must be tested for duplicate effects. |
-| After ledger persistence, before AP acknowledgment | Owner sees the applied ID and reasserts acknowledgment without reapplying | AP/DataStorage acknowledgment must be idempotent. |
+| After primary effect, before owner consumption persistence | Live peers' in-memory set rejects a duplicate discrete request | Owner process loss is the highest-risk window; discrete grants and aggregate gold claims both require replay/rejoin tests. |
+| After owner consumption persistence, before AP acknowledgment | Owner sees the applied ID or cumulative cursor and reasserts acknowledgment without reapplying | AP/DataStorage acknowledgment must be idempotent. |
 | One peer's executor throws | Do not roll back successful peers | Combat checksum detects divergence and follows native failure UX; noncombat needs explicit validation. |
 
 The first implementation should follow native STS2 error handling and observe
@@ -487,10 +539,15 @@ player reaction before designing custom recovery UI.
 ## 13. Persistence, reconnect, and compatibility
 
 - Restore shared STS state from the MegaCrit run snapshot.
-- Restore owner-private pending buffs, assignments, applied IDs, and AP
-  acknowledgment state from `SerializableAP` plus the AP server.
+- Restore each process's private pending buffs, assignments, applied IDs, gold
+  redemption cursors, and AP acknowledgment state from its owner-controlled
+  local/slot-scoped save plus the AP server.
 - Rebuild live peer ledgers through recorded managed-action replay.
 - Never let multiple peers write the same AP DataStorage acknowledgment.
+- Leaving multiplayer preserves the AP session and private deferred receipts but
+  discards that multiplayer `RunState`. Starting singleplayer creates a fresh
+  run and replays deferred items through the existing owner-local processor; it
+  does not convert or fork the multiplayer save.
 - Reject unknown grant kinds, model IDs, and action protocol versions.
 - Refuse AP multiplayer when peers use incompatible multiplayer protocols.
 - Let native STS2 compatibility rules own game-version compatibility.
@@ -505,11 +562,17 @@ player reaction before designing custom recovery UI.
    submitting one buff per owner.
 3. Verify native synchronization for each Progressive Starter transition,
    especially removal and Orobas transformations during run initialization.
-4. Verify that RitsuLib lobby contributions arrive before Ready validation and
-   that the host Ascension set is committed identically on every peer.
-5. Test every crash window in the table, especially owner loss after effect but
-   before `SerializableAP` persistence.
-6. Decide the detailed synchronization contract for Death Link separately.
+4. Verify that RitsuLib `StartRunLobby` contributions arrive before Ready
+   validation and that the host Ascension set is committed identically on every
+   peer.
+5. Test every crash window in the table, especially owner loss after an effect
+   but before private AP persistence.
+6. Prove host and client owners can restore their own AP overlays independently
+   of the host's canonical MegaCrit run save.
+7. Leave a multiplayer run, start a fresh singleplayer run in the same AP
+   session, and verify deferred items are processed exactly once without loading
+   the discarded multiplayer `RunState`.
+8. Decide the detailed synchronization contract for Death Link separately.
 
 ## 15. Evidence and validation boundaries
 

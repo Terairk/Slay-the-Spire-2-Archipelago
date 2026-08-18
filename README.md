@@ -5,7 +5,9 @@ Archipelago Client & APWorld for STS2
 # Download the Latest Playable Release [Here](https://github.com/dlueben1/Slay-the-Spire-2-Archipelago/releases/latest)
 
 > [!IMPORTANT]
-> We **currently** support the Beta Branch (v0.111.0), and also the Main Branch of the game! (v.107.1) The Beta Branch may break our mod whenever it updates so be aware if a fix could take several days to fix and hence we recommend using the Main Branch (though Beta Branch does work for now).
+> We currently target the **Beta Branch (v0.111.0) exclusively**. The Main Branch
+> is not supported by this client build. Beta updates may require a corresponding
+> mod update before the client works again.
 
 ## 1.0 Development onwards
 

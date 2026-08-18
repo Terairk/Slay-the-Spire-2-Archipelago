@@ -23,7 +23,7 @@ Examples:
 ```text
 Private AP cause                     Replicated STS consequence
 ----------------                     --------------------------
-Alice received item index 73         Alice gains 50 gold
+Alice clicks her aggregate gold row  Alice gains the concrete wallet amount
 Alice selected a private relic       Alice obtains Vajra
 Alice bought an AP shop location     Alice loses 120 gold
 Alice received a combat buff         Alice gains Strength 2
@@ -34,6 +34,8 @@ Owner-only operations include:
 - sending AP checks;
 - updating local checked/used state;
 - AP data-storage writes;
+- maintaining aggregate source accounting such as the raw gold redemption
+  cursor and the Poverty calculation applied when a claim is materialized;
 - local AP notifications; and
 - private candidate caching.
 
@@ -54,9 +56,19 @@ MegaCrit `RewardSynchronizer` messages do not carry this field; owner-side AP
 deduplication and MegaCrit's reliable message lifecycle may be sufficient for
 those standard operations.
 
+Not every native reward maps one-to-one to an AP receipt. Gold receipts form one
+owner-private raw bank and the UI materializes all currently unredeemed gold as
+one aggregate claim. Only the resulting wallet amount is replicated. The owner
+persists a cumulative raw redemption cursor so receipt-history replay cannot
+offer the same aggregate twice. The first implementation does not refund gold
+when Poverty is later removed; that correction is deliberately unsupported
+rather than inferred from remote-private accounting.
+
 ## Consequences
 
 - Remote peers do not need another player's complete AP item history.
+- Remote peers do not need another player's raw gold consumption calculation;
+  they reproduce only the concrete wallet mutation.
 - Private choice candidates may remain private if their generation does not
   mutate replicated RNG, pools, or state.
 - AP capability values need not be replicated when only their final concrete
@@ -64,6 +76,8 @@ those standard operations.
 - If a capability changes an index-based backend list, peers need the derived
   ordered-list specification even if they do not receive the raw capability.
 - AP persistence and MegaCrit run persistence remain separate but coordinated.
+- Leaving multiplayer preserves the owner's AP session and deferred receipts but
+  starts a fresh singleplayer run; it does not convert the multiplayer save.
 
 ## Failure rule
 

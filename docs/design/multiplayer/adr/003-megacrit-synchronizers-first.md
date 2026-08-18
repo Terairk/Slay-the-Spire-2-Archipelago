@@ -71,7 +71,7 @@ mutable game models, AP sessions, or credentials.
 ## Validation required
 
 - Verify each selected MegaCrit API is callable and stable on the supported
-  public game build.
+  beta game build.
 - Verify custom models and payloads serialize between real peers.
 - Verify sequence IDs remain aligned through nested reward and choice flows.
 - Verify singleplayer continues through the same high-level dispatcher.

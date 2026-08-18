@@ -25,8 +25,9 @@ Prove the minimum supported path without converting AP features.
 - Capture the behavior on peer disconnect and rejoin.
 - Prove one RitsuLib managed `NonCombat` action and one managed `Combat` action,
   including requester-local execution, host ordering, and executor failure.
-- Prove RitsuLib `RunSavedData` and `PlayerRunSavedData` lobby contributions
-  arrive before Ready validation and commit into the launched run.
+- Prove RitsuLib `RunSavedData` and `PlayerRunSavedData` `StartRunLobby`
+  contributions arrive before Ready validation and commit into the launched
+  run.
 - Verify the host Ascension set can overwrite and validate every client's local
   calculated set while retaining visible mismatch diagnostics.
 
@@ -52,6 +53,8 @@ behavior.
 - Classify all uses of `GameUtility.CurrentPlayer` as local presentation,
   owner-only AP action, or replicated game mutation.
 - Ensure one AP session and progress object belong to the local STS player.
+- Give each process an owner-controlled AP persistence overlay that is restored
+  independently of the host's canonical multiplayer run save.
 - Preserve main-thread item processing.
 
 ### Exit evidence
@@ -68,11 +71,13 @@ Synchronize the lowest-risk received items through existing MegaCrit APIs.
 
 ### Tasks
 
-- Gold via `SyncLocalObtainedGold`.
+- Aggregate gold-button claims via `SyncLocalObtainedGold`; persist the owner's
+  cumulative raw redemption cursor rather than one applied ID per gold receipt.
 - Relics via `SyncLocalObtainedRelic`.
 - Potions via `SyncLocalObtainedPotion`, preserving the no-slot retry contract.
 - Already-selected cards via `SyncLocalObtainedCard` where semantically valid.
-- Add owner-side duplicate tests keyed by AP slot ID plus received-item index.
+- Add owner-side duplicate tests keyed by AP slot ID plus received-item index for
+  discrete claims, and cumulative-cursor tests for aggregate gold claims.
 - Document failure behavior for AP disconnect during a grant.
 
 ### Exit evidence
@@ -193,10 +198,15 @@ Make the supported topology durable rather than demo-only.
 - Add the RitsuLib lobby protocol contribution and refuse incompatible peers.
 - Block Ready until local AP slot data and received-item history are complete.
 - Force the host effective Ascension set while surfacing client mismatches.
-- Persist pending buffs, concrete assignments, and the applied-grant set in the
-  equivalent `SerializableAP` fields.
+- Persist owner-private pending buffs, concrete assignments, discrete applied
+  IDs, and aggregate redemption cursors in an owner-controlled local or
+  slot-scoped AP save rather than relying on the host's run save.
 - Restore active AP-derived reward/option conversations on rejoin.
-- Verify host and client save ownership.
+- Verify the host restores the canonical MegaCrit `RunState` while every process
+  independently restores the private AP overlay for its own slot.
+- Verify leaving multiplayer and starting a fresh singleplayer run in the same
+  AP session replays deferred items without loading or converting the discarded
+  multiplayer `RunState`.
 - Add targeted diagnostics for owner, transaction, run location, and sequence
   IDs without logging credentials.
 - Document unsupported mixed-version and missing-mod parties.
@@ -204,7 +214,7 @@ Make the supported topology durable rather than demo-only.
 
 ### Exit evidence
 
-- The complete validation matrix passes on the supported public game build.
+- The complete validation matrix passes on the supported beta game build.
 - No singleplayer regression is observed in the same scenarios.
 - Multiplayer limitations and required mod versions are documented.
 
@@ -238,6 +248,7 @@ Run each relevant row with both host ownership assignments when possible.
 | Disconnect before grant | Either | Either | Defined retry/no-apply behavior. |
 | Disconnect after grant | Either | Either | No duplicate after rejoin. |
 | Save and continue | Both | Both | Ownership, AP state, and RunState restored. |
+| Leave multiplayer for singleplayer | Client | N/A | A fresh solo run starts in the same AP session; deferred items process once and no multiplayer RunState is loaded. |
 | Singleplayer regression | Singleplayer | N/A | Existing grant and choice behavior preserved. |
 
 ## Review gates

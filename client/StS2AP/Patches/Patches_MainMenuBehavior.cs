@@ -67,6 +67,17 @@ namespace StS2AP.Patches
         #region Main Menu Patches
 
         /// <summary>
+        /// Delays beta StS2's developer fast-multiplayer action until this process's
+        /// AP slot has connected and prepared. Ordinary fastmp invocations remain native.
+        /// </summary>
+        [HarmonyPatch(typeof(NMainMenu), "CheckCommandLineArgs")]
+        public static class DelayApFastMultiplayerUntilReady
+        {
+            [HarmonyPrefix]
+            public static bool Prefix() => !ApFastMpLaunchController.TryBeginFromCommandLine();
+        }
+
+        /// <summary>
         /// Changes the main menu UI for the Archipelago Mod.
         /// This includes hiding, renaming, and injecting menu options.
         ///
@@ -392,10 +403,45 @@ namespace StS2AP.Patches
             {
                 MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
                 if (ArchipelagoClient.IsConnected)
-                    return true;
+                {
+                    if (!MultiplayerSupport.CanEnterMultiplayerLobby(out _)
+                        && !ArchipelagoClient.TryPrepareCurrentMultiplayerSession(
+                            out string preparationError))
+                    {
+                        LogUtility.Warn(
+                            $"Cannot open AP multiplayer lobby: {preparationError}"
+                        );
+                        NotificationUtility.ShowRawText(preparationError);
+                        return false;
+                    }
+
+                    return MultiplayerSupport.CanEnterMultiplayerLobby(out _);
+                }
 
                 ArchipelagoConnectionUI.InjectUI();
                 ArchipelagoNotificationUI.InjectUI();
+                return false;
+            }
+        }
+
+        /// <summary>Prevents a local ready signal unless this process's AP owner is prepared.</summary>
+        [HarmonyPatch(typeof(NCharacterSelectScreen), "OnEmbarkPressed")]
+        public static class RequireApReadyToEmbark
+        {
+            [HarmonyPrefix]
+            public static bool Prefix(NCharacterSelectScreen __instance)
+            {
+                if (MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer)
+                    return true;
+
+                CharacterModel character = __instance.Lobby.LocalPlayer.character;
+                if (MultiplayerSupport.CanEmbark(character, out string blockedReason))
+                    return true;
+
+                if (__instance.Lobby.LocalPlayer.isReady)
+                    __instance.Lobby.SetReady(ready: false);
+                NotificationUtility.ShowRawText(blockedReason);
+                LogUtility.Warn($"Blocked AP multiplayer embark: {blockedReason}");
                 return false;
             }
         }
@@ -501,6 +547,8 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             private static void OnOpened(NCharacterSelectScreen __instance)
             {
+                MultiplayerSupport.ObserveStartLobby(__instance);
+
                 // Find the first character on the screen
                 Control charButtonContainer = __instance.GetNode<Control>(
                     "CharSelectButtons/ButtonContainer"
@@ -537,6 +585,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             private static void OnClosed(NCharacterSelectScreen __instance)
             {
+                MultiplayerSupport.StopObservingStartLobby(__instance);
                 ArchipelagoCharTrackerUI.RemoveUI();
                 ArchipelagoGoalTrackerUI.RemoveUI();
             }

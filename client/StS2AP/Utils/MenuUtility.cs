@@ -44,16 +44,23 @@ namespace StS2AP.Utils
         }
 
         /// <summary>Continues through MegaCrit's unmodified multiplayer submenu.</summary>
-        public static void OpenMultiplayer()
+        public static NMultiplayerSubmenu? OpenMultiplayer()
         {
             MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
+            if (!MultiplayerSupport.CanEnterMultiplayerLobby(out string blockedReason))
+            {
+                LogUtility.Warn($"Cannot open AP multiplayer lobby: {blockedReason}");
+                NotificationUtility.ShowRawText(blockedReason);
+                return null;
+            }
+
             if (MainMenu == null)
             {
                 LogUtility.Error("Cannot open multiplayer: the main menu is unavailable");
-                return;
+                return null;
             }
 
-            MainMenu.OpenMultiplayerSubmenu();
+            return MainMenu.OpenMultiplayerSubmenu();
         }
 
         /// <summary>

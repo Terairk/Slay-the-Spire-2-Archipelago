@@ -264,18 +264,35 @@ namespace StS2AP
 
         private static ReaderWriterLock ConnectionLock { get; } = new ReaderWriterLock();
         private static readonly object _connectionStateLock = new();
+        private static bool _currentAttemptIsAutomaticReconnect;
 
         /// <summary>
         /// Attempts to connect to an Archipelago room
         /// </summary>
         public static void Connect()
         {
+            ApReconnectController.Stop();
+            BeginConnect(isAutomaticReconnect: false);
+        }
+
+        internal static void ConnectForAutomaticRetry()
+        {
+            if (!ApReconnectController.IsActive)
+                return;
+            BeginConnect(isAutomaticReconnect: true);
+        }
+
+        private static void BeginConnect(bool isAutomaticReconnect)
+        {
             lock (_connectionStateLock)
             {
                 // Ignore if we're already connected or connecting
-                if (State == ConnectionState.Connected || State == ConnectionState.Connecting)
+                if (State != ConnectionState.Disconnected)
                     return;
-                State = ConnectionState.Connecting;
+                State = isAutomaticReconnect
+                    ? ConnectionState.Reconnecting
+                    : ConnectionState.Connecting;
+                _currentAttemptIsAutomaticReconnect = isAutomaticReconnect;
             }
 
             // Setup Data
@@ -293,13 +310,15 @@ namespace StS2AP
             catch (Exception e)
             {
                 LogUtility.Error($"Failed to create Archipelago session: {e.Message}");
-                Disconnect();
+                Disconnect(showMultiplayerNotice: !isAutomaticReconnect);
+                if (isAutomaticReconnect)
+                    ApReconnectController.OnAttemptFailed();
                 return;
             }
 
             lock (_connectionStateLock)
             {
-                if (State != ConnectionState.Connecting)
+                if (State is not ConnectionState.Connecting and not ConnectionState.Reconnecting)
                 {
                     LogUtility.Debug("Discarding an Archipelago session after connection was cancelled");
                     _ = Task.Run(() => connectionSession.Socket.DisconnectAsync());
@@ -334,24 +353,41 @@ namespace StS2AP
                 Callable
                     .From(() =>
                     {
-                        ConnectionLock.AcquireWriterLock(30000);
                         try
+                        {
+                            ConnectionLock.AcquireWriterLock(30000);
+                            try
+                            {
+                                LoginResult loginResult;
+                                try
+                                {
+                                    loginResult = connectionSession.TryConnectAndLogin(
+                                        Game,
+                                        PlayerName,
+                                        ItemsHandlingFlags.AllItems,
+                                        new Version(APVersion),
+                                        password: ServerPassword,
+                                        requestSlotData: SlotData.Count == 0
+                                    );
+                                }
+                                catch (Exception ex)
+                                {
+                                    loginResult = new LoginFailure(ex.ToString());
+                                }
+
+                                HandleConnectResult(connectionSession, loginResult);
+                            }
+                            finally
+                            {
+                                ConnectionLock.ReleaseWriterLock();
+                            }
+                        }
+                        catch (Exception ex)
                         {
                             HandleConnectResult(
                                 connectionSession,
-                                connectionSession.TryConnectAndLogin(
-                                    Game,
-                                    PlayerName,
-                                    ItemsHandlingFlags.AllItems,
-                                    new Version(APVersion),
-                                    password: ServerPassword,
-                                    requestSlotData: SlotData.Count == 0
-                                )
+                                new LoginFailure(ex.ToString())
                             );
-                        }
-                        finally
-                        {
-                            ConnectionLock.ReleaseWriterLock();
                         }
                     })
                     .CallDeferred();
@@ -375,16 +411,19 @@ namespace StS2AP
         )
         {
             string outText;
+            bool wasAutomaticReconnect;
             lock (_connectionStateLock)
             {
                 if (
-                    State != ConnectionState.Connecting
+                    State is not ConnectionState.Connecting and not ConnectionState.Reconnecting
                     || !ReferenceEquals(Session, connectionSession)
                 )
                 {
                     LogUtility.Debug("Ignoring a stale Archipelago login result");
                     return;
                 }
+
+                wasAutomaticReconnect = _currentAttemptIsAutomaticReconnect;
 
                 if (result.Successful)
                 {
@@ -399,6 +438,23 @@ namespace StS2AP
                 // Store Session information
                 SlotData = success.SlotData;
                 Seed = connectionSession.RoomState.Seed;
+
+                int apTeamId = connectionSession.ConnectionInfo.Team;
+                int apSlotId = connectionSession.ConnectionInfo.Slot;
+                if (!MultiplayerSupport.ValidateApSessionIdentity(
+                        Seed,
+                        apTeamId,
+                        apSlotId,
+                        out string identityError))
+                {
+                    LogUtility.Error($"Refusing Archipelago reconnect: {identityError}");
+                    ApReconnectController.Stop(identityError);
+                    Disconnect();
+                    NotificationUtility.ShowRawText(
+                        "Archipelago reconnected to a different room or slot. This run remains disconnected."
+                    );
+                    return;
+                }
 
                 // Log all slot data
                 LogUtility.Info("Dumping Slot Data:");
@@ -491,7 +547,9 @@ namespace StS2AP
                 );
 
                 // End the connection
-                Disconnect();
+                Disconnect(showMultiplayerNotice: !wasAutomaticReconnect);
+                if (wasAutomaticReconnect)
+                    ApReconnectController.OnAttemptFailed();
             }
         }
 
@@ -575,7 +633,9 @@ namespace StS2AP
         public static void OnConnected()
         {
             LogUtility.Success("Successfully Connected to Archipelago Server");
-            MultiplayerSupport.OnApSessionConnected();
+            int apTeamId = Session.ConnectionInfo.Team;
+            int apSlotId = Session.ConnectionInfo.Slot;
+            MultiplayerSupport.NoteApSessionConnected(Seed, apTeamId, apSlotId);
 
             // Restore checked locations from server so "Claimed" state survives restarts
             CheckedLocations = new List<long>(Session.Locations.AllLocationsChecked);
@@ -585,16 +645,7 @@ namespace StS2AP
 
             // A fresh session's checked-location list is authoritative, so this is the safe
             // point to discard confirmed outbox entries and replay anything still missing.
-            if (MultiplayerSupport.IsMultiplayerScope)
-            {
-                LogUtility.Info(
-                    "Deferring the existing location-check outbox in experimental multiplayer"
-                );
-            }
-            else
-            {
-                PendingCheckUtility.ReconcileAndSend();
-            }
+            PendingCheckUtility.ReconcileAndSend();
 
             try
             {
@@ -632,6 +683,7 @@ namespace StS2AP
             catch (Exception ex)
             {
                 LogUtility.Error($"Failed to load player settings: {ex.Message}");
+                ApReconnectController.Stop("AP slot settings could not be prepared");
                 Disconnect();
                 ArchipelagoConnectionUI.SetConnectButtonEnabled(true);
                 ArchipelagoConnectionUI.SetCloseButtonEnabled(true);
@@ -639,7 +691,23 @@ namespace StS2AP
                 return;
             }
 
-            SetupUnlockedCharacters();
+            if (MultiplayerSupport.IsMultiplayerScope)
+            {
+                if (!TryPrepareCurrentMultiplayerSession(out string preparationError))
+                {
+                    LogUtility.Error($"AP multiplayer preparation failed: {preparationError}");
+                    ApReconnectController.Stop(preparationError);
+                    Disconnect();
+                    ArchipelagoConnectionUI.SetConnectButtonEnabled(true);
+                    ArchipelagoConnectionUI.SetCloseButtonEnabled(true);
+                    ArchipelagoConnectionUI.SetStatus(preparationError);
+                    return;
+                }
+            }
+            else
+            {
+                SetupUnlockedCharacters();
+            }
 
             // Pre-scout all locations so we have item info available for notifications
             ThreadPool.QueueUserWorkItem(_ => PreScoutAllLocations());
@@ -656,6 +724,42 @@ namespace StS2AP
             Callable
                 .From(() => ConnectionStateChanged?.Invoke(ConnectionState.Connected))
                 .CallDeferred();
+            if (ApReconnectController.IsActive)
+                ApReconnectController.OnConnected();
+        }
+
+        /// <summary>
+        /// Rebuilds the approved multiplayer receipt profile from authoritative SDK history,
+        /// then advances both callback watermarks so the SDK's initial replay cannot double-count it.
+        /// </summary>
+        internal static bool TryPrepareCurrentMultiplayerSession(out string reason)
+        {
+            reason = string.Empty;
+            if (!IsConnected || Session == null)
+            {
+                reason = "Archipelago is not connected.";
+                return false;
+            }
+
+            IReadOnlyList<ItemInfo> receivedItems = Session.Items.AllItemsReceived;
+            // A different AP owner may have used this process previously. Rebuild the
+            // selectable set only from this slot's settings and authoritative history.
+            Progress.UnlockedCharacters.Clear();
+            SetupUnlockedCharacters();
+            if (!MultiplayerSupport.PrepareApSession(
+                    Seed,
+                    Session.ConnectionInfo.Team,
+                    Session.ConnectionInfo.Slot,
+                    receivedItems,
+                    out reason))
+            {
+                return false;
+            }
+
+            Patches_ItemProcessor.ClearQueue();
+            Index = receivedItems.Count;
+            Patches_ItemProcessor.LastIndexHandled = Index;
+            return true;
         }
 
         /// <summary>
@@ -714,7 +818,7 @@ namespace StS2AP
         /// <summary>
         /// Cleans up our Session with Archipelago
         /// </summary>
-        public static void Disconnect()
+        public static void Disconnect(bool showMultiplayerNotice = true)
         {
             ArchipelagoSession? session;
             lock (_connectionStateLock)
@@ -729,6 +833,7 @@ namespace StS2AP
                 session = Session;
                 Session = null;
                 State = ConnectionState.Disconnected;
+                _currentAttemptIsAutomaticReconnect = false;
             }
 
             if (session != null)
@@ -745,6 +850,7 @@ namespace StS2AP
             // Clear session queues so stale entries don't carry over after reconnecting
             BuffUtility.ClearQueue();
             NotificationUtility.ClearQueue();
+            MultiplayerSupport.OnApDisconnected();
 
             // Let the game know that we've disconnected
             Callable
@@ -754,13 +860,17 @@ namespace StS2AP
             // An already-received AP item remains authoritative. The experimental multiplayer
             // slice may therefore claim banked gold while AP itself is offline; only a MegaCrit
             // peer disconnect invalidates multiplayer claims.
-            if (MultiplayerSupport.IsExperimentalMultiplayerRun)
+            if (MultiplayerSupport.IsMultiplayerScope)
             {
-                Callable.From(() => NotificationUtility.ShowRawText(
-                    "Disconnected from Archipelago. Already received rewards remain available."
-                )).CallDeferred();
+                if (showMultiplayerNotice)
+                {
+                    string message = MultiplayerSupport.IsRealMultiplayerRun
+                        ? "Disconnected from Archipelago. Already received rewards remain available."
+                        : "Disconnected from Archipelago. Embark is disabled until reconnection completes.";
+                    Callable.From(() => NotificationUtility.ShowRawText(message)).CallDeferred();
+                }
             }
-            else
+            else if (showMultiplayerNotice)
             {
                 // Existing singleplayer behavior prompts the user to leave or recover the run.
                 Callable.From(GameUtility.ShowOptionsOnLostConnection).CallDeferred();
@@ -782,7 +892,7 @@ namespace StS2AP
             if (IsConnectionTerminatingError(e, message))
             {
                 LogUtility.Warn("Connection-terminating error detected. Initiating disconnect...");
-                Disconnect();
+                HandleUnexpectedDisconnect();
             }
         }
 
@@ -822,7 +932,27 @@ namespace StS2AP
         private static void OnSocketSessionEnd(string reason)
         {
             LogUtility.Warn($"Socket session ended: {reason}");
-            Disconnect();
+            HandleUnexpectedDisconnect();
+        }
+
+        private static void HandleUnexpectedDisconnect()
+        {
+            bool shouldReconnect;
+            lock (_connectionStateLock)
+            {
+                // SocketClosed can arrive after an intentional Disconnect, and ErrorReceived
+                // plus SocketClosed may describe the same failure. Claim the transition once.
+                if (State == ConnectionState.Disconnected)
+                    return;
+
+                shouldReconnect =
+                    MultiplayerSupport.IsMultiplayerScope
+                    && MultiplayerSupport.PreparedApRoomSeed != null;
+                Disconnect();
+            }
+
+            if (shouldReconnect)
+                ApReconnectController.Begin();
         }
 
         /// <summary>

@@ -51,7 +51,11 @@ players through MegaCrit synchronization.
   player's AP session.
 - Multiplayer save/reconnect must restore the association between local Net ID
   and local AP state.
+- Private AP persistence remains owned by each process rather than becoming
+  host-owned merely because the MegaCrit run save is host-owned.
 - The first release should require every peer to run a compatible mod protocol.
+
+See ADR 004 for persistence across multiplayer and fresh singleplayer runs.
 
 ## Rejected alternatives
 
@@ -69,6 +73,6 @@ data-storage writes, and unclear ownership of received rewards.
 ## Validation required
 
 - Confirm `LocalContext` remains stable across host/client start, load, and
-  reconnect on the supported public game build.
+  reconnect on the supported beta game build.
 - Confirm the mod can reject incompatible peer protocol versions before AP
   models or messages are deserialized.

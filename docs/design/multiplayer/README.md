@@ -24,6 +24,9 @@ claim that multiplayer currently works.
 - [ADR 003: Use MegaCrit synchronizers before custom transport](adr/003-megacrit-synchronizers-first.md)
   describes when to use native synchronization and when an AP-specific message
   is justified.
+- [ADR 004: Keep AP persistence player-owned across run modes](adr/004-player-owned-ap-persistence.md)
+  separates each process's private AP overlay from the host-owned run save and
+  defines the fresh-singleplayer handoff.
 
 ## Status vocabulary
 
@@ -38,13 +41,13 @@ RFC and add or supersede an ADR rather than silently changing the architecture.
 
 ## Review workflow
 
-1. Review the three proposed ADRs first.
+1. Review the four proposed ADRs first.
 2. Resolve the open questions in the RFC.
 3. Complete the Phase 0 two-client spike from the roadmap.
 4. Amend the RFC with runtime findings.
 5. Mark accepted ADRs before beginning broad feature conversion.
 
 All runtime-sensitive statements must distinguish decompiled-source evidence
-from two-client in-game evidence. The supported public game build should be
+from two-client in-game evidence. The supported beta game build should be
 rechecked before implementation because multiplayer internals are not a stable
 mod API.
