@@ -1,87 +1,160 @@
-# ADR 004: Keep AP persistence player-owned across run modes
+# ADR 004: Keep owner-private AP recovery local and reconstructible
 
-- **Status:** Proposed
-- **Date:** 2026-08-18
+- **Status:** Accepted
+- **Date:** 2026-08-19
 
 ## Context
 
-MegaCrit persists an active multiplayer run through the host's canonical run
-save, while every process owns a separate AP connection and slot. Host ownership
-of the STS save must not make the host responsible for another player's AP
-receipt history, private reward accounting, or server acknowledgments.
+MegaCrit persists an active multiplayer run only through the original host's
+canonical run save. Each AP-bound process owns a separate AP connection and
+slot. Guests have no AP identity or owner-private AP state.
 
-A player may also leave a disposable multiplayer run and return to the existing
-singleplayer AP flow. That transition must preserve the AP session and deferred
-receipts without pretending the discarded multiplayer run is a valid solo save.
+Copying every player's AP journal into the host save would make the host carry
+private state it neither owns nor interprets. Mirroring the same journal into
+both local storage and AP DataStorage would introduce two recovery authorities.
+Neither approach eliminates catastrophic loss; it only adds another layer to a
+Swiss-cheese failure model.
+
+The design therefore needs a deliberate boundary between supported recovery
+and accepted loss.
 
 ## Decision
 
-Each process owns and durably restores its private AP overlay through its AP
-server, slot-scoped DataStorage, or a local client save. Existing
-`SerializableAP` fields may be reused or split into a dedicated overlay, but
-that owner-private document is not the canonical STS run save and its ownership
-is independent of the host's MegaCrit run save.
+The original host's save is the only canonical STS run save for an opaque
+`RunId`. Host authority cannot transfer during that run. If the host save is
+lost, the multiplayer run is lost.
 
-The gold spike uses a RitsuLib `SaveScope.Global` slot with cloud sync disabled.
-Its logical path is
-`<STS account save root>/mod_data/Archipelago/multiplayer_gold.json`; records
-inside the document are further scoped by AP room seed, numeric AP team ID,
-numeric AP slot ID, and STS run identity.
+The host save contains only AP data required to interpret the shared run:
 
-Private owner state includes, where applicable:
+- the opaque `RunId`;
+- the frozen STS Net ID to `Guest` or AP room/team/slot mapping;
+- the applied-effect ledger for every replicated AP effect; and
+- AP-derived shared state that MegaCrit does not already serialize.
 
-- deferred received items and pending owner-only work;
-- resolved private reward assignments;
-- discrete receipt consumption and AP acknowledgment state; and
-- aggregate accounting such as the raw gold redemption cursor.
+It does not contain another owner's pending checks, private reward candidates,
+raw received history, aggregate cursors, AP acknowledgment state, or AP
+credentials.
 
-Actual decks, relics, potions, wallet gold, map state, combat state, and other
-MegaCrit gameplay state remain in replicated `RunState`. Shared AP launch
-contracts or AP-derived state that every peer must reproduce may use RitsuLib
-run data, but credentials and raw AP history never do.
+Each AP-bound process durably writes one schema-versioned owner-local AP journal
+scoped by `RunId`, AP room seed, numeric team ID, and numeric slot ID. The
+journal may contain:
 
-## Run-mode handoff
+- prepared concrete reward assignments and pending selectable rewards;
+- owner-private aggregate cursors;
+- pending buffs and pending owner-only checks; and
+- submitted effects awaiting comparison with the host ledger.
 
-Leaving multiplayer and selecting singleplayer starts a fresh AP run in the same
-AP session. The owner replays received history and deferred items through the
-normal item processor according to the fresh run's reset rules.
+Use an atomic local write. Do not mirror the journal into AP DataStorage in the
+initial design. The journal improves exact recovery but is reconstructible and
+is not a second canonical copy of the shared run.
 
-The handoff does not:
+## Shared commit and save timing
 
-- continue, fork, or convert the multiplayer `RunState`;
-- copy the multiplayer deck, wallet, map, RNG, or remote players; or
-- transfer AP authority to the former STS host.
+A replicated AP effect and its effect ID are applied by the same host-ordered
+operation. They enter the same host checkpoint. The host relies on normal safe
+MegaCrit multiplayer save boundaries; it does not force a full save after every
+AP effect and does not run an independent periodic save timer.
+
+Orderly quit, disconnect, or desynchronization may request an additional save
+only when MegaCrit exposes a safe serialization boundary. That save is
+best-effort. A crash before the next checkpoint rolls back both effect and
+ledger, so AP reconciliation may replay the effect. A checkpoint containing the
+effect also contains its ledger ID and suppresses replay.
+
+The owner writes a concrete `Prepared` record before submitting an effect and
+updates it after learning that the host committed it. If the owner loses the
+outcome between those points, the record is simply awaiting reconciliation:
+host-ledger presence means committed; absence from the restored checkpoint
+means it may be retried with the prepared payload.
+
+## Reconnect and salvage
+
+The original host loads the checkpoint for the same `RunId`. Only the frozen
+participants may rejoin: an AP-bound player must present the same AP room seed,
+team ID, and slot ID, while a guest rejoins as the same guest STS identity. An
+AP-bound disconnected player remains bound but AP-suspended; it does not become
+a guest.
+
+An AP-bound player reconciles as follows:
+
+1. restore the owner-local journal when available;
+2. fetch `AllReceivedItems` and checked locations from the AP server;
+3. accept every matching host-ledger ID as already committed;
+4. prepare or replay received effects absent from the restored host ledger; and
+5. rewrite the local journal from the reconciled result.
+
+If the entire local journal is missing or corrupt, salvage from AP history and
+the host ledger. Previously committed shared effects remain protected by the
+host ledger. Uncommitted assignments may be regenerated, and checks or private
+state that cannot be inferred may be lost. Cross-machine continuation, exact
+recovery after owner-local data loss, and protection against every combination
+of lost stores are unsupported. The run may become stronger than intended
+during salvage; that is accepted rather than adding more persistence replicas.
+
+Failure is isolated to the affected AP owner. That player may remain in STS as
+bound but AP-suspended while other players continue.
+
+## Singleplayer run identity
+
+Singleplayer uses the same opaque `RunId` rule even though its MegaCrit and AP
+state are normally saved in one envelope. Starting New Run creates a new
+in-memory `RunId`, but the previous checkpoint remains the last recoverable
+checkpoint until the new run reaches a safe save boundary and replaces it. If
+the process fails before that boundary, loading the old checkpoint resumes its
+old `RunId`; its AP state never attaches to the unsaved new run. This remains
+true even when both runs use the same STS seed in the same AP room.
+
+Leaving multiplayer and selecting singleplayer starts a fresh `RunId` in the
+same AP session. It never continues, forks, or converts the multiplayer
+`RunState`.
 
 ## Consequences
 
-- Host and client AP owners use the same private persistence contract.
-- A host run-save failure does not erase another player's recoverable AP state.
-- The owner-private overlay must be scoped by AP room/seed, team, slot, and any
-  run identity needed to prevent state leaking between unrelated sessions.
-- Shared STS effects still require native synchronization or an ordered RitsuLib
-  managed action; private persistence is not a networking mechanism.
-- Save/rejoin tests must restore both the host-provided `RunState` and each
-  process's independently owned AP overlay.
+- The host save stays small and contains only shared-run AP facts.
+- AP DataStorage is not required for multiplayer recovery.
+- A normal owner crash can preserve exact assignments through the local
+  journal; catastrophic journal loss degrades to best-effort reconstruction.
+- Unsent owner checks are not copied into a host-side outbox. If both the local
+  record and any derivable run evidence are lost, that check is lost.
+- A different machine is not promised to resume an AP-bound participant.
+- The save model has an explicit stopping point instead of adding replicas for
+  progressively less likely failures.
 
 ## Rejected alternatives
 
 ### Put every player's AP state in the host run save
 
-This couples private AP recovery to host save ownership and makes the host carry
-state it does not interpret or own.
+This couples private AP recovery to host save ownership, expands the shared
+schema, and still fails if the host save is lost.
 
-### Convert the multiplayer run into a singleplayer continuation
+### Mirror the owner journal into AP DataStorage
 
-This would require a separate design for player removal, Net ID rebinding,
-shared RNG/map ownership, and remote-player state. It is outside the intended
-fresh-run handoff.
+This creates two stores that need precedence and conflict rules. It also cannot
+help while AP is unreachable. It may be added later as an explicitly
+non-authoritative backup if cross-machine continuation becomes a requirement.
+
+### Put pending owner checks in a host-side outbox
+
+This lowers one failure probability but adds another owner-private persistence
+surface to the host. The design instead accepts loss after simultaneous local
+record loss and failed reconstruction.
+
+### Convert or rehost the multiplayer run
+
+Converting to singleplayer or transferring host authority requires player
+removal, Net ID rebinding, shared RNG/map ownership, and save transfer. It is
+outside the supported model.
 
 ## Validation required
 
-- Host and client owners restore their own AP overlays after process restart.
-- Replayed AP receipt history does not duplicate consumed discrete rewards or an
-  aggregate gold claim.
-- Leaving multiplayer and starting a fresh singleplayer run processes deferred
-  items once and never loads the discarded multiplayer `RunState`.
-- No credentials or raw AP session objects appear in peer messages or the host's
-  shared run data.
+- Crash before a host checkpoint: effect and ledger both roll back, then replay
+  once.
+- Crash after a host checkpoint: effect and ledger both restore, with no replay.
+- Rejoin restores the exact frozen guest/AP mapping and rejects another slot.
+- Missing owner journal salvages committed effects from the host ledger and new
+  receipts from `AllReceivedItems` without claiming exact recovery.
+- Starting a new singleplayer run uses a new `RunId`, preserves the previous
+  checkpoint until the first safe replacement save, and never mixes their AP
+  state.
+- No credentials, raw AP history, pending-check outbox, or remote private
+  journal appears in host run data.

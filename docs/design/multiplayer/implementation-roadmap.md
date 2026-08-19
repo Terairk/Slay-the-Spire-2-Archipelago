@@ -28,6 +28,8 @@ Prove the minimum supported path without converting AP features.
 - Prove RitsuLib `RunSavedData` and `PlayerRunSavedData` `StartRunLobby`
   contributions arrive before Ready validation and commit into the launched
   run.
+- Prove an AP-bound host and a guest host can each launch with the correct
+  authoritative Ascension source.
 - Verify the host Ascension set can overwrite and validate every client's local
   calculated set while retaining visible mismatch diagnostics.
 
@@ -52,15 +54,19 @@ behavior.
   `Player.CreateForNewRun` callback.
 - Classify all uses of `GameUtility.CurrentPlayer` as local presentation,
   owner-only AP action, or replicated game mutation.
-- Ensure one AP session and progress object belong to the local STS player.
-- Give each process an owner-controlled AP persistence overlay that is restored
-  independently of the host's canonical multiplayer run save.
+- Model each local player as either AP-bound to one exact identity or a guest
+  with no AP connection or progress object.
+- Give each AP-bound process an atomic owner-local journal that is restored
+  independently of the host's canonical multiplayer run save and is treated as
+  reconstructible during catastrophic-loss salvage.
+- Assign an opaque `RunId` and freeze the guest/AP identity mapping at launch.
 - Preserve main-thread item processing.
 
 ### Exit evidence
 
 - Existing singleplayer source behavior remains intact.
-- In a two-client run, each process binds its AP context to its own player.
+- In a two-client run, each AP-bound process binds its AP context to its own
+  player, while a guest has no AP authority and an empty reward menu.
 - Remote player creation does not reset local AP progress or send Press Start.
 
 ## Phase 2: Simple out-of-combat grants
@@ -76,8 +82,9 @@ Synchronize the lowest-risk received items through existing MegaCrit APIs.
 - Relics via `SyncLocalObtainedRelic`.
 - Potions via `SyncLocalObtainedPotion`, preserving the no-slot retry contract.
 - Already-selected cards via `SyncLocalObtainedCard` where semantically valid.
-- Add owner-side duplicate tests keyed by AP slot ID plus received-item index for
-  discrete claims, and cumulative-cursor tests for aggregate gold claims.
+- Add host-ledger duplicate tests keyed by `RunId`, AP team/slot, and
+  received-item index for discrete claims, plus cumulative-cursor effect-ID
+  tests for aggregate gold claims.
 - Document failure behavior for AP disconnect during a grant.
 
 ### Exit evidence
@@ -169,16 +176,18 @@ Convert effects that do not fit the standard reward transport.
 
 - Synchronize concrete Progressive Starter deck/relic transitions through the
   native path where available and a managed action where it is not.
-- Initialize from the host Ascension set and route each later Ascension Down as
-  a concrete managed noncombat removal at the next safe boundary.
+- Initialize from the original host's Ascension set. Route only an AP-bound
+  host's later Ascension Downs as concrete managed noncombat removals; process
+  every non-host Down as an owner-local no-op.
 - Register the host-ordered RitsuLib combat-buff action with `ApGrantId`.
 - Persist one FIFO per AP owner and submit at most its head at combat start.
 - Apply at most one universal buff per player per combat through the synchronized
   action, with receipts during combat deferred to the next combat.
 - Define Death Link ownership, incoming effect synchronization, and
   feedback-loop suppression.
-- Implement the single applied-grant set, assignment cache, owner-only AP
-  acknowledgment, and crash-window diagnostics from the RFC.
+- Implement the host-owned applied-effect ledger, owner-local prepared
+  assignment cache, owner-only AP acknowledgment, and crash-window diagnostics
+  from the RFC.
 
 ### Exit evidence
 
@@ -196,17 +205,28 @@ Make the supported topology durable rather than demo-only.
 ### Tasks
 
 - Add the RitsuLib lobby protocol contribution and refuse incompatible peers.
-- Block Ready until local AP slot data and received-item history are complete.
-- Force the host effective Ascension set while surfacing client mismatches.
-- Persist owner-private pending buffs, concrete assignments, discrete applied
-  IDs, and aggregate redemption cursors in an owner-controlled local or
-  slot-scoped AP save rather than relying on the host's run save.
+- Block Ready for an AP-bound player until local slot data and received-item
+  history are complete; guests have no AP readiness gate.
+- Force the original host's effective Ascension set: AP-derived for an AP-bound
+  host and manually selected for a guest host.
+- Persist the `RunId`, frozen guest/AP mapping, and applied shared-effect ledger
+  in host run data alongside the shared effects.
+- Persist owner-private pending buffs/checks, concrete assignments, submitted
+  effects, and aggregate redemption cursors in one atomic local journal. Do not
+  mirror it into AP DataStorage or the host save.
 - Restore active AP-derived reward/option conversations on rejoin.
 - Verify the host restores the canonical MegaCrit `RunState` while every process
-  independently restores the private AP overlay for its own slot.
+  independently restores the local AP journal for its own slot, or performs the
+  explicitly lossy host-ledger plus `AllReceivedItems` salvage path.
+- Accept rejoins only from the frozen participants. Do not support host
+  migration, rehosting, or a different AP room/team/slot.
+- Save at normal safe MegaCrit checkpoints, with only best-effort extra saves on
+  orderly quit or a safe disconnect/desynchronization boundary.
 - Verify leaving multiplayer and starting a fresh singleplayer run in the same
-  AP session replays deferred items without loading or converting the discarded
-  multiplayer `RunState`.
+  AP session creates a new `RunId` and replays deferred items without loading or
+  converting the discarded multiplayer `RunState`. Preserve the preceding
+  singleplayer checkpoint until the fresh run's first safe replacement save;
+  loading that checkpoint must resume only its original `RunId` and AP state.
 - Add targeted diagnostics for owner, transaction, run location, and sequence
   IDs without logging credentials.
 - Document unsupported mixed-version and missing-mod parties.
@@ -225,6 +245,8 @@ Run each relevant row with both host ownership assignments when possible.
 | Scenario | Host | Client | Expected evidence |
 |---|---|---|---|
 | Local ownership | AP Alice | AP Bob | Each process resolves itself as local and the other as remote. |
+| Guest client | AP Alice | Guest Bob | Bob may choose any character, has an empty AP menu, and sends no AP operations. |
+| Guest host | Guest Alice | AP Bob | Alice's manual Ascension set is shared; Bob's AP Ascension settings and Downs do not alter it. |
 | Gold grant | Recipient | Observer | Both copies of recipient gain the same amount once. |
 | Relic grant | Observer | Recipient | Both copies obtain the same relic once. |
 | Potion with slot | Recipient | Observer | Both copies obtain the potion. |
@@ -237,17 +259,20 @@ Run each relevant row with both host ownership assignments when possible.
 | Shop AP purchase | Recipient | Observer | Owner-only check, matching gold loss. |
 | Ancient native choice | Recipient | Observer | Same event options and selected relic. |
 | Lobby protocol mismatch | Host | Client | Ready/run launch is refused with a clear reason. |
-| Lobby Ascension mismatch | Host set A | Client calculates B | Client is overwritten with A and the mismatch remains visible in diagnostics. |
+| Lobby Ascension mismatch | AP host set A | Client calculates B | Client is overwritten with A and the mismatch remains visible in diagnostics. |
 | Combat buff | Recipient | Observer | Same power and checksum after ordered action. |
 | Five queued combat buffs | Recipient | Observer | Exactly one FIFO buff applies per combat for five combats. |
 | Buff received during combat | Recipient | Observer | No current-combat mutation; buff applies once next combat. |
-| Ascension Down during combat | Recipient | Observer | Shared set changes once at the next safe noncombat boundary. |
+| Host Ascension Down during combat | Recipient host | Observer | Shared set changes once at the next safe noncombat boundary. |
+| Non-host Ascension Down | Observer host | Recipient client | Client processes a local no-op; the shared set does not change. |
 | Death Link receive | Recipient | Observer | Same HP/death state and no outgoing feedback loop. |
 | Floor/goal check | Both | Both | Each AP owner reports its own location exactly once. |
 | Duplicate AP callback | Recipient | Observer | Grant applied once. |
 | Disconnect before grant | Either | Either | Defined retry/no-apply behavior. |
 | Disconnect after grant | Either | Either | No duplicate after rejoin. |
 | Save and continue | Both | Both | Ownership, AP state, and RunState restored. |
+| Owner journal missing | Host ledger present | Rejoining AP owner | Salvage from host ledger and AP history; exact private choices/checks are not promised. |
+| Wrong-slot rejoin | Original host | Different AP identity | Rejoin is refused without rebinding the player. |
 | Leave multiplayer for singleplayer | Client | N/A | A fresh solo run starts in the same AP session; deferred items process once and no multiplayer RunState is loaded. |
 | Singleplayer regression | Singleplayer | N/A | Existing grant and choice behavior preserved. |
 

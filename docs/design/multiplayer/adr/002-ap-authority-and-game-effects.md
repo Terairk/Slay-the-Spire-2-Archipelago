@@ -1,7 +1,7 @@
 # ADR 002: Separate AP authority from replicated game effects
 
-- **Status:** Proposed
-- **Date:** 2026-08-17
+- **Status:** Accepted
+- **Date:** 2026-08-19
 
 ## Context
 
@@ -48,13 +48,19 @@ Custom AP transports should carry an idempotency key derived from the AP
 receipt and owner, conceptually:
 
 ```csharp
-ApGrantId(OwnerNetId, Team, Slot, ReceivedItemIndex)
+ApGrantId(RunId, Team, Slot, ReceivedItemIndex)
 ```
 
-The final identity format remains open pending save/reconnect testing. Existing
-MegaCrit `RewardSynchronizer` messages do not carry this field; owner-side AP
-deduplication and MegaCrit's reliable message lifecycle may be sufficient for
-those standard operations.
+Aggregate claims and other effects that are not one-to-one with a received item
+use an equivalent stable effect ID derived from the `RunId`, AP owner, effect
+kind, and owner-private sequence or cursor.
+
+The host-owned run state contains the applied-effect ledger for every
+replicated AP effect. Applying the concrete effect and adding its effect ID must
+be one host-ordered operation and must reach the same MegaCrit checkpoint.
+Owner-side persistence is useful for preparing exact payloads and AP
+acknowledgment, but it is not the canonical answer to whether an effect belongs
+to the restored shared run.
 
 Not every native reward maps one-to-one to an AP receipt. Gold receipts form one
 owner-private raw bank and the UI materializes all currently unredeemed gold as
@@ -76,18 +82,30 @@ rather than inferred from remote-private accounting.
 - If a capability changes an index-based backend list, peers need the derived
   ordered-list specification even if they do not receive the raw capability.
 - AP persistence and MegaCrit run persistence remain separate but coordinated.
+- On reconnect, the AP owner compares AP received history and its local journal
+  with the host ledger. A host-ledger hit is committed; an absent ID is prepared
+  or replayed against the restored checkpoint.
 - Leaving multiplayer preserves the owner's AP session and deferred receipts but
   starts a fresh singleplayer run; it does not convert the multiplayer save.
 
 ## Failure rule
 
 An AP server failure must not cause peers to apply different MegaCrit effects.
-The implementation must define the commit point for each operation without
-introducing speculative rollback of authoritative AP items.
+The commit point is the host-ordered application of the concrete effect plus its
+shared ledger ID. A submitted owner transaction whose outcome is not yet known
+waits for reconciliation; after a restored checkpoint, ledger presence means
+committed and absence means the exact prepared payload may be retried.
+
+The host persists at normal safe MegaCrit checkpoints rather than forcing a
+full disk save after every AP effect. A crash before the next checkpoint rolls
+back both effect and ledger, allowing replay. Orderly quit, disconnect, or
+desynchronization may request an extra safe save on a best-effort basis.
 
 ## Validation required
 
 - Duplicate receipt callbacks apply each grant once.
 - Disconnect/rejoin does not reapply a completed grant.
+- A host crash before and after a checkpoint produces respectively one replay
+  or no replay.
 - Owner-only AP operations are absent from remote logs.
 - Both peers finish with identical relevant `RunState` fields.

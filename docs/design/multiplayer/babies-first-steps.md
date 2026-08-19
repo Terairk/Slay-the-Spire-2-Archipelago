@@ -29,6 +29,10 @@ parts are:
 - AP ownership remains local to the receiving process; and
 - every peer must mutate its replica of the same owning player.
 
+This spike requires both test processes to bind AP slots. The accepted target
+topology in ADR 001 additionally permits guests with no AP identity; that later
+decision does not retroactively broaden this disposable gold-only scaffold.
+
 The gold path now sits behind the common AP grant dispatcher:
 
 ```text
@@ -41,8 +45,8 @@ AP gold receipts update the owner's raw bank
 ```
 
 This milestone does not exercise RitsuLib managed actions, `StartRunLobby`
-run-data staging, the host Ascension contract, or replay reconstruction of
-remote in-memory ledgers. Those remain separate runtime proofs.
+run-data staging, the host Ascension contract, or reconstruction of the
+host-persisted applied-effect ledger. Those remain separate runtime proofs.
 
 ## Agreed first-spike contract
 
@@ -166,14 +170,16 @@ before moving into the allowlist.
 
 Before another received-item category builds on this spike:
 
-1. Extend the common AP grant dispatcher with composite `ApGrantId` handling for
-   discrete receipt-backed grants.
+1. Extend the common AP grant dispatcher with `RunId`-scoped `ApGrantId`
+   handling and a host-owned applied-effect ledger for discrete receipt-backed
+   grants.
 2. Keep aggregate gold on `RewardSynchronizer.SyncLocalObtainedGold`; one button
    click synchronizes one wallet grant, not one action per gold receipt.
-3. Add private applied IDs and resolved assignments where discrete grants
-   require them. Gold's cumulative raw cursor is already local and owner-owned.
-4. Stage the multiplayer protocol, AP readiness, slot-to-Net-ID mapping, and
-   host effective Ascension set through RitsuLib `StartRunLobby` run data.
+3. Add owner-local prepared assignments where discrete grants require them.
+   Gold's cumulative raw cursor is already local and owner-owned.
+4. Stage the multiplayer protocol, `RunId`, guest/AP identity mapping, AP-owner
+   readiness, and host effective Ascension set through RitsuLib `StartRunLobby`
+   run data.
 5. Prove duplicate callback and acknowledgment boundaries in both
    host-recipient and client-recipient directions.
 

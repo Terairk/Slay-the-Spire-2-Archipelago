@@ -17,16 +17,16 @@ claim that multiplayer currently works.
   implementation deferred until the multiplayer grant pipeline exists.
 - [Implementation roadmap](implementation-roadmap.md) breaks the design into
   reviewable phases and supplies a two-client validation matrix.
-- [ADR 001: One AP slot per STS player](adr/001-one-ap-slot-per-sts-player.md)
+- [ADR 001: At most one AP slot per STS player](adr/001-one-ap-slot-per-sts-player.md)
   proposes the supported connection topology.
 - [ADR 002: Separate AP authority from replicated game effects](adr/002-ap-authority-and-game-effects.md)
   defines the main state-ownership boundary.
 - [ADR 003: Use MegaCrit synchronizers before custom transport](adr/003-megacrit-synchronizers-first.md)
   describes when to use native synchronization and when an AP-specific message
   is justified.
-- [ADR 004: Keep AP persistence player-owned across run modes](adr/004-player-owned-ap-persistence.md)
-  separates each process's private AP overlay from the host-owned run save and
-  defines the fresh-singleplayer handoff.
+- [ADR 004: Keep owner-private AP recovery local and reconstructible](adr/004-player-owned-ap-persistence.md)
+  defines the minimal host save, local recovery journal, accepted-loss boundary,
+  and fresh-singleplayer handoff.
 
 ## Status vocabulary
 
@@ -41,7 +41,7 @@ RFC and add or supersede an ADR rather than silently changing the architecture.
 
 ## Review workflow
 
-1. Review the four proposed ADRs first.
+1. Review the four ADRs first.
 2. Resolve the open questions in the RFC.
 3. Complete the Phase 0 two-client spike from the roadmap.
 4. Amend the RFC with runtime findings.
