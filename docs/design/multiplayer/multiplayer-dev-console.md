@@ -1,7 +1,7 @@
 # Multiplayer developer-console requirements
 
-- **Status:** Read-only grant inspection implemented; mutation/JSON providers deferred
-- **Last updated:** 2026-08-18
+- **Status:** Read-only grant, lobby, run-data, and ledger source implemented; runtime unverified; mutation/JSON providers deferred
+- **Last updated:** 2026-08-19
 
 ## 1. Purpose
 
@@ -18,6 +18,9 @@ the existing server-command passthrough. Its supported commands are:
 ```text
 ap !command
 ap state
+ap state lobby
+ap state run
+ap state ledger
 ap state grants
 ap state assignments
 ap state multiplayer
@@ -97,14 +100,23 @@ Initial provider names are:
 
 | Provider | Minimum content |
 |---|---|
-| `summary` | Run, local player, AP slot, connection, protocol, claimable/applied/blocked and error counts |
-| `lobby` | Contributions, Ready blockers, host Ascension set, client mismatch diagnostics |
+| `summary` | Run, local player, AP slot, connection and component versions, claimable/applied/blocked and error counts |
+| `lobby` | Derived host Net ID, contribution visibility, `RunId`, host Ascension set, each player's identity, `ApHistoryComplete`, per-player blocker, and recomputed host contribution validation |
+| `run` | Canonical committed `RunId`, derived host Net ID, participant mapping, host Ascension set, and ledger count |
+| `ledger` | Sorted applied-effect IDs from the canonical run-data ledger |
 | `grants` | Claimable/applied/blocked IDs, route, owner, last attempt, acknowledgment state |
 | `buffs` | Per-owner FIFO, next buff, last combat attempt |
 | `assignments` | Grant ID to concrete cached assignment and domain |
 | `rng` | Registered RitsuLib stream names and assignment-domain versions, never mutable RNG internals unless safe |
 | `connection` | AP connectivity and history-processing readiness without credentials |
 | `multiplayer` | Net ID mapping, host/client role, managed-action registration and last execution status |
+
+`lobby`, `run`, and `ledger` are implemented read-only probes. The lobby output
+states its visibility explicitly: host output contains the merged peer
+contributions and is authoritative for launch validation; client output may
+contain only its local contribution. Therefore, checking whether Bob's
+`ApHistoryComplete` reached Alice must be done with `ap state lobby` on Alice's
+host process.
 
 JSON mode should serialize a versioned envelope so tooling can distinguish
 schema changes:
@@ -148,3 +160,24 @@ exists. At that point decide:
 
 No part of this document authorizes direct executor calls or an unsynchronized
 multiplayer mutation command.
+
+## 7. Explicit foundation test cases
+
+Run these on the supported two-process game environment. They are runtime
+tests; source inspection alone does not satisfy them.
+
+| Case | Host command/evidence | Client command/evidence |
+|---|---|---|
+| Host identity | `ap state lobby` reports `hostNetId` equal to `localNetId` | `ap state lobby` reports the same host ID, different from the client's local ID |
+| AP history contribution | Host output contains the AP client's Net ID with complete room/team/slot, `apHistoryComplete=yes`, and `contributionValidation=ready` once all players are complete | Client output contains its own complete contribution; absence of the host contribution here is allowed |
+| Guest contribution | Host output contains the guest Net ID with `identity=guest` and `readyBlocker=none` | Guest has no AP identity and the AP reward menu remains empty |
+| AP disconnect in lobby | Host shows the bound AP player's `apHistoryComplete=no`, becomes unready if necessary, and disables Ready | Client becomes unready/blocked and does not turn into a guest |
+| Client-last Ready race | Keep the host Ready, then make the client's latest record incomplete before the client readies | Host refuses the all-ready launch, unreaddies itself, and reports the blocking Net ID |
+| Committed launch mapping | `ap state run` reports a nonempty `RunId`, the same host ID, and all participants | Client reports the same `RunId`, host ID, and participant mapping |
+| Empty ledger | `ap state ledger` reports empty before any replicated AP effect | Same |
+| Ledger commit | After one ordered AP effect, the effect ID appears exactly once | The same effect ID appears exactly once |
+| Checkpoint restore | Save/continue retains the effect ID and does not reapply the effect | Rejoined client receives the same restored ledger |
+
+The source implementation now uses the same derived validation for host Ready
+presentation and the final all-ready launch guard. Runtime confirmation of the
+ordering and automatic-unready behavior remains required.

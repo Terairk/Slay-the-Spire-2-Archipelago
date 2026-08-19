@@ -62,6 +62,7 @@ namespace StS2AP
                     defaultFactory: () => new MultiplayerGrantState(),
                     autoCreateIfMissing: true
                 );
+                ApRunData.Initialize();
             }
             ModSettingsRegistration.Register();
 

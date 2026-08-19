@@ -16,7 +16,7 @@ namespace StS2AP.Utils
         public override string CmdName => "ap";
 
         public override string Args =>
-            "!command | state [summary|grants|assignments|multiplayer|grant <slot:index>]";
+            "!command | state [summary|lobby|run|ledger|grants|assignments|multiplayer|grant <slot:index>]";
 
         public override string Description =>
             "Sends an AP server command or inspects AP runtime state";

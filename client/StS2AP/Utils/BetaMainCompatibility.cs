@@ -1,5 +1,7 @@
 ﻿using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace StS2AP.Utils;
@@ -10,6 +12,66 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class BetaMainCompatibility
 {
+    /// <summary>
+    /// Resolves the authoritative MegaCrit host from live network state. Do not duplicate this
+    /// value in AP run data: a host process owns its own <see cref="INetGameService.NetId"/>,
+    /// while a client is explicitly told the same identity by
+    /// <see cref="NetClientGameService.HostNetId"/>. AP does not support host migration.
+    /// </summary>
+    public static bool TryGetHostNetId(INetGameService netService, out ulong hostNetId)
+    {
+        hostNetId = default;
+        if (netService.Type == NetGameType.Singleplayer)
+        {
+            hostNetId = netService.NetId;
+            return true;
+        }
+
+        if (!netService.IsConnected)
+            return false;
+
+        switch (netService.Type)
+        {
+            case NetGameType.Host:
+                hostNetId = netService.NetId;
+                return true;
+            case NetGameType.Client when netService is NetClientGameService client:
+                hostNetId = client.HostNetId;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Enumerates StartRunLobby player IDs without binding to the public-branch LobbyPlayer or
+    /// beta-branch StartRunLobbyPlayer element type. Keep this reflection boundary until both
+    /// supported game branches expose one stable lobby-player type.
+    /// </summary>
+    public static IReadOnlyList<ulong> GetLobbyPlayerNetIds(object lobby)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+        object players = AccessTools.Property(lobby.GetType(), "Players")?.GetValue(lobby)
+            ?? throw new MissingMemberException(lobby.GetType().FullName, "Players");
+        if (players is not System.Collections.IEnumerable sequence)
+            throw new InvalidCastException($"{lobby.GetType().FullName}.Players is not enumerable.");
+
+        var netIds = new List<ulong>();
+        foreach (object player in sequence)
+        {
+            object? rawNetId = AccessTools.Field(player.GetType(), "id")?.GetValue(player)
+                ?? AccessTools.Property(player.GetType(), "id")?.GetValue(player);
+            if (rawNetId is not ulong netId)
+            {
+                throw new InvalidCastException(
+                    $"Could not read a UInt64 from {player.GetType().FullName}.id."
+                );
+            }
+            netIds.Add(netId);
+        }
+        return netIds;
+    }
+
     /// <summary>
     /// Marks an Encounter card reward as combat-sourced on beta branches. The flag does not
     /// exist on the public branch, so resolve it by name to preserve public compatibility.

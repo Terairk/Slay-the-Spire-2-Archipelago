@@ -176,7 +176,7 @@ Convert effects that do not fit the standard reward transport.
 
 - Synchronize concrete Progressive Starter deck/relic transitions through the
   native path where available and a managed action where it is not.
-- Initialize from the original host's Ascension set. Route only an AP-bound
+- Initialize from the fixed host's Ascension set. Route only an AP-bound
   host's later Ascension Downs as concrete managed noncombat removals; process
   every non-host Down as an owner-local no-op.
 - Register the host-ordered RitsuLib combat-buff action with `ApGrantId`.
@@ -204,16 +204,33 @@ Make the supported topology durable rather than demo-only.
 
 ### Tasks
 
-- Add the RitsuLib lobby protocol contribution and refuse incompatible peers.
-- Block Ready for an AP-bound player until local slot data and received-item
-  history are complete; guests have no AP readiness gate.
-- Force the original host's effective Ascension set: AP-derived for an AP-bound
+- Stage each player's AP/guest identity and `ApHistoryComplete` contribution
+  through RitsuLib, then make the host require a complete contribution for
+  every active Net ID before launch.
+- Block Ready for an AP-bound player until local slot data and initial
+  received-item history reconstruction are complete; claiming or applying every
+  pending reward is not required. Guests have no AP readiness gate.
+- **TODO — owner consumption and rejoin readiness:** persist consumed AP receipt
+  indices (the multiplayer equivalent of singleplayer `UsedItems`), the
+  aggregate-gold redemption cursor, stable card/relic/potion/Ancient
+  assignments, and pending/submitted/confirmed grant state in the owner's
+  durable local journal. On rejoin, `ApHistoryComplete` must not become true
+  merely because `AllReceivedItems` was enumerated: first restore that journal,
+  reconcile it with current AP history and the host's applied-effect ledger,
+  subtract already consumed receipts, add genuinely new receipts, and restore
+  stable assignments. If the journal is missing, enter the explicit lossy
+  salvage path and accept possible excess power rather than claiming an exact
+  restore.
+- Derive the host Net ID from `INetGameService.NetId` on the host and
+  `NetClientGameService.HostNetId` on clients; do not persist a duplicate.
+- Force the fixed host's effective Ascension set: AP-derived for an AP-bound
   host and manually selected for a guest host.
-- Persist the `RunId`, frozen guest/AP mapping, and applied shared-effect ledger
+- Persist the `RunId`, committed guest/AP mapping, and applied shared-effect ledger
   in host run data alongside the shared effects.
-- Persist owner-private pending buffs/checks, concrete assignments, submitted
-  effects, and aggregate redemption cursors in one atomic local journal. Do not
-  mirror it into AP DataStorage or the host save.
+- Persist owner-private consumed receipt indices, pending buffs/checks, concrete
+  assignments, submitted/confirmed effects, and aggregate redemption cursors
+  in one atomic local journal. Do not mirror it into AP DataStorage or the host
+  save.
 - Restore active AP-derived reward/option conversations on rejoin.
 - Verify the host restores the canonical MegaCrit `RunState` while every process
   independently restores the local AP journal for its own slot, or performs the
@@ -258,8 +275,11 @@ Run each relevant row with both host ownership assignments when possible.
 | Six campfire checks | Recipient | Observer | Same AP option count/order and selected operation. |
 | Shop AP purchase | Recipient | Observer | Owner-only check, matching gold loss. |
 | Ancient native choice | Recipient | Observer | Same event options and selected relic. |
-| Lobby protocol mismatch | Host | Client | Ready/run launch is refused with a clear reason. |
-| Lobby Ascension mismatch | AP host set A | Client calculates B | Client is overwritten with A and the mismatch remains visible in diagnostics. |
+| Lobby AP history complete | Host | AP client | Host `ap state lobby` shows the client's contribution and `apHistoryComplete=yes` before launch. |
+| Lobby AP history incomplete | Host | Disconnected AP client | Host sees `readyBlocker=ap-history-incomplete`, automatically unreadies, and refuses launch; the player does not silently become a guest. |
+| Client-last Ready race | Ready host | AP client with newly incomplete record | Final host guard refuses launch and schedules host auto-unready. |
+| Host identity derivation | Host | Client | Host sees `hostNetId=localNetId`; client derives that same host ID through `HostNetId`. |
+| Lobby Ascension authority | AP or guest host | Client | Client is overwritten with the host's effective set; no client-calculated diagnostic copy is persisted. |
 | Combat buff | Recipient | Observer | Same power and checksum after ordered action. |
 | Five queued combat buffs | Recipient | Observer | Exactly one FIFO buff applies per combat for five combats. |
 | Buff received during combat | Recipient | Observer | No current-combat mutation; buff applies once next combat. |
@@ -286,4 +306,4 @@ Before merging implementation for a phase:
 - Two-client host/client test for the phase.
 - Save/reconnect test where state persists.
 - Log review for duplicate AP checks or grants.
-- Documentation update for any changed protocol or limitation.
+- Documentation update for any changed payload schema or limitation.

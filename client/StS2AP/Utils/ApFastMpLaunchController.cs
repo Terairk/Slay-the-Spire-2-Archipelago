@@ -108,7 +108,7 @@ internal static class ApFastMpLaunchController
         string? slot = NormalizeOptionalArgument(CommandLineHelper.GetValue(SlotArgument));
 
         _state = LaunchState.WaitingForAp;
-        MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
+        MultiplayerSupport.BeginApBoundMultiplayerEntry();
         ArchipelagoConnectionUI.InjectUI(serverOverride: server, slotNameOverride: slot);
         ArchipelagoNotificationUI.InjectUI();
 

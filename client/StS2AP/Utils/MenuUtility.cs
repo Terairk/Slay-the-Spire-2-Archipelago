@@ -46,7 +46,7 @@ namespace StS2AP.Utils
         /// <summary>Continues through MegaCrit's unmodified multiplayer submenu.</summary>
         public static NMultiplayerSubmenu? OpenMultiplayer()
         {
-            MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
+            MultiplayerSupport.BeginMultiplayerEntry();
             if (!MultiplayerSupport.CanEnterMultiplayerLobby(out string blockedReason))
             {
                 LogUtility.Warn($"Cannot open AP multiplayer lobby: {blockedReason}");

@@ -380,6 +380,12 @@ namespace StS2AP.UI
             var currentPlayer = GameUtility.CurrentPlayer;
             if (currentPlayer == null) return;
 
+            if (MultiplayerSupport.IsLocalGuest)
+            {
+                ShowRewards(new List<ArchipelagoRewardData>());
+                return;
+            }
+
             // Normally this happens on receipt or checkpoint load. Retrying here keeps an
             // unexpected assignment failure recoverable without another tracking state.
             // AP_MP: Mirrored relics are populated on every peer only after their Sidecar spec.

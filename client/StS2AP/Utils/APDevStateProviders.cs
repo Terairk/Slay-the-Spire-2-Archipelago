@@ -1,5 +1,6 @@
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Models;
 
@@ -11,6 +12,7 @@ namespace StS2AP.Utils;
 /// </summary>
 public sealed record ApDevStateContext(
     RunState? RunState,
+    StartRunLobby? StartLobby,
     Player? LocalPlayer,
     IReadOnlyList<ApGrantSnapshot> Grants,
     IReadOnlyList<string> Arguments
@@ -34,6 +36,9 @@ public static class ApDevStateProviders
             new GrantsProvider(),
             new AssignmentsProvider(),
             new MultiplayerProvider(),
+            new LobbyProvider(),
+            new RunDataProvider(),
+            new LedgerProvider(),
             new GrantProvider(),
         }.ToDictionary(provider => provider.Name, StringComparer.OrdinalIgnoreCase);
 
@@ -56,8 +61,10 @@ public static class ApDevStateProviders
         try
         {
             RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            MultiplayerSupport.TryGetObservedStartLobby(out StartRunLobby startLobby);
             var context = new ApDevStateContext(
                 runState,
+                startLobby,
                 GameUtility.CurrentPlayer,
                 ApMirroredRewardDispatcher.CaptureGrantSnapshots().ToArray(),
                 arguments.ToArray()
@@ -77,7 +84,7 @@ public static class ApDevStateProviders
         string LocalPlayer,
         string ApSlot,
         string Connection,
-        string Protocol,
+        string Versions,
         bool InitialItemsLoaded,
         string RewardClaims,
         int Total,
@@ -138,7 +145,7 @@ public static class ApDevStateProviders
                 $"localPlayer={state.LocalPlayer}",
                 $"apSlot={state.ApSlot}",
                 $"connection={state.Connection}",
-                $"protocol={state.Protocol}",
+                $"versions={state.Versions}",
                 $"initialItemsLoaded={YesNo(state.InitialItemsLoaded)}",
                 $"rewardClaims={state.RewardClaims}",
                 $"grants total={state.Total} claimable={state.Claimable} applied={state.Applied} blocked={state.Blocked}",
@@ -229,6 +236,201 @@ public static class ApDevStateProviders
         }
     }
 
+    private sealed record LobbySnapshot(
+        string Role,
+        string LocalNetId,
+        string HostNetId,
+        string Visibility,
+        string ContributionValidation,
+        string RunId,
+        string HostEffectiveAscensions,
+        IReadOnlyList<string> Players
+    );
+
+    /// <summary>
+    /// Makes the RitsuLib lobby-contribution path observable. In particular, running this on
+    /// the host proves whether each client's ApHistoryComplete contribution reached the host;
+    /// client output is intentionally not treated as an authoritative view of other players.
+    /// </summary>
+    private sealed class LobbyProvider : IApDevStateProvider
+    {
+        public string Name => "lobby";
+
+        public object Capture(ApDevStateContext context)
+        {
+            StartRunLobby lobby = context.StartLobby
+                ?? throw new InvalidOperationException(
+                    "No AP multiplayer start lobby is currently displayed."
+                );
+            INetGameService netService = lobby.NetService;
+            string hostNetId = BetaMainCompatibility.TryGetHostNetId(netService, out ulong hostId)
+                ? hostId.ToString()
+                : "unavailable";
+            string runId = ApRunData.TryGetLobbySharedState(lobby, out ApRunSharedState shared)
+                ? FormatRunId(shared.RunId)
+                : "missing";
+            string hostAscensions = shared?.HostEffectiveAscensions.Count > 0
+                ? string.Join(",", shared.HostEffectiveAscensions)
+                : "pending";
+
+            var players = new List<string>();
+            foreach (ulong netId in BetaMainCompatibility.GetLobbyPlayerNetIds(lobby))
+            {
+                if (!ApRunData.TryGetLobbyPlayerState(lobby, netId, out ApPlayerRunState state))
+                {
+                    players.Add($"netId={netId} contribution=missing readyBlocker=missing-contribution");
+                    continue;
+                }
+
+                string identity = state.Participation == ApParticipationKind.Guest
+                    ? "guest"
+                    : state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null
+                        ? "incomplete"
+                        : $"room={Quote(state.ApRoomSeed)} team={state.ApTeamId} slot={state.ApSlotId}";
+                string blocker = ApRunData.GetLobbyContributionBlocker(state) ?? "none";
+                players.Add(
+                    $"netId={netId} participation={state.Participation} identity={identity} "
+                        + $"apHistoryComplete={YesNo(state.ApHistoryComplete)} readyBlocker={blocker}"
+                );
+            }
+
+            string visibility = netService.Type == NetGameType.Host
+                ? "authoritative host staging; merged peer contributions"
+                : "local client staging; other-player contributions may be absent";
+            string contributionValidation;
+            if (netService.Type != NetGameType.Host)
+            {
+                contributionValidation = "not-authoritative-on-client";
+            }
+            else if (ApRunData.TryValidateHostLobbyContributions(lobby, out string reason))
+            {
+                contributionValidation = "ready";
+            }
+            else
+            {
+                contributionValidation = $"blocked ({reason})";
+            }
+            return new LobbySnapshot(
+                netService.Type.ToString(),
+                netService.NetId.ToString(),
+                hostNetId,
+                visibility,
+                contributionValidation,
+                runId,
+                hostAscensions,
+                players
+            );
+        }
+
+        public string FormatHumanReadable(object snapshot)
+        {
+            var state = (LobbySnapshot)snapshot;
+            return string.Join(Environment.NewLine, new[]
+            {
+                "AP lobby run data",
+                $"role={state.Role} localNetId={state.LocalNetId} hostNetId={state.HostNetId}",
+                $"visibility={state.Visibility}",
+                $"contributionValidation={state.ContributionValidation}",
+                $"runId={state.RunId} hostEffectiveAscensions=[{state.HostEffectiveAscensions}]",
+                $"players=[{string.Join("; ", state.Players)}]",
+            });
+        }
+    }
+
+    private sealed record RunDataSnapshot(
+        string Role,
+        string LocalNetId,
+        string HostNetId,
+        string RunId,
+        string HostEffectiveAscensions,
+        int AppliedEffectCount,
+        IReadOnlyList<string> Players
+    );
+
+    private sealed class RunDataProvider : IApDevStateProvider
+    {
+        public string Name => "run";
+
+        public object Capture(ApDevStateContext context)
+        {
+            RunState runState = context.RunState
+                ?? throw new InvalidOperationException("No active run exists.");
+            INetGameService netService = RunManager.Instance.NetService;
+            string hostNetId = BetaMainCompatibility.TryGetHostNetId(netService, out ulong hostId)
+                ? hostId.ToString()
+                : "unavailable";
+            if (!ApRunData.TryGetSharedState(runState, out ApRunSharedState shared))
+                throw new InvalidOperationException("The active run has no ap_run saved-data slot.");
+
+            var players = new List<string>();
+            foreach (Player player in runState.Players)
+            {
+                if (!ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState state))
+                {
+                    players.Add($"netId={player.NetId} contribution=missing");
+                    continue;
+                }
+
+                string identity = state.Participation == ApParticipationKind.Guest
+                    ? "guest"
+                    : state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null
+                        ? "incomplete"
+                        : $"room={Quote(state.ApRoomSeed)} team={state.ApTeamId} slot={state.ApSlotId}";
+                players.Add(
+                    $"netId={player.NetId} participation={state.Participation} identity={identity}"
+                );
+            }
+
+            return new RunDataSnapshot(
+                netService.Type.ToString(),
+                netService.NetId.ToString(),
+                hostNetId,
+                FormatRunId(shared.RunId),
+                shared.HostEffectiveAscensions.Count > 0
+                    ? string.Join(",", shared.HostEffectiveAscensions)
+                    : "pending",
+                shared.AppliedEffectIds.Count,
+                players
+            );
+        }
+
+        public string FormatHumanReadable(object snapshot)
+        {
+            var state = (RunDataSnapshot)snapshot;
+            return string.Join(Environment.NewLine, new[]
+            {
+                "AP canonical run data",
+                $"role={state.Role} localNetId={state.LocalNetId} hostNetId={state.HostNetId}",
+                $"runId={state.RunId} hostEffectiveAscensions=[{state.HostEffectiveAscensions}]",
+                $"appliedEffectCount={state.AppliedEffectCount}",
+                $"players=[{string.Join("; ", state.Players)}]",
+            });
+        }
+    }
+
+    private sealed class LedgerProvider : IApDevStateProvider
+    {
+        public string Name => "ledger";
+
+        public object Capture(ApDevStateContext context)
+        {
+            RunState runState = context.RunState
+                ?? throw new InvalidOperationException("No active run exists.");
+            if (!ApRunData.TryGetSharedState(runState, out ApRunSharedState shared))
+                throw new InvalidOperationException("The active run has no ap_run saved-data slot.");
+            return shared.AppliedEffectIds.Order(StringComparer.Ordinal).ToArray();
+        }
+
+        public string FormatHumanReadable(object snapshot)
+        {
+            var effectIds = (IReadOnlyList<string>)snapshot;
+            return effectIds.Count == 0
+                ? "AP applied-effect ledger: empty"
+                : "AP applied-effect ledger" + Environment.NewLine
+                    + string.Join(Environment.NewLine, effectIds);
+        }
+    }
+
     private sealed class GrantProvider : IApDevStateProvider
     {
         public string Name => "grant";
@@ -276,6 +478,9 @@ public static class ApDevStateProviders
             line += $" blockedReason={Quote(grant.BlockedReason)}";
         return line;
     }
+
+    private static string FormatRunId(Guid runId) =>
+        runId == Guid.Empty ? "missing" : runId.ToString("D");
 
     private static string Quote(string value) =>
         $"\"{value.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";

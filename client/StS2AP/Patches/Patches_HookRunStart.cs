@@ -162,6 +162,16 @@ namespace StS2AP.Patches
                 ArchipelagoGoalTrackerUI.RemoveUI();
                 GameUtility.CurrentPlayer = localPlayer;
 
+                if (MultiplayerSupport.IsLocalGuest)
+                {
+                    GameUtility.CurrentConfig = null;
+                    LogUtility.Info(
+                        $"Bound local multiplayer guest: netId={localPlayer.NetId}, "
+                            + $"character={localPlayer.Character.Id.Entry}"
+                    );
+                    return;
+                }
+
                 string officialName = localPlayer.Character.Id.Entry;
                 if (!ArchipelagoClient.Settings.Characters.TryGetValue(
                     officialName,

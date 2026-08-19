@@ -1,7 +1,6 @@
 using Godot;
 using Newtonsoft.Json;
 using StS2AP.Utils;
-using StS2AP.Models;
 using System;
 
 namespace StS2AP.UI
@@ -569,14 +568,9 @@ namespace StS2AP.UI
                 // Hide the connection UI
                 Hide();
 
-                // Continue the play flow that opened this login overlay.
-                if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
-                {
-                    if (!ApFastMpLaunchController.TryResumeAfterApPrepared())
-                        MenuUtility.OpenMultiplayer();
-                }
-                else
-                    MenuUtility.OpenCharacterSelect();
+                // Normal login is connection-only and returns to the main menu. The explicit
+                // developer fast-multiplayer harness is the sole auto-continuation path.
+                ApFastMpLaunchController.TryResumeAfterApPrepared();
             }
             // We failed to connect
             else if (state == ConnectionState.Disconnected)
@@ -592,23 +586,7 @@ namespace StS2AP.UI
         /// </summary>
         private static void OnCloseButtonPressed()
         {
-            // Hide the connection UI
             Hide();
-
-            // Singleplayer login sits over its hidden submenu. Multiplayer login is opened
-            // directly from the main menu and therefore has no submenu to pop.
-            if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
-                return;
-
-            // Pop the submenu stack to return to the main menu
-            try
-            {
-                MenuUtility.SubmenuStack?.Pop();
-            }
-            catch(InvalidOperationException ex)
-            {
-                LogUtility.Error($"Failed to pop submenu stack: {ex.Message}");
-            }
         }
 
         private class ConnectionData

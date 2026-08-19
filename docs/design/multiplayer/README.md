@@ -17,6 +17,9 @@ claim that multiplayer currently works.
   implementation deferred until the multiplayer grant pipeline exists.
 - [Implementation roadmap](implementation-roadmap.md) breaks the design into
   reviewable phases and supplies a two-client validation matrix.
+- [Connection and run-data foundation plan](foundation-scaffold-plan.md) maps
+  the agreed guest/login/save decisions to concrete UI, RitsuLib schema, and
+  dependency-ordered implementation slices.
 - [ADR 001: At most one AP slot per STS player](adr/001-one-ap-slot-per-sts-player.md)
   proposes the supported connection topology.
 - [ADR 002: Separate AP authority from replicated game effects](adr/002-ap-authority-and-game-effects.md)

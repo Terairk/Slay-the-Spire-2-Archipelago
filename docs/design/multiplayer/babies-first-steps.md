@@ -29,9 +29,9 @@ parts are:
 - AP ownership remains local to the receiving process; and
 - every peer must mutate its replica of the same owning player.
 
-This spike requires both test processes to bind AP slots. The accepted target
-topology in ADR 001 additionally permits guests with no AP identity; that later
-decision does not retroactively broaden this disposable gold-only scaffold.
+The original gold proof requires both test processes to bind AP slots. The
+source now also scaffolds ADR 001's guest entry and run-data shapes, but that
+does not constitute a two-client guest or save/rejoin proof.
 
 The gold path now sits behind the common AP grant dispatcher:
 
@@ -52,9 +52,12 @@ host-persisted applied-effect ledger. Those remain separate runtime proofs.
 
 - A visible RitsuLib setting, `Enable Experimental Multiplayer`, defaults off.
 - With the setting off, the mod continues hiding the Multiplayer button.
-- With it on, Multiplayer opens the existing AP login directly. A successful
-  login continues immediately into MegaCrit's normal Host/Join submenu.
-- Every local process connects to its own AP slot in the same AP room/seed.
+- With it on, `AP Multiplayer` opens MegaCrit's Host/Join submenu. A disconnected
+  process enters as a guest; a connected process enters as its prepared AP slot.
+- `Connect to Archipelago` opens login independently. Successful login returns
+  to the main menu, whose status line shows the active server and slot name.
+- `AP Singleplayer` requires a prepared AP connection.
+- The original gold test uses one AP slot per process in the same AP room/seed.
 - The prepared owner identity uses the AP server's numeric team and slot IDs;
   the player name remains only the human-readable AP slot login name.
 - In this narrow spike, MegaCrit owns the lobby, player list, ascension
@@ -78,6 +81,9 @@ host-persisted applied-effect ledger. Those remain separate runtime proofs.
 - An AP disconnect in the lobby automatically unreadies the local player and
   disables Embark. The client retries after 5, 10, 20, and 30 seconds, then
   every 30 seconds; five minutes raises a warning but does not stop STS play.
+- The host cannot Ready until every lobby player has supplied a complete guest
+  or AP record. A later incomplete record automatically unreaddies the host,
+  and the same condition is checked again immediately before native launch.
 - Reconnect accepts only the same AP room/seed, AP team ID, and AP slot ID.
 - Any MegaCrit peer disconnect permanently disables further AP claims for that
   run. The underlying run is not forcibly terminated.
@@ -120,8 +126,11 @@ mod does not synchronize Alice's AP item, AP menu state, or resulting total.
   destination, deferred unsupported items, run-local safety state, and peer
   disconnect handling.
 - `ModSettingsRegistration.cs` exposes the opt-in warning and setting.
-- `Patches_MainMenuBehavior.cs` opens AP login before the native Host/Join flow
-  and hides Load/Abandon for this disposable-run mode.
+- `Patches_MainMenuBehavior.cs` owns the independent connection button, AP
+  Singleplayer/AP Multiplayer entry, guest selection, connection status, and
+  disposable-run Load/Abandon hiding.
+- `ApRunData.cs` registers the shared and per-player canonical run-data shapes;
+  their full validation and ledger integration remain later slices.
 
 ### Local-player binding
 
@@ -177,9 +186,9 @@ Before another received-item category builds on this spike:
    click synchronizes one wallet grant, not one action per gold receipt.
 3. Add owner-local prepared assignments where discrete grants require them.
    Gold's cumulative raw cursor is already local and owner-owned.
-4. Stage the multiplayer protocol, `RunId`, guest/AP identity mapping, AP-owner
-   readiness, and host effective Ascension set through RitsuLib `StartRunLobby`
-   run data.
+4. Stage the `RunId`, guest/AP identity mapping, AP-owner history readiness,
+   and host effective Ascension set through RitsuLib `StartRunLobby` run data.
+   Derive the host Net ID from MegaCrit networking rather than saving it again.
 5. Prove duplicate callback and acknowledgment boundaries in both
    host-recipient and client-recipient directions.
 

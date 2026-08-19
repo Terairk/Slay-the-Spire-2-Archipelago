@@ -5,7 +5,7 @@
 
 ## Context
 
-MegaCrit persists an active multiplayer run only through the original host's
+MegaCrit persists an active multiplayer run only through the fixed host's
 canonical run save. Each AP-bound process owns a separate AP connection and
 slot. Guests have no AP identity or owner-private AP state.
 
@@ -20,7 +20,7 @@ and accepted loss.
 
 ## Decision
 
-The original host's save is the only canonical STS run save for an opaque
+The host's save is the only canonical STS run save for an opaque
 `RunId`. Host authority cannot transfer during that run. If the host save is
 lost, the multiplayer run is lost.
 
@@ -69,7 +69,7 @@ means it may be retried with the prepared payload.
 
 ## Reconnect and salvage
 
-The original host loads the checkpoint for the same `RunId`. Only the frozen
+The host loads the checkpoint for the same `RunId`. Only the committed
 participants may rejoin: an AP-bound player must present the same AP room seed,
 team ID, and slot ID, while a guest rejoins as the same guest STS identity. An
 AP-bound disconnected player remains bound but AP-suspended; it does not become

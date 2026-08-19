@@ -95,6 +95,7 @@ ordinary replicated STS gameplay and never becomes an AP authority.
 
 - Confirm `LocalContext` remains stable across host/client start, load, and
   reconnect on the supported beta game build.
-- Confirm the mod can reject incompatible peer protocol versions before AP
-  models or messages are deserialized.
+- Confirm the host reads every player's complete lobby contribution before
+  launch and that each process derives the same host Net ID from native
+  networking.
 - Confirm the existing unlock patches let guests select every character.

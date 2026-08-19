@@ -26,6 +26,12 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             static void Postfix(ref IEnumerable<CharacterModel> __result)
             {
+                if (!MultiplayerSupport.IsRealMultiplayerRun && MultiplayerSupport.IsLocalGuest)
+                {
+                    __result = ModelDb.AllCharacters;
+                    return;
+                }
+
                 // During the lobby this local override controls only this process's selectable
                 // characters. Once a multiplayer run launches, preserve each serialized remote
                 // player's own UnlockState instead of replacing it with the local AP list.
@@ -55,6 +61,21 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NCharacterSelectScreen __instance)
             {
+                if (MultiplayerSupport.IsLocalGuest)
+                {
+                    if (CharButtonContainerField.GetValue(__instance) is Control guestContainer)
+                    {
+                        foreach (NCharacterSelectButton button in guestContainer
+                                     .GetChildren()
+                                     .OfType<NCharacterSelectButton>())
+                        {
+                            button.Visible = true;
+                            button.UnlockIfPossible();
+                        }
+                    }
+                    return;
+                }
+
                 LogUtility.Debug($"OverrideCharacterSelectMenuOptions: OnSubmenuOpened postfix fired. AvailableCharacters: [{string.Join(", ", ArchipelagoClient.Settings.Characters.Values)}]");
 
                 if (CharButtonContainerField.GetValue(__instance) is not Control container)
@@ -111,6 +132,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NCharacterSelectScreen __instance)
             {
+                if (MultiplayerSupport.IsLocalGuest)
+                    return;
+
                 if (__instance == null)
                 {
                     LogUtility.Debug("SubscribeToUnlockEventOnOpen: __instance is null — skipping subscription");

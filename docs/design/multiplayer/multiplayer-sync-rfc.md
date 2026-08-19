@@ -39,7 +39,6 @@ through either a native MegaCrit synchronizer or a RitsuLib managed action.
   STS host so leaving multiplayer does not discard its AP session or deferred
   receipts.
 - Stage and validate the multiplayer launch contract before Ready is accepted.
-- Refuse to launch when peers use incompatible AP multiplayer protocols.
 - Recover normal crashes exactly while accepting bounded loss after
   catastrophic owner-local storage loss.
 - Accept cooperative assistance from guests and non-host AP players; future
@@ -50,7 +49,7 @@ through either a native MegaCrit synchronizer or a RitsuLib managed action.
 - Allowing a peer without the Archipelago mod to join.
 - Sharing one AP socket among several STS players.
 - Replacing MegaCrit networking with an independent networking stack.
-- Preserving experimental multiplayer saves across protocol changes.
+- Preserving experimental multiplayer saves across incompatible mod versions.
 - Making random assignments stable across different game versions.
 - Distributed rollback or an all-peer success acknowledgment protocol.
 - Converting an in-progress multiplayer `RunState` into a singleplayer save.
@@ -80,8 +79,10 @@ team ID, and numeric slot ID are established in the lobby and frozen for the
 run. A process must never infer ownership from `Players[0]` or from the last
 `Player.CreateForNewRun` call.
 
-The original STS host remains host and save owner for the lifetime of that
-`RunId`. There is no host migration. If the host is AP-bound, that AP slot is
+The STS host remains host and save owner for the lifetime of that `RunId`.
+There is no host migration. Host identity is not persisted as a second AP
+field: the host reads its own `INetGameService.NetId`, while each client reads
+`NetClientGameService.HostNetId`. If the host is AP-bound, that AP slot is
 authoritative for the initial Ascension set and later Ascension Downs. If the
 host is a guest, the host manually selects any Ascension configuration and no AP
 Ascension Downs affect the run.
@@ -93,7 +94,7 @@ Authority is split as follows:
 | AP socket, credentials, received history, checks | Owning AP process | Use the AP server and owner-local journal; never transmit credentials. |
 | AP slot settings | Owning AP process | Keep local unless a derived value is required for launch or a concrete effect. |
 | Guest/AP identity to STS Net ID mapping and `RunId` | Host launch contract | Freeze in the host save; every peer needs the same mapping. |
-| Effective Ascension set | Original STS host | AP-bound host uses AP state; guest host chooses manually. Host value overwrites every client. |
+| Effective Ascension set | Fixed STS host | AP-bound host uses AP state; guest host chooses manually. Host value overwrites every client. |
 | Character selection | Native STS lobby plus AP patches | AP-bound players follow AP unlocks; guests may choose any character. Choices need not match. |
 | Gold, deck, relics, potions, powers | Replicated `RunState` | Every peer must reproduce each mutation. |
 | Pending AP buffs, checks, assignments, and acknowledgment | Owning AP process | Restore locally or salvage from AP history; never copy into a host outbox. |
@@ -179,7 +180,6 @@ general mid-run broadcast mechanism.
 ```csharp
 public sealed record ApLobbyRunState(
     Guid RunId,
-    int ProtocolVersion,
     IReadOnlyList<int> HostEffectiveAscensions);
 
 public sealed record ApLobbyPlayerState(
@@ -187,26 +187,39 @@ public sealed record ApLobbyPlayerState(
     string? ApRoomSeed,
     int? ApTeamId,
     int? ApSlotId,
-    bool ApHistoryComplete,
-    IReadOnlyList<int>? LocallyCalculatedAscensions,
-    string PerPlayerRulesFingerprint);
+    bool ApHistoryComplete);
 ```
 
 The exact serializer shape may change, but the responsibilities must not:
 
 - `RunSavedData<ApLobbyRunState>` stores the host-owned launch contract: opaque
-  `RunId`, protocol version, and the effective Ascension set used by the actual
-  run.
-- `PlayerRunSavedData<ApLobbyPlayerState>` stores each player's frozen guest or
-  AP identity, readiness, and a diagnostic summary of locally derived
-  per-player rules. Its values are keyed by STS player Net ID.
+  `RunId` and the effective Ascension set used by the actual run.
+- `PlayerRunSavedData<ApLobbyPlayerState>` stores each player's guest or AP
+  identity and AP-history readiness. Its values are keyed by STS player Net ID.
 - Shared mod settings that later become part of run generation belong in the
-  host run record. Per-player mod/AP settings may be published as derived
-  capabilities or fingerprints when useful for lobby diagnostics; they do not
-  become equality requirements merely because RitsuLib can synchronize them.
+  host run record. Do not add local calculated copies or fingerprints without a
+  concrete launch rule that consumes them.
 - An AP-bound player cannot become Ready until its AP connection has loaded slot
-  data and processed received-item history. A guest has no AP readiness gate.
-- An incompatible multiplayer protocol version blocks launch.
+  data and ingested the initial received-item history far enough to reconstruct
+  unlocks, progression banks, and pending rewards. Items need not be claimed or
+  applied before Ready. A guest has no AP readiness gate.
+- **Implementation TODO — owner consumption reconciliation:** the current
+  `PrepareApSession` scaffold only enumerates `AllReceivedItems` and reconstructs
+  receipt-derived availability. For a fresh run that is sufficient because no
+  receipt has yet been consumed by that run. For a loaded/rejoined run,
+  `ApHistoryComplete` must remain false until the owner has also restored its
+  durable local journal and reconciled consumed receipt indices, aggregate-gold
+  redemption, stable card/relic/potion/Ancient assignments, and grant states
+  against current AP history and the host's restored applied-effect ledger.
+  This reconciliation does not require claiming every pending reward.
+- With `SyncLobbyOnChange`, each client sends its per-player contribution to the
+  host in RitsuLib's data attached to `LobbyPlayerChangedCharacterMessage` and
+  flushes it with `LobbyPlayerSetReadyMessage`; the host merges it under that
+  client's Net ID before handling Ready. The host contribution is merged
+  locally. The host Ready button is disabled until every active player record
+  is complete and is automatically reset if one becomes incomplete. The host
+  recomputes the same derived condition immediately before launch. This staging
+  is not broadcast back to clients.
 - An AP-bound host's effective Ascension set comes from its AP configuration. A
   guest host may manually select any configuration. The host set overwrites
   every client's local effective set. A disagreement on an AP-bound host is
@@ -232,11 +245,10 @@ and `RunLobby` rejoin snapshots. This makes it useful for durable shared run
 state, but not a substitute for live `RunState` synchronization: mid-run writes
 must still occur through a native synchronizer or ordered managed action.
 
-The `RunId`, protocol version, guest/AP mapping, original host identity, and
-initial host effective Ascension set form a frozen launch contract by design.
-Only an AP-bound original host's later Ascension Downs may change the current
-shared set. That immutability is an AP invariant, not a claim that all data
-associated with the broader lobby layer becomes frozen.
+The `RunId`, guest/AP mapping, and initial host effective Ascension set are
+immutable after the run snapshot is committed. No saved `Frozen` or `Validated`
+boolean represents that invariant. Only an AP-bound host's later Ascension
+Downs may change the current shared set.
 
 ## 7. Grant identity, payload, and persistence
 
@@ -274,7 +286,7 @@ public enum ApGrantKind
 }
 
 public sealed record ApGrantPayload(
-    int ProtocolVersion,
+    int SchemaVersion,
     ApGrantId GrantId,
     ApGrantKind Kind,
     string EffectId,
@@ -284,8 +296,9 @@ public sealed record ApGrantPayload(
 ```
 
 Examples are `EffectId = "strength", Amount = 2` and a concrete model ID for a
-mod-specific mutation. Deserializers reject unknown protocol versions, kinds,
-or effect IDs before mutation.
+mod-specific mutation. Deserializers reject unknown payload schema versions,
+kinds, or effect IDs before mutation. This per-message serialization marker is
+not a global multiplayer protocol field saved in the run.
 
 Native card, relic, and potion paths do not need to serialize this exact record,
 but discrete claims use the same `ApGrantId`, assignment cache, and owner
@@ -391,7 +404,7 @@ model.
 async Task ExecuteManagedGrant(RitsuLibManagedNetActionContext<ApGrantPayload> context)
 {
     var grant = context.Message;
-    ValidateProtocolAndPayload(grant);
+    ValidatePayloadSchemaAndValues(grant);
     ValidateSlotOwnsPlayer(grant.GrantId.ApSlotId, context.Player.NetId);
 
     if (RunApState.AppliedEffectIds.Contains(grant.GrantId))
@@ -484,7 +497,7 @@ for the same player and combat.
 
 ### 10.1 Ascension Down boundary
 
-The lobby initializes every peer from the original host's effective Ascension
+The lobby initializes every peer from the fixed host's effective Ascension
 set. If that host is AP-bound, its later Ascension Downs request transitions of
 the shared set. A guest host has no AP Ascension Downs. A non-host's Ascension
 Down is an owner-local no-op for this run and is never submitted as a shared
@@ -501,7 +514,7 @@ AP-bound host Alice receives Ascension Down: Poverty
   -> Alice persists and acknowledges the grant
 ```
 
-This preserves the original host as the sole Ascension authority. Bob's AP
+This preserves the host as the sole Ascension authority. Bob's AP
 configuration and Ascension Downs never affect Alice's run while Bob is a
 client. There is no later authority transfer that needs to preserve Bob's Downs
 as dormant shared effects. Duplicate host removal is rejected by `ApGrantId`,
@@ -601,12 +614,18 @@ player reaction before designing custom recovery UI.
 ## 13. Persistence, reconnect, and compatibility
 
 - Restore shared STS state from the MegaCrit run snapshot.
-- Restore the opaque `RunId`, frozen guest/AP mapping, and applied shared-effect
-  ledger from the original host's snapshot.
+- Restore the opaque `RunId`, committed guest/AP mapping, and applied
+  shared-effect ledger from the host's snapshot.
 - Restore each AP-bound process's private pending buffs, assignments, gold
-  redemption cursors, checks, and AP acknowledgment state from its local
-  journal plus the AP server. If the journal is missing, salvage rather than
-  promising exact recovery.
+  redemption cursors, checks, AP acknowledgment state, and consumed receipt
+  indices from its local journal plus the AP server. If the journal is missing,
+  salvage rather than promising exact recovery.
+- Rejoin reconciliation order is: restore the owner journal; enumerate current
+  `AllReceivedItems`; remove receipts already consumed by this run; add genuinely
+  new receipts; restore stable concrete assignments and pending grant states;
+  reconcile committed replicated effects against the host ledger; then publish
+  AP readiness. Merely completing the AP SDK history enumeration is not enough
+  for a rejoin.
 - Reject a different room seed, team, or slot for an AP-bound rejoin. A bound
   but disconnected player remains AP-suspended and never becomes a guest.
 - Rebuild live peer ledger state from the host snapshot and normal replay.
@@ -615,18 +634,17 @@ player reaction before designing custom recovery UI.
 - Save at normal safe MegaCrit checkpoints. An orderly quit, disconnect, or
   desynchronization may request an extra safe save, but there is no periodic
   timer and no forced full save after every AP effect.
-- The original host remains host. Loss of the host save ends the run.
+- The host remains host. Loss of the host save ends the run.
 - Leaving multiplayer preserves the AP session and private deferred receipts but
   discards that multiplayer `RunState`. Starting singleplayer creates a fresh
   `RunId` and replays deferred items through the existing owner-local processor;
   it does not convert or fork the multiplayer save. The preceding singleplayer
   checkpoint may remain recoverable until the fresh run reaches its first safe
   replacement save, and loading it resumes its own old `RunId`.
-- Reject unknown grant kinds, model IDs, and action protocol versions.
-- Refuse AP multiplayer when peers use incompatible multiplayer protocols.
+- Reject unknown grant kinds, model IDs, and payload schema versions.
 - Let native STS2 compatibility rules own game-version compatibility.
 - Log AP slot ID, received-item index, owner Net ID, effect kind, execution
-  boundary, and protocol version without logging credentials.
+  boundary, and payload schema version without logging credentials.
 
 ## 14. Open implementation proofs
 
@@ -636,9 +654,9 @@ player reaction before designing custom recovery UI.
    submitting one buff per owner.
 3. Verify native synchronization for each Progressive Starter transition,
    especially removal and Orobas transformations during run initialization.
-4. Verify that RitsuLib `StartRunLobby` contributions arrive before Ready
-   validation and that the host Ascension set is committed identically on every
-   peer.
+4. Verify with `ap state lobby` on the host that every active player contribution
+   arrives before Ready validation, including `ApHistoryComplete`, and that the
+   host Ascension set is committed identically on every peer.
 5. Test every crash window in the table, especially host crash before versus
    after a checkpoint containing an effect and ledger ID.
 6. Prove host and client AP owners can restore their local journals and can

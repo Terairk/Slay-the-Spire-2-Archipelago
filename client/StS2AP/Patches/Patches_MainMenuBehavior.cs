@@ -4,6 +4,8 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
@@ -24,7 +26,10 @@ namespace StS2AP.Patches
     /// </summary>
     public static class Patches_MainMenuBehavior
     {
+        private static NMainMenuTextButton? _singleplayerButton;
         private static NMainMenuTextButton? _multiplayerButton;
+        private static NMainMenuTextButton? _connectButton;
+        private static Label? _connectionStatusLabel;
 
         /// <summary>Refreshes the opt-in multiplayer button after the local setting changes.</summary>
         public static void RefreshMultiplayerButton()
@@ -39,6 +44,55 @@ namespace StS2AP.Patches
                 _multiplayerButton.Disable();
         }
 
+        public static void RefreshConnectionPresentation()
+        {
+            if (_connectionStatusLabel != null
+                && GodotObject.IsInstanceValid(_connectionStatusLabel))
+            {
+                _connectionStatusLabel.Text = ArchipelagoClient.State switch
+                {
+                    ConnectionState.Connected =>
+                        $"Archipelago: Connected to {ArchipelagoClient.ServerAddress} "
+                            + $"with name {ArchipelagoClient.PlayerName}",
+                    ConnectionState.Connecting => "Archipelago: Connecting...",
+                    ConnectionState.Reconnecting => "Archipelago: Reconnecting...",
+                    _ => "Archipelago: Not connected (multiplayer guest available)",
+                };
+            }
+
+            bool canStartSingleplayer = ArchipelagoClient.IsConnected;
+            if (_singleplayerButton != null && GodotObject.IsInstanceValid(_singleplayerButton))
+            {
+                if (canStartSingleplayer)
+                    _singleplayerButton.Enable();
+                else
+                    _singleplayerButton.Disable();
+            }
+
+            if (_connectButton == null || !GodotObject.IsInstanceValid(_connectButton))
+                return;
+
+            bool canConnect = ArchipelagoClient.State == ConnectionState.Disconnected;
+            if (canConnect)
+                _connectButton.Enable();
+            else
+                _connectButton.Disable();
+
+            if (_connectButton.label != null)
+            {
+                _connectButton.label.Text = ArchipelagoClient.State switch
+                {
+                    ConnectionState.Connected => "Archipelago Connected",
+                    ConnectionState.Connecting => "Connecting to Archipelago...",
+                    ConnectionState.Reconnecting => "Reconnecting to Archipelago...",
+                    _ => "Connect to Archipelago",
+                };
+            }
+        }
+
+        private static void OnConnectionStateChanged(ConnectionState _) =>
+            RefreshConnectionPresentation();
+
         #region Clone Target References
 
         // The path that StS2 stores the main menu buttons in
@@ -46,6 +100,11 @@ namespace StS2AP.Patches
 
         // The subpath to the "Single Player" button, which we rename to "Archipelago"
         private const string SingleplayerButtonPath = MainMenuButtonsPath + "/SingleplayerButton";
+
+        private const string ConnectButtonName = "ArchipelagoConnectButton";
+        private const string ConnectButtonPath = MainMenuButtonsPath + "/" + ConnectButtonName;
+
+        private const string ConnectionStatusName = "ArchipelagoConnectionStatus";
 
         // The subpath to the "Settings" button, which we will clone many times
         private const string SettingsButtonPath = MainMenuButtonsPath + "/SettingsButton";
@@ -114,6 +173,13 @@ namespace StS2AP.Patches
                 var singleplayerButton = __instance.GetNode<NMainMenuTextButton>(
                     SingleplayerButtonPath
                 );
+                _singleplayerButton = singleplayerButton;
+
+                var connectButton = __instance.GetNodeOrNull<NMainMenuTextButton>(
+                    ConnectButtonPath
+                );
+                _connectButton = connectButton;
+                _connectionStatusLabel = __instance.GetNodeOrNull<Label>(ConnectionStatusName);
 
                 // Grab the custom Archipelago settings button
                 var archipelagoSettingsButton = __instance.GetNodeOrNull<NMainMenuTextButton>(
@@ -164,7 +230,6 @@ namespace StS2AP.Patches
                 openProfileScreenButton.Visible = false;
 
                 // Some buttons need this additional Enable()/Disable() call I'm honestly still not sure why this worked
-                singleplayerButton.Enable();
                 if (multiplayerButton.Visible)
                     multiplayerButton.Enable();
                 else
@@ -173,7 +238,16 @@ namespace StS2AP.Patches
                 compendiumButton.Disable();
 
                 // Change the name of "Single Player" for Archipelago
-                singleplayerButton!.label!.Text = "Play";
+                singleplayerButton!.label!.Text = "AP Singleplayer";
+
+                if (connectButton?.label != null)
+                    connectButton.Visible = true;
+
+                ArchipelagoClient.ConnectionStateChanged -= OnConnectionStateChanged;
+                ArchipelagoClient.ConnectionStateChanged += OnConnectionStateChanged;
+                RefreshConnectionPresentation();
+
+                multiplayerButton!.label!.Text = "AP Multiplayer";
 
                 // Change the name of "Settings" to "Game Settings" to avoid confusion with the injected Archipelago Settings button
                 settingsButton!.label!.Text = "Game Settings";
@@ -226,6 +300,23 @@ namespace StS2AP.Patches
             var singleplayerButton = mainMenu.GetNode<NMainMenuTextButton>(SingleplayerButtonPath);
             var settingsButton = mainMenu.GetNode<NMainMenuTextButton>(SettingsButtonPath);
 
+            var connectButton = (NMainMenuTextButton)settingsButton.Duplicate();
+            connectButton.Name = ConnectButtonName;
+            connectButton.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NButton>(_ =>
+                {
+                    MultiplayerSupport.ClearPendingPlaySelection();
+                    ArchipelagoConnectionUI.InjectUI();
+                    ArchipelagoNotificationUI.InjectUI();
+                })
+            );
+            singleplayerButton.AddSibling(connectButton);
+            connectButton.CustomMinimumSize = new Vector2(
+                300f,
+                connectButton.CustomMinimumSize.Y
+            );
+
             // Create the new Archipelago Settings button by duplicating the vanilla Settings button
             var archipelagoSettingsButton = (NMainMenuTextButton)settingsButton.Duplicate();
             archipelagoSettingsButton.Name = ArchipelagoSettingsButtonName;
@@ -236,7 +327,7 @@ namespace StS2AP.Patches
                     MenuUtility.OpenArchipelagoSettings();
                 })
             );
-            singleplayerButton.AddSibling(archipelagoSettingsButton);
+            connectButton.AddSibling(archipelagoSettingsButton);
             archipelagoSettingsButton.CustomMinimumSize = new Vector2(
                 300f,
                 archipelagoSettingsButton.CustomMinimumSize.Y
@@ -303,10 +394,28 @@ namespace StS2AP.Patches
 
             // Adjust button focusing
             var selfNodePath = new NodePath(".");
+            connectButton.FocusNeighborLeft = selfNodePath;
+            connectButton.FocusNeighborRight = selfNodePath;
             archipelagoSettingsButton.FocusNeighborLeft = selfNodePath;
             archipelagoSettingsButton.FocusNeighborRight = selfNodePath;
             installButton.FocusNeighborLeft = selfNodePath;
             installButton.FocusNeighborRight = selfNodePath;
+
+            var connectionStatus = new Label
+            {
+                Name = ConnectionStatusName,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            connectionStatus.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
+            connectionStatus.OffsetLeft = 32f;
+            connectionStatus.OffsetTop = -72f;
+            connectionStatus.OffsetRight = 900f;
+            connectionStatus.OffsetBottom = -24f;
+            connectionStatus.AddThemeFontSizeOverride("font_size", 18);
+            connectionStatus.AddThemeColorOverride("font_color", new Color(0.85f, 0.9f, 1f));
+            mainMenu.AddChild(connectionStatus);
         }
 
         /// <summary>
@@ -337,11 +446,11 @@ namespace StS2AP.Patches
                 {
                     MenuUtility.OpenCharacterSelect();
                 }
-                // Inject the custom Archipelago UIs if we're not connected
                 else
                 {
-                    ArchipelagoConnectionUI.InjectUI();
-                    ArchipelagoNotificationUI.InjectUI();
+                    NotificationUtility.ShowRawText(
+                        "Connect to Archipelago from the main menu before starting AP Singleplayer."
+                    );
                 }
             }
         }
@@ -369,9 +478,8 @@ namespace StS2AP.Patches
         }
 
         /// <summary>
-        /// Normally, first time players skip straight to the Character Select
-        /// screen after starting a single player run, but that step is where
-        /// the connection UI now lives. This patches that behavior out.
+        /// Keeps AP Singleplayer on one consistent path regardless of vanilla run-count
+        /// shortcuts. Connection is selected independently from the main menu.
         /// </summary>
         [HarmonyPatch(typeof(NMainMenu), nameof(NMainMenu.MethodName.SingleplayerButtonPressed))]
         public static class DisableSkippingToCharSelect
@@ -379,6 +487,14 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool Prefix(NMainMenu __instance, NButton _)
             {
+                if (!ArchipelagoClient.IsConnected)
+                {
+                    NotificationUtility.ShowRawText(
+                        "Connect to Archipelago before starting AP Singleplayer."
+                    );
+                    return false;
+                }
+
                 MultiplayerSupport.SelectDestination(ApPlayDestination.Singleplayer);
                 Patches_ItemProcessor.ProcessDeferredItemsForSingleplayer();
 
@@ -390,8 +506,8 @@ namespace StS2AP.Patches
         }
 
         /// <summary>
-        /// Uses the same AP login overlay for multiplayer, then resumes MegaCrit's normal
-        /// Host/Join flow after a successful connection.
+        /// Opens MegaCrit's normal Host/Join flow. A connected process participates with its
+        /// AP identity; a disconnected process explicitly participates as a guest.
         /// </summary>
         [HarmonyPatch(
             typeof(NMainMenu),
@@ -403,7 +519,7 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool Prefix()
             {
-                MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
+                MultiplayerSupport.BeginMultiplayerEntry();
                 if (ArchipelagoClient.IsConnected)
                 {
                     if (!MultiplayerSupport.CanEnterMultiplayerLobby(out _)
@@ -420,9 +536,7 @@ namespace StS2AP.Patches
                     return MultiplayerSupport.CanEnterMultiplayerLobby(out _);
                 }
 
-                ArchipelagoConnectionUI.InjectUI();
-                ArchipelagoNotificationUI.InjectUI();
-                return false;
+                return MultiplayerSupport.CanEnterMultiplayerLobby(out _);
             }
         }
 
@@ -436,14 +550,63 @@ namespace StS2AP.Patches
                 if (MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer)
                     return true;
 
+                ApRunData.StageLocalPlayer(__instance.Lobby);
                 CharacterModel character = BetaMainCompatibility.GetLocalCharacter(__instance.Lobby);
-                if (MultiplayerSupport.CanEmbark(character, out string blockedReason))
-                    return true;
+                if (!MultiplayerSupport.CanEmbark(character, out string blockedReason))
+                    return BlockReady(__instance, blockedReason);
 
-                if (BetaMainCompatibility.IsLocalPlayerReady(__instance.Lobby))
-                    __instance.Lobby.SetReady(ready: false);
+                if (__instance.Lobby.NetService.Type == NetGameType.Host
+                    && !ApRunData.TryValidateHostLobbyContributions(
+                        __instance.Lobby,
+                        out blockedReason))
+                {
+                    return BlockReady(__instance, blockedReason);
+                }
+
+                return true;
+            }
+
+            private static bool BlockReady(
+                NCharacterSelectScreen screen,
+                string blockedReason)
+            {
+                if (BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
+                    screen.Lobby.SetReady(ready: false);
                 NotificationUtility.ShowRawText(blockedReason);
                 LogUtility.Warn($"Blocked AP multiplayer embark: {blockedReason}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Final authoritative guard for the race where lobby staging changes after the host
+        /// readies or a client is the last player to ready. The host recomputes readiness from
+        /// current RitsuLib staging; no saved validation flag is consulted.
+        /// </summary>
+        [HarmonyPatch(typeof(StartRunLobby), "BeginRunForAllPlayersIfAllReady")]
+        public static class RequireCompleteApLobbyBeforeLaunch
+        {
+            [HarmonyPrefix]
+            public static bool Prefix(StartRunLobby __instance)
+            {
+                if (MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer
+                    || __instance.NetService.Type != NetGameType.Host
+                    || !__instance.IsAboutToBeginGame())
+                {
+                    return true;
+                }
+
+                if (ApRunData.TryValidateHostLobbyContributions(
+                    __instance,
+                    out string blockedReason))
+                {
+                    return true;
+                }
+
+                string message = $"AP multiplayer launch blocked: {blockedReason}";
+                LogUtility.Warn(message);
+                NotificationUtility.ShowRawText(message);
+                MultiplayerSupport.RequestHostLobbyRefresh(__instance);
                 return false;
             }
         }
@@ -572,6 +735,9 @@ namespace StS2AP.Patches
             private static void OnOpened(NCharacterSelectScreen __instance)
             {
                 MultiplayerSupport.ObserveStartLobby(__instance);
+
+                if (MultiplayerSupport.IsLocalGuest)
+                    return;
 
                 // Find the first character on the screen
                 Control charButtonContainer = __instance.GetNode<Control>(

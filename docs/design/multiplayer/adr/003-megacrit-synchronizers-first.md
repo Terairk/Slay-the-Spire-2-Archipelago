@@ -52,7 +52,6 @@ replay behavior.
 - Publishing an AP-derived reward spec before remote reward-set construction.
 - Publishing a per-owner AP rest-site or event transformation.
 - Carrying transaction identity for an unsupported grant kind.
-- Negotiating the AP multiplayer protocol version.
 
 Custom transport should carry primitive IDs and amounts, not Godot nodes,
 mutable game models, AP sessions, or credentials.

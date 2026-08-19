@@ -43,6 +43,17 @@ public enum MultiplayerFeature
 /// <summary>The play flow that requested an Archipelago connection.</summary>
 public enum ApPlayDestination
 {
+    None,
     Singleplayer,
     Multiplayer,
+}
+
+/// <summary>
+/// The local player's identity source for an AP multiplayer run. A guest participates in
+/// MegaCrit multiplayer but owns no AP connection, receipts, checks, or private AP journal.
+/// </summary>
+public enum ApParticipationKind
+{
+    Guest,
+    Archipelago,
 }

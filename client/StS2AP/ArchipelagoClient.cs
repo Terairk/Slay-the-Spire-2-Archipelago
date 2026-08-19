@@ -166,6 +166,9 @@ namespace StS2AP
         /// </summary>
         internal static int GetAvailableRewardCount()
         {
+            if (MultiplayerSupport.IsLocalGuest)
+                return 0;
+
             lock (_itemLock)
             {
                 long? characterOffset = GameUtility.CurrentConfig?.CharOffset;
@@ -294,6 +297,9 @@ namespace StS2AP
                     : ConnectionState.Connecting;
                 _currentAttemptIsAutomaticReconnect = isAutomaticReconnect;
             }
+
+            ConnectionState connectionState = State;
+            Callable.From(() => ConnectionStateChanged?.Invoke(connectionState)).CallDeferred();
 
             // Setup Data
             SlotData?.Clear();

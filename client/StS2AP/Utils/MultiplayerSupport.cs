@@ -46,6 +46,7 @@ public static class MultiplayerSupport
     private static bool _apHistoryPrepared;
     private static string? _deferredSessionKey;
     private static ApSessionIdentity? _preparedSessionIdentity;
+    private static ApParticipationKind? _activeParticipation;
 
     private readonly record struct ApSessionIdentity(string RoomSeed, int ApTeamId, int ApSlotId)
     {
@@ -54,12 +55,20 @@ public static class MultiplayerSupport
     }
 
     public static ApPlayDestination PendingDestination { get; private set; } =
-        ApPlayDestination.Singleplayer;
+        ApPlayDestination.None;
+
+    public static ApParticipationKind PendingParticipation { get; private set; } =
+        ApParticipationKind.Guest;
 
     public static bool IsRealMultiplayerRun { get; private set; }
 
     public static bool IsExperimentalMultiplayerRun =>
         IsRealMultiplayerRun && _experimentalEnabledForRun;
+
+    public static bool IsLocalGuest => IsRealMultiplayerRun
+        ? _activeParticipation == ApParticipationKind.Guest
+        : PendingDestination == ApPlayDestination.Multiplayer
+            && PendingParticipation == ApParticipationKind.Guest;
 
     public static bool ClaimsInvalidated { get; private set; }
 
@@ -85,6 +94,62 @@ public static class MultiplayerSupport
 
     public static bool InitialItemsLoaded => _apHistoryPrepared;
 
+    /// <summary>
+    /// Exposes only the currently displayed start lobby for read-only diagnostics. This is not
+    /// a saved lobby handle: clients normally see their own staged AP contribution, while the
+    /// host's lobby session contains the contributions merged from every peer.
+    /// </summary>
+    public static bool TryGetObservedStartLobby(out StartRunLobby lobby)
+    {
+        NCharacterSelectScreen? screen = _observedStartLobbyScreen;
+        if (screen != null && GodotObject.IsInstanceValid(screen))
+        {
+            lobby = screen.Lobby;
+            return true;
+        }
+
+        lobby = null!;
+        return false;
+    }
+
+    /// <summary>
+    /// Requests re-evaluation of the host's Ready UI after authoritative lobby staging changes
+    /// or the final launch guard rejects a race. Defer the Godot work because either call can
+    /// occur inside a network handler.
+    /// </summary>
+    public static void RequestHostLobbyRefresh(StartRunLobby lobby)
+    {
+        NCharacterSelectScreen? screen = _observedStartLobbyScreen;
+        if (screen == null
+            || !GodotObject.IsInstanceValid(screen)
+            || !ReferenceEquals(screen.Lobby, lobby))
+        {
+            return;
+        }
+
+        Callable.From(RefreshObservedStartLobby).CallDeferred();
+    }
+
+    public static void ClearPendingPlaySelection()
+    {
+        PendingDestination = ApPlayDestination.None;
+        PendingParticipation = ApParticipationKind.Guest;
+    }
+
+    public static void BeginMultiplayerEntry()
+    {
+        PendingParticipation = ArchipelagoClient.IsConnected
+            ? ApParticipationKind.Archipelago
+            : ApParticipationKind.Guest;
+        SelectDestination(ApPlayDestination.Multiplayer);
+    }
+
+    public static void BeginApBoundMultiplayerEntry()
+    {
+        PendingParticipation = ApParticipationKind.Archipelago;
+        SelectDestination(ApPlayDestination.Multiplayer);
+    }
+
     public static void SelectDestination(ApPlayDestination destination)
     {
         PendingDestination = destination;
@@ -109,6 +174,9 @@ public static class MultiplayerSupport
     {
         if (!IsMultiplayerScope)
             return true;
+
+        if (IsLocalGuest)
+            return false;
 
         bool profileEnabled = IsRealMultiplayerRun
             ? _experimentalEnabledForRun
@@ -273,6 +341,13 @@ public static class MultiplayerSupport
         ApGrantDispatcher.RebuildGoldBank(receivedItems);
         _preparedSessionIdentity = identity;
         _deferredSessionKey = sessionKey;
+
+        // TODO(AP_MP save/rejoin): this currently proves only that the AP SDK receipt snapshot
+        // was rebuilt. A rejoining owner must first load its durable run-scoped journal, restore
+        // consumed receipt indices (the multiplayer equivalent of UsedItems), gold redemption,
+        // stable card/relic/potion/Ancient assignments, and grant states, then reconcile those
+        // records with receivedItems and the restored host ledger. Do not treat this boolean by
+        // itself as complete rejoin restoration.
         _apHistoryPrepared = true;
         RefreshObservedStartLobby();
         LogUtility.Info(
@@ -291,9 +366,15 @@ public static class MultiplayerSupport
 
     public static bool CanEnterMultiplayerLobby(out string reason)
     {
+        if (PendingParticipation == ApParticipationKind.Guest)
+        {
+            reason = string.Empty;
+            return true;
+        }
+
         if (!ArchipelagoClient.IsConnected)
         {
-            reason = "Connect to Archipelago before opening the multiplayer lobby.";
+            reason = "This AP-bound player must reconnect before opening the multiplayer lobby.";
             return false;
         }
 
@@ -311,6 +392,12 @@ public static class MultiplayerSupport
     {
         if (!CanEnterMultiplayerLobby(out reason))
             return false;
+
+        if (PendingParticipation == ApParticipationKind.Guest)
+        {
+            reason = string.Empty;
+            return true;
+        }
 
         if (!ArchipelagoClient.Settings.Characters.ContainsKey(character.Id.Entry))
         {
@@ -349,6 +436,7 @@ public static class MultiplayerSupport
             return;
 
         _observedStartLobbyScreen = screen;
+        ApRunData.StageLocalPlayer(screen.Lobby);
         RefreshObservedStartLobby();
     }
 
@@ -369,33 +457,29 @@ public static class MultiplayerSupport
 
         try
         {
+            ApRunData.StageLocalPlayer(screen.Lobby);
             NConfirmButton embarkButton = screen.GetNode<NConfirmButton>("ConfirmButton");
             if (!CanEnterMultiplayerLobby(out _))
             {
-                if (BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
-                {
-                    // Use the native beta UI transition so auto-unready restores character
-                    // buttons and the waiting panel as well as changing the lobby flag.
-                    try
-                    {
-                        var nativeUnready = AccessTools.Method(
-                            typeof(NCharacterSelectScreen),
-                            "OnUnreadyPressed"
-                        );
-                        if (nativeUnready != null)
-                            nativeUnready.Invoke(screen, new object?[] { null });
-                        else
-                            screen.Lobby.SetReady(ready: false);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.Warn(
-                            $"Native AP lobby auto-unready failed: {ex.GetBaseException().Message}"
-                        );
-                        screen.Lobby.SetReady(ready: false);
-                    }
-                }
+                EnsureLocalPlayerUnready(screen);
                 embarkButton.Disable();
+                return;
+            }
+
+            if (screen.Lobby.NetService.Type == NetGameType.Host
+                && !ApRunData.TryValidateHostLobbyContributions(
+                    screen.Lobby,
+                    out string hostBlockedReason))
+            {
+                bool wasReady = BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby);
+                EnsureLocalPlayerUnready(screen);
+                embarkButton.Disable();
+                if (wasReady)
+                {
+                    NotificationUtility.ShowRawText(
+                        $"Host became unready: {hostBlockedReason}"
+                    );
+                }
                 return;
             }
 
@@ -410,6 +494,33 @@ public static class MultiplayerSupport
         catch (Exception ex)
         {
             LogUtility.Warn($"Could not refresh AP multiplayer lobby readiness: {ex.Message}");
+        }
+    }
+
+    private static void EnsureLocalPlayerUnready(NCharacterSelectScreen screen)
+    {
+        if (!BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
+            return;
+
+        // Use the native UI transition so auto-unready restores character buttons and the
+        // waiting panel as well as changing the lobby flag.
+        try
+        {
+            var nativeUnready = AccessTools.Method(
+                typeof(NCharacterSelectScreen),
+                "OnUnreadyPressed"
+            );
+            if (nativeUnready != null)
+                nativeUnready.Invoke(screen, new object?[] { null });
+            else
+                screen.Lobby.SetReady(ready: false);
+        }
+        catch (Exception ex)
+        {
+            LogUtility.Warn(
+                $"Native AP lobby auto-unready failed: {ex.GetBaseException().Message}"
+            );
+            screen.Lobby.SetReady(ready: false);
         }
     }
 
@@ -468,6 +579,10 @@ public static class MultiplayerSupport
             return null;
         }
 
+        _activeParticipation = PendingParticipation;
+        if (ApRunData.TryGetLocalPlayerState(runState, localPlayer.NetId, out var savedPlayerState))
+            _activeParticipation = savedPlayerState.Participation;
+
         _observedRunLobby = RunManager.Instance.RunLobby;
         if (_observedRunLobby != null)
         {
@@ -497,6 +612,7 @@ public static class MultiplayerSupport
         CombatManager.Instance.CombatEnded -= OnCombatEnded;
         IsRealMultiplayerRun = false;
         _experimentalEnabledForRun = false;
+        _activeParticipation = null;
         ClaimsInvalidated = false;
         _claimInvalidationNoticeShown = false;
         ApGrantDispatcher.EndRun();
