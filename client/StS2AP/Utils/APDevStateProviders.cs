@@ -290,13 +290,13 @@ public static class ApDevStateProviders
         string Visibility,
         string ContributionValidation,
         string RunId,
-        string HostEffectiveAscensions,
+        string HostSettingsFrozen,
         IReadOnlyList<string> Players
     );
 
     /// <summary>
     /// Makes the RitsuLib lobby-contribution path observable. In particular, running this on
-    /// the host proves whether each client's ApHistoryComplete contribution reached the host;
+    /// the host proves whether each client's receipt-source contribution reached the host;
     /// client output is intentionally not treated as an authoritative view of other players.
     /// </summary>
     private sealed class LobbyProvider : IApDevStateProvider
@@ -316,9 +316,7 @@ public static class ApDevStateProviders
             string runId = ApRunData.TryGetLobbySharedState(lobby, out ApRunSharedState shared)
                 ? FormatRunId(shared.RunId)
                 : "missing";
-            string hostAscensions = shared?.HostEffectiveAscensions.Count > 0
-                ? string.Join(",", shared.HostEffectiveAscensions)
-                : "pending";
+            string hostSettingsFrozen = YesNo(shared?.HostSettings != null);
 
             var players = new List<string>();
             foreach (ulong netId in BetaMainCompatibility.GetLobbyPlayerNetIds(lobby))
@@ -329,15 +327,18 @@ public static class ApDevStateProviders
                     continue;
                 }
 
-                string identity = state.Participation == ApParticipationKind.Guest
-                    ? "guest"
-                    : state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null
+                string identity = state.Participation switch
+                {
+                    ApParticipationKind.VanillaGuest => "vanilla-guest",
+                    ApParticipationKind.ApGuest => "host-slot",
+                    _ => state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null
                         ? "incomplete"
-                        : $"room={Quote(state.ApRoomSeed)} team={state.ApTeamId} slot={state.ApSlotId}";
+                        : $"room={Quote(state.ApRoomSeed)} team={state.ApTeamId} slot={state.ApSlotId}",
+                };
                 string blocker = ApRunData.GetLobbyContributionBlocker(state) ?? "none";
                 players.Add(
                     $"netId={netId} participation={state.Participation} identity={identity} "
-                        + $"apHistoryComplete={YesNo(state.ApHistoryComplete)} readyBlocker={blocker}"
+                        + $"receiptSourceReady={YesNo(state.ReceiptSourceReady)} readyBlocker={blocker}"
                 );
             }
 
@@ -364,7 +365,7 @@ public static class ApDevStateProviders
                 visibility,
                 contributionValidation,
                 runId,
-                hostAscensions,
+                hostSettingsFrozen,
                 players
             );
         }
@@ -378,7 +379,7 @@ public static class ApDevStateProviders
                 $"role={state.Role} localNetId={state.LocalNetId} hostNetId={state.HostNetId}",
                 $"visibility={state.Visibility}",
                 $"contributionValidation={state.ContributionValidation}",
-                $"runId={state.RunId} hostEffectiveAscensions=[{state.HostEffectiveAscensions}]",
+                $"runId={state.RunId} hostSettingsFrozen={state.HostSettingsFrozen}",
                 $"players=[{string.Join("; ", state.Players)}]",
             });
         }
@@ -389,8 +390,8 @@ public static class ApDevStateProviders
         string LocalNetId,
         string HostNetId,
         string RunId,
-        string HostEffectiveAscensions,
-        int AppliedEffectCount,
+        string HostSettingsFrozen,
+        string SharedSlotCheckScope,
         IReadOnlyList<string> Players
     );
 
@@ -418,13 +419,17 @@ public static class ApDevStateProviders
                     continue;
                 }
 
-                string identity = state.Participation == ApParticipationKind.Guest
-                    ? "guest"
-                    : state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null
+                string identity = state.Participation switch
+                {
+                    ApParticipationKind.VanillaGuest => "vanilla-guest",
+                    ApParticipationKind.ApGuest => "host-slot",
+                    _ => state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null
                         ? "incomplete"
-                        : $"room={Quote(state.ApRoomSeed)} team={state.ApTeamId} slot={state.ApSlotId}";
+                        : $"room={Quote(state.ApRoomSeed)} team={state.ApTeamId} slot={state.ApSlotId}",
+                };
                 players.Add(
-                    $"netId={player.NetId} participation={state.Participation} identity={identity}"
+                    $"netId={player.NetId} participation={state.Participation} identity={identity} "
+                        + $"revision={state.ProgressRevision} used={state.Progress.UsedItems.Count}"
                 );
             }
 
@@ -433,10 +438,8 @@ public static class ApDevStateProviders
                 netService.NetId.ToString(),
                 hostNetId,
                 FormatRunId(shared.RunId),
-                shared.HostEffectiveAscensions.Count > 0
-                    ? string.Join(",", shared.HostEffectiveAscensions)
-                    : "pending",
-                shared.AppliedEffectIds.Count,
+                YesNo(shared.HostSettings != null),
+                shared.SharedSlotCheckScope.ToString(),
                 players
             );
         }
@@ -448,8 +451,8 @@ public static class ApDevStateProviders
             {
                 "AP canonical run data",
                 $"role={state.Role} localNetId={state.LocalNetId} hostNetId={state.HostNetId}",
-                $"runId={state.RunId} hostEffectiveAscensions=[{state.HostEffectiveAscensions}]",
-                $"appliedEffectCount={state.AppliedEffectCount}",
+                $"runId={state.RunId} hostSettingsFrozen={state.HostSettingsFrozen}",
+                $"sharedSlotCheckScope={state.SharedSlotCheckScope}",
                 $"players=[{string.Join("; ", state.Players)}]",
             });
         }
@@ -463,18 +466,24 @@ public static class ApDevStateProviders
         {
             RunState runState = context.RunState
                 ?? throw new InvalidOperationException("No active run exists.");
-            if (!ApRunData.TryGetSharedState(runState, out ApRunSharedState shared))
-                throw new InvalidOperationException("The active run has no ap_run saved-data slot.");
-            return shared.AppliedEffectIds.Order(StringComparer.Ordinal).ToArray();
+            return runState.Players
+                .Select(player => ApRunData.TryGetPlayerState(
+                    runState,
+                    player.NetId,
+                    out ApPlayerRunState state
+                )
+                    ? $"netId={player.NetId} used=[{string.Join(",", state.Progress.UsedItems.Order())}]"
+                    : $"netId={player.NetId} missing")
+                .ToArray();
         }
 
         public string FormatHumanReadable(object snapshot)
         {
-            var effectIds = (IReadOnlyList<string>)snapshot;
-            return effectIds.Count == 0
-                ? "AP applied-effect ledger: empty"
-                : "AP applied-effect ledger" + Environment.NewLine
-                    + string.Join(Environment.NewLine, effectIds);
+            var receipts = (IReadOnlyList<string>)snapshot;
+            return receipts.Count == 0
+                ? "AP receipt-consumption ledger: empty"
+                : "AP receipt-consumption ledger" + Environment.NewLine
+                    + string.Join(Environment.NewLine, receipts);
         }
     }
 

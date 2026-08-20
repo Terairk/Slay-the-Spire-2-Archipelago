@@ -50,9 +50,6 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Overgrowth __instance)
         {
-            // AP_MP: Ancient availability must match on every peer before enabling this.
-            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
-                return;
             __result = __instance.AllAncients;
         }
     }
@@ -63,9 +60,6 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Hive __instance)
         {
-            // AP_MP: Ancient availability must match on every peer before enabling this.
-            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
-                return;
             __result = __instance.AllAncients;
         }
     }
@@ -76,9 +70,6 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Glory __instance)
         {
-            // AP_MP: Ancient availability must match on every peer before enabling this.
-            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
-                return;
             __result = __instance.AllAncients;
         }
     }
@@ -89,9 +80,6 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Underdocks __instance)
         {
-            // AP_MP: Ancient availability must match on every peer before enabling this.
-            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
-                return;
             __result = __instance.AllAncients;
         }
     }

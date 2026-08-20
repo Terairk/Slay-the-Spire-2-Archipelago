@@ -57,7 +57,6 @@ namespace StS2AP.Patches
 
             /// <summary>
             /// Postfix patch that sends a floor check when entering any room type.
-            /// It also forces a refresh of the Archipelago Unused Item Count, for run start sync issues.
             /// </summary>
             /// <param name="runState">The current run state.</param>
             /// <param name="isRestoringRoomStackBase">Whether the room is being restored from save.</param>

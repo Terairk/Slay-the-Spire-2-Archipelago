@@ -35,6 +35,7 @@ namespace StS2AP.Patches
                 // During the lobby this local override controls only this process's selectable
                 // characters. Once a multiplayer run launches, preserve each serialized remote
                 // player's own UnlockState instead of replacing it with the local AP list.
+                // CHANGE: please change this to actually use the AP progress of the individual people
                 if (MultiplayerSupport.IsRealMultiplayerRun)
                     return;
 

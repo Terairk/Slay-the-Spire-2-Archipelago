@@ -136,6 +136,7 @@ namespace StS2AP.Utils
                 return false;
             }
 
+            // EXPLAIN: this to me
             if (MultiplayerSupport.IsRealMultiplayerRun && !LocalContext.IsMe(CurrentPlayer))
             {
                 LogUtility.Error(
@@ -816,18 +817,24 @@ namespace StS2AP.Utils
 
         public static void TrySendPressStartCheck(bool includeUnrecognizedCharacters = true)
         {
-            // Grab the Character Name
-            // This deterministic ID remains available if AP disconnects in the MegaCrit
-            // lobby. PendingCheckUtility can then retain it for a later AP reconnect.
-            var locationId = LocationData.GetPressStartLocation(
-                GameUtility.CurrentPlayer.Character
-            );
-            SendCheck(locationId, includeUnrecognizedCharacters);
+            TrySendPressStartCheckFor(CurrentPlayer.Character, includeUnrecognizedCharacters);
+        }
 
+        public static void TrySendPressStartCheckFor(
+            CharacterModel character,
+            bool includeUnrecognizedCharacters = true)
+        {
+            var locationId = LocationData.GetPressStartLocation(character);
+            SendCheck(locationId, includeUnrecognizedCharacters);
         }
 
         public static void SendCheck(string checkName)
         {
+            if (MultiplayerSupport.IsMultiplayerScope
+                && !MultiplayerSupport.IsLocalOwnApSlot)
+            {
+                return;
+            }
             var _locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
             SendCheck(_locationId);
         }
@@ -839,6 +846,11 @@ namespace StS2AP.Utils
 
         private static void SendCheck(long locationId, bool includeUnrecognizedChars)
         {
+            if (MultiplayerSupport.IsMultiplayerScope
+                && !MultiplayerSupport.IsLocalOwnApSlot)
+            {
+                return;
+            }
             if (!ArchipelagoClient.CheckedLocations.Contains(locationId) && locationId != -1 && ArchipelagoClient.ScoutedLocations.ContainsKey(locationId))
             {
                 // Record the location durably before attempting the socket write. If the
@@ -848,6 +860,22 @@ namespace StS2AP.Utils
             }
             if(includeUnrecognizedChars)
             {
+                if (locationId != -1
+                    && MultiplayerSupport.IsRealMultiplayerRun
+                    && RunManager.Instance.DebugOnlyGetState() is RunState runState)
+                {
+                    foreach (long characterOffset in
+                        ApRunData.GetSharedSlotApGuestCharacterOffsets(runState))
+                    {
+                        long sharedLocationId = (locationId % 10000L)
+                            + (10000L * (characterOffset - 1));
+                        LogUtility.Info(
+                            $"Sending shared-slot location for AP Guest character offset "
+                                + $"{characterOffset}: {locationId} -> {sharedLocationId}"
+                        );
+                        SendCheck(sharedLocationId, false);
+                    }
+                }
                 foreach(var otherChar in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
                 {
                     // - 1 because locations are offset from items by 1

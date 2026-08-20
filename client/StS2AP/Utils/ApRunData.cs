@@ -1,24 +1,41 @@
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Runs;
+using StS2AP.Extensions;
 using StS2AP.Models;
 using STS2RitsuLib;
+using STS2RitsuLib.Networking.Sidecar;
 using STS2RitsuLib.RunData;
 
 namespace StS2AP.Utils;
 
 /// <summary>
 /// Owns the AP data embedded in MegaCrit's canonical run snapshot. Lobby methods stage the
-/// launch contract; mid-run ledger mutation must only be called from the same host-ordered
-/// operation that applies the corresponding shared effect. There are intentionally no
+/// launch contract; mid-run snapshots are published immediately after local AP mutations and
+/// are durable only when the fixed host writes the next native checkpoint. There are no
 /// Frozen/Validated booleans: launch readiness must be derived from the current contributions,
 /// and the committed run snapshot is the lifecycle boundary that makes the mapping immutable.
 /// </summary>
 public static class ApRunData
 {
+    private const int RunSchemaVersion = 2;
+    private const string ProgressMessageKey = "player_ap_progress_v1";
     private static RunSavedData<ApRunSharedState> _sharedRun = null!;
     private static PlayerRunSavedData<ApPlayerRunState> _players = null!;
+    private static readonly RitsuLibSidecarJsonSerializer<ApProgressUpdateMessage>
+        ProgressSerializer = new();
+    private static readonly RitsuLibSidecarMessageDescriptor<ApProgressUpdateMessage>
+        ProgressDescriptor = new(
+            ModEntry.ModId,
+            ProgressMessageKey,
+            ProgressSerializer.Serialize,
+            ProgressSerializer.Deserialize,
+            Required: true
+        );
+    private static IDisposable? _progressSubscription;
     private static bool _initialized;
+    private static long _localProgressRevision;
 
     public static void Initialize()
     {
@@ -31,7 +48,7 @@ public static class ApRunData
             defaultFactory: () => new ApRunSharedState(),
             options: new RunSavedDataOptions
             {
-                SchemaVersion = 1,
+                SchemaVersion = RunSchemaVersion,
                 SyncLobbyOnChange = true,
             }
         );
@@ -40,12 +57,16 @@ public static class ApRunData
             defaultFactory: () => new ApPlayerRunState(),
             options: new RunSavedDataOptions
             {
-                SchemaVersion = 1,
+                SchemaVersion = RunSchemaVersion,
                 SyncLobbyOnChange = true,
             }
         );
 
         _initialized = true;
+        _progressSubscription = RitsuLibSidecarTypedMessageRegistry.Subscribe(
+            ProgressDescriptor,
+            OnProgressUpdateReceived
+        );
         RitsuLibFramework.SubscribeLifecycle<RunSavedDataPreparingEvent>(OnRunDataPreparing);
         RitsuLibFramework.SubscribeLifecycle<RunSavedDataLobbyStagingEvent>(OnLobbyStagingChanged);
     }
@@ -58,20 +79,27 @@ public static class ApRunData
 
         ulong localNetId = lobby.NetService.NetId;
         ApParticipationKind participation = MultiplayerSupport.PendingParticipation;
+        _players.Lobby.TryGet(lobby, localNetId, out ApPlayerRunState? existing);
         var state = new ApPlayerRunState
         {
             Participation = participation,
-            ApRoomSeed = participation == ApParticipationKind.Archipelago
+            ApRoomSeed = participation == ApParticipationKind.OwnApSlot
                 ? MultiplayerSupport.PreparedApRoomSeed
                 : null,
-            ApTeamId = participation == ApParticipationKind.Archipelago
+            ApTeamId = participation == ApParticipationKind.OwnApSlot
                 ? MultiplayerSupport.PreparedApTeamId
                 : null,
-            ApSlotId = participation == ApParticipationKind.Archipelago
+            ApSlotId = participation == ApParticipationKind.OwnApSlot
                 ? MultiplayerSupport.PreparedApSlotId
                 : null,
-            ApHistoryComplete = participation == ApParticipationKind.Archipelago
-                && MultiplayerSupport.InitialItemsLoaded,
+            ReceiptSourceReady = participation switch
+            {
+                ApParticipationKind.OwnApSlot => MultiplayerSupport.InitialItemsLoaded,
+                ApParticipationKind.ApGuest => MultiplayerSupport.HostReceiptCatalogReady,
+                _ => true,
+            },
+            Progress = existing?.Progress ?? new APProgressUnified(),
+            ProgressRevision = existing?.ProgressRevision ?? 0,
         };
         // SyncLobbyOnChange makes this a contribution to the authoritative host staging
         // session. On a client RitsuLib pushes the local PlayerRunSavedData payload with a
@@ -79,8 +107,7 @@ public static class ApRunData
         // merges it under sender Net ID before handling that Ready message. On the host the
         // same call merges locally. This is not a host-to-client or mid-run synchronization
         // mechanism.
-        if (!_players.Lobby.TryGet(lobby, localNetId, out ApPlayerRunState existing)
-            || !HasSameLobbyContribution(existing, state))
+        if (existing == null || !HasSameLobbyContribution(existing, state))
         {
             _players.Lobby.Set(lobby, localNetId, state);
         }
@@ -88,7 +115,11 @@ public static class ApRunData
         // This stages transport and storage only. The host Ready UI and final launch guard both
         // call TryValidateHostLobbyContributions against the latest active player list.
         if (lobby.NetService.Type == NetGameType.Host)
+        {
             EnsureLobbyRunId(lobby);
+            StageHostSettings(lobby, participation);
+            ApReceiptRelay.PublishLobbySnapshot(lobby);
+        }
     }
 
     public static bool TryGetLocalPlayerState(
@@ -145,11 +176,6 @@ public static class ApRunData
         return false;
     }
 
-    public static bool HasAppliedEffect(RunState runState, string effectId) =>
-        _initialized
-        && _sharedRun.TryGet(runState, out ApRunSharedState state)
-        && state.AppliedEffectIds.Contains(effectId);
-
     /// <summary>
     /// Recomputes launch-contribution readiness from the host's current lobby staging. This
     /// deliberately returns no persistent validation token: callers must evaluate the latest
@@ -181,33 +207,206 @@ public static class ApRunData
             }
         }
 
+        bool hasApGuest = BetaMainCompatibility.GetLobbyPlayerNetIds(lobby).Any(netId =>
+            TryGetLobbyPlayerState(lobby, netId, out ApPlayerRunState participant)
+            && participant.Participation == ApParticipationKind.ApGuest
+        );
+        if (hasApGuest)
+        {
+            ulong hostNetId = lobby.NetService.NetId;
+            if (!TryGetLobbyPlayerState(lobby, hostNetId, out ApPlayerRunState host)
+                || host.Participation != ApParticipationKind.OwnApSlot
+                || !host.ReceiptSourceReady)
+            {
+                reason = "AP Guests require the fixed STS host to have a prepared AP slot.";
+                return false;
+            }
+            if (!TryGetLobbySharedState(lobby, out ApRunSharedState shared)
+                || shared.HostSettings == null)
+            {
+                reason = "The host's AP settings have not been frozen into lobby run data.";
+                return false;
+            }
+        }
+
         reason = string.Empty;
         return true;
     }
 
     public static string? GetLobbyContributionBlocker(ApPlayerRunState state)
     {
-        if (state.Participation == ApParticipationKind.Guest)
+        if (state.Participation == ApParticipationKind.VanillaGuest)
             return null;
+        if (state.Participation == ApParticipationKind.ApGuest)
+            return state.ReceiptSourceReady ? null : "host-receipt-catalog-incomplete";
         if (state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null)
             return "incomplete-ap-identity";
-        return state.ApHistoryComplete ? null : "ap-history-incomplete";
+        return state.ReceiptSourceReady ? null : "ap-history-incomplete";
     }
 
-    /// <summary>
-    /// Records a replicated effect in the canonical ledger. Callers must invoke this from the
-    /// same host-ordered operation that applies the effect; this method is storage, not transport.
-    /// </summary>
-    public static void RecordAppliedEffectFromOrderedAction(
-        RunState runState,
-        string effectId)
+    // TODO: needs comments
+    public static bool RestoreLocalProgress(Player player)
     {
         if (!_initialized)
-            throw new InvalidOperationException("The AP run-data store is not initialized.");
-        if (string.IsNullOrWhiteSpace(effectId))
-            throw new ArgumentException("Applied effect ID cannot be empty.", nameof(effectId));
+            return false;
+        if (player.RunState is not RunState runState
+            || !_players.TryGet(runState, player.NetId, out ApPlayerRunState state))
+            return false;
 
-        _sharedRun.Modify(runState, state => state.AppliedEffectIds.Add(effectId));
+        _localProgressRevision = state.ProgressRevision;
+        if (!state.Progress.Initialized)
+            return false;
+
+        ArchipelagoClient.Progress = ArchipelagoProgress.FromUnified(state.Progress, player);
+        return true;
+    }
+
+    // TODO: Needs comments
+    public static bool PublishLocalProgress(Player player)
+    {
+        if (!_initialized || !MultiplayerSupport.IsRealMultiplayerRun)
+            return true;
+        if (player.RunState is not RunState runState
+            || !_players.TryGet(runState, player.NetId, out ApPlayerRunState state)
+            || state.Participation == ApParticipationKind.VanillaGuest)
+        {
+            return false;
+        }
+
+        APProgressUnified snapshot = ArchipelagoClient.Progress.ToUnified();
+        long revision = Math.Max(_localProgressRevision, state.ProgressRevision) + 1;
+        _localProgressRevision = revision;
+        _players.Set(runState, player.NetId, new ApPlayerRunState
+        {
+            SchemaVersion = state.SchemaVersion,
+            Participation = state.Participation,
+            ApRoomSeed = state.ApRoomSeed,
+            ApTeamId = state.ApTeamId,
+            ApSlotId = state.ApSlotId,
+            ReceiptSourceReady = state.ReceiptSourceReady,
+            Progress = snapshot,
+            ProgressRevision = revision,
+        });
+
+        if (RunManager.Instance.NetService.Type == NetGameType.Host)
+            return true;
+        if (!_sharedRun.TryGet(runState, out ApRunSharedState shared))
+            return false;
+
+        return RitsuLibSidecarTypedMessageRegistry.SendToHost(
+            RunManager.Instance,
+            ProgressDescriptor,
+            new ApProgressUpdateMessage
+            {
+                RunId = shared.RunId,
+                OwnerNetId = player.NetId,
+                Revision = revision,
+                Progress = snapshot,
+            }
+        );
+    }
+
+    // EXPLAIN: difference from the other progress function
+    public static bool PublishCurrentProgress() =>
+        GameUtility.CurrentPlayer is not { } player || PublishLocalProgress(player);
+
+    public static bool IsReceiptUsed(RunState runState, ulong netId, int receivedItemIndex) =>
+        _players.TryGet(runState, netId, out ApPlayerRunState state)
+        && state.Progress.UsedItems.Contains(receivedItemIndex);
+
+    public static void CaptureLocalHostProgressBeforeSave()
+    {
+        if (RunManager.Instance.NetService.Type != NetGameType.Host)
+            return;
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
+        Player? localPlayer = runState?.GetPlayer(RunManager.Instance.NetService.NetId);
+        if (localPlayer != null)
+            PublishLocalProgress(localPlayer);
+    }
+
+    public static void SendSharedSlotPressStartChecks(RunState runState)
+    {
+        if (RunManager.Instance.NetService.Type != NetGameType.Host
+            || !TryGetSharedState(runState, out ApRunSharedState shared))
+        {
+            return;
+        }
+
+        ulong hostNetId = RunManager.Instance.NetService.NetId;
+        foreach (Player player in runState.Players)
+        {
+            if (!TryGetPlayerState(runState, player.NetId, out ApPlayerRunState state))
+                continue;
+            bool usesHostSlot = (player.NetId == hostNetId
+                    && state.Participation == ApParticipationKind.OwnApSlot)
+                || state.Participation == ApParticipationKind.ApGuest;
+            if (!usesHostSlot)
+                continue;
+            if (player.NetId != hostNetId
+                && shared.SharedSlotCheckScope != SharedSlotCheckScope.AllApParticipants)
+            {
+                continue;
+            }
+            GameUtility.TrySendPressStartCheckFor(
+                player.Character,
+                includeUnrecognizedCharacters: false
+            );
+        }
+    }
+
+    // TOOD: say why this is needed
+    public static IReadOnlyList<long> GetSharedSlotApGuestCharacterOffsets(RunState runState)
+    {
+        if (RunManager.Instance.NetService.Type != NetGameType.Host
+            || !TryGetSharedState(runState, out ApRunSharedState shared)
+            || shared.SharedSlotCheckScope != SharedSlotCheckScope.AllApParticipants)
+        {
+            return Array.Empty<long>();
+        }
+
+        return runState.Players
+            .Where(player => TryGetPlayerState(
+                    runState,
+                    player.NetId,
+                    out ApPlayerRunState state
+                ) && state.Participation == ApParticipationKind.ApGuest)
+            .Select(player => player.Character.GetCharacterOffset())
+            .Where(offset => offset.HasValue)
+            .Select(offset => offset!.Value)
+            .Distinct()
+            .ToArray();
+    }
+
+    // TODO: this should have comments on why this is needed
+    private static void OnProgressUpdateReceived(
+        RitsuLibSidecarTypedDispatchContext<ApProgressUpdateMessage> context)
+    {
+        if (context.Message.SchemaVersion != 1
+            || context.SenderNetId != context.Message.OwnerNetId)
+        {
+            LogUtility.Error("Rejected incompatible or incorrectly owned AP progress update.");
+            return;
+        }
+
+        RitsuLibSidecarGodotMainLoopScheduling.TryPostToMainLoop(() =>
+        {
+            if (RunManager.Instance.NetService.Type != NetGameType.Host)
+                return;
+            RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            if (runState == null
+                || !_sharedRun.TryGet(runState, out ApRunSharedState shared)
+                || shared.RunId != context.Message.RunId
+                || !_players.TryGet(runState, context.Message.OwnerNetId, out ApPlayerRunState state)
+                || state.Participation == ApParticipationKind.VanillaGuest
+                || context.Message.Revision <= state.ProgressRevision)
+            {
+                return;
+            }
+
+            state.Progress = context.Message.Progress;
+            state.ProgressRevision = context.Message.Revision;
+            _players.Set(runState, context.Message.OwnerNetId, state);
+        });
     }
 
     private static void EnsureLobbyRunId(StartRunLobby lobby)
@@ -225,6 +424,21 @@ public static class ApRunData
         });
     }
 
+    private static void StageHostSettings(
+        StartRunLobby lobby,
+        ApParticipationKind hostParticipation)
+    {
+        _sharedRun.Lobby.Modify(lobby, state =>
+        {
+            state.SchemaVersion = RunSchemaVersion;
+            state.SharedSlotCheckScope = MultiplayerSupport.ConfiguredSharedSlotCheckScope;
+            state.HostSettings = hostParticipation == ApParticipationKind.OwnApSlot
+                ? MultiplayerSupport.CreateEffectiveHostSettingsSnapshot()
+                : null;
+        });
+    }
+
+    // TODO: state why this is needed
     private static bool HasSameLobbyContribution(
         ApPlayerRunState left,
         ApPlayerRunState right) =>
@@ -233,7 +447,7 @@ public static class ApRunData
         && string.Equals(left.ApRoomSeed, right.ApRoomSeed, StringComparison.Ordinal)
         && left.ApTeamId == right.ApTeamId
         && left.ApSlotId == right.ApSlotId
-        && left.ApHistoryComplete == right.ApHistoryComplete;
+        && left.ReceiptSourceReady == right.ReceiptSourceReady;
 
     private static void OnLobbyStagingChanged(RunSavedDataLobbyStagingEvent evt)
     {

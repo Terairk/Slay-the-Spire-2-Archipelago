@@ -34,6 +34,8 @@ public static class ModSettingsRegistration
 
     // Experimental multiplayer
     private const string Multiplayer_EnableId = "enable_experimental_multiplayer";
+    private const string Multiplayer_GuestRewardModeId = "multiplayer_guest_reward_mode";
+    private const string Multiplayer_SharedSlotCheckScopeId = "multiplayer_shared_slot_check_scope";
 
     #endregion
 
@@ -119,10 +121,9 @@ public static class ModSettingsRegistration
             .WithTitle(ModSettingsText.Literal("Experimental Multiplayer"))
             .WithDescription(
                 ModSettingsText.Literal(
-                    "Unsupported development preview. Fresh runs only. The initial profile "
-                        + "supports character unlocks, Press Start, and AP gold rewards; other "
-                        + "AP features are disabled. Every player must use a separate slot in "
-                        + "the same Archipelago room."
+                    "Unsupported development preview. Multiplayer AP progress is saved by the "
+                        + "STS host. Disconnected players may use vanilla rewards or follow the "
+                        + "host's AP slot."
                 )
             )
             .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
@@ -138,11 +139,46 @@ public static class ModSettingsRegistration
                     }
                 ),
                 ModSettingsText.Literal(
-                    "Shows the Multiplayer button. This mode is not saveable and requires a "
-                        + "fresh run after any peer disconnect."
+                    "Shows the Multiplayer button. Every peer must use a compatible mod version."
                 )
             )
-            .ConfigureEntryMenu(Multiplayer_EnableId, ModSettingsMenuCapabilities.None);
+            .ConfigureEntryMenu(Multiplayer_EnableId, ModSettingsMenuCapabilities.None)
+            .AddChoice(
+                Multiplayer_GuestRewardModeId,
+                ModSettingsText.Literal("Disconnected Player Rewards"),
+                CreateBinding(
+                    static settings => settings.GuestRewardMode,
+                    static (settings, value) => settings.GuestRewardMode = value
+                ),
+                options: new[]
+                {
+                    new ModSettingsChoiceOption<string>("VanillaGuest", ModSettingsText.Literal("Vanilla Guest")),
+                    new ModSettingsChoiceOption<string>("APGuest", ModSettingsText.Literal("AP Guest")),
+                },
+                description: ModSettingsText.Literal(
+                    "AP Guests follow the STS host's AP settings and receipts without opening an AP connection."
+                ),
+                presentation: ModSettingsChoicePresentation.Dropdown
+            )
+            .ConfigureEntryMenu(Multiplayer_GuestRewardModeId, ModSettingsMenuCapabilities.None)
+            .AddChoice(
+                Multiplayer_SharedSlotCheckScopeId,
+                ModSettingsText.Literal("Shared Slot Checks"),
+                CreateBinding(
+                    static settings => settings.SharedSlotCheckScope,
+                    static (settings, value) => settings.SharedSlotCheckScope = value
+                ),
+                options: new[]
+                {
+                    new ModSettingsChoiceOption<string>("HostCharacterOnly", ModSettingsText.Literal("Host Character Only")),
+                    new ModSettingsChoiceOption<string>("AllAPParticipants", ModSettingsText.Literal("All AP Participants")),
+                },
+                description: ModSettingsText.Literal(
+                    "Controls which character-specific checks the host sends for a shared AP slot."
+                ),
+                presentation: ModSettingsChoicePresentation.Dropdown
+            )
+            .ConfigureEntryMenu(Multiplayer_SharedSlotCheckScopeId, ModSettingsMenuCapabilities.None);
     }
 
     private static void ConfigureModdedCharactersSection(ModSettingsSectionBuilder section)

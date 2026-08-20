@@ -21,7 +21,8 @@ namespace StS2AP.Utils
             get
             {
                 var localSettings = ArchipelagoClient.LocalSettings.Value;
-                var configuredValue = localSettings.OverrideRelicRewardsAvailableAnytime
+                var configuredValue = !MultiplayerSupport.UsesFrozenHostSettings
+                    && localSettings.OverrideRelicRewardsAvailableAnytime
                     ? localSettings.RelicRewardsAvailableAnytime
                     : ArchipelagoClient.Settings?.RelicRewardsAvailableAnytime
                         ?? localSettings.RelicRewardsAvailableAnytime;
@@ -41,10 +42,14 @@ namespace StS2AP.Utils
             rewardNumber = progress.RelicRewardsAttempted;
 
             if (rewardNumber > ArchipelagoProgress._maxRelicRewards)
+            {
+                ApRunData.PublishCurrentProgress();
                 return false;
+            }
 
             progress.BankedRelicRewards++;
             RelicCoupons.RefreshCounter();
+            ApRunData.PublishCurrentProgress();
             return true;
         }
 
@@ -108,6 +113,7 @@ namespace StS2AP.Utils
                 $"Paired Relic item w/ index {receipt.Index} with a natural relic reward; " +
                 $"{progress.BankedRelicRewards} banked reward(s) remain"
             );
+            ApRunData.PublishLocalProgress(player);
             return true;
         }
 
@@ -119,11 +125,12 @@ namespace StS2AP.Utils
         public static void ReconcileBankedRewards(Player player)
         {
             var progress = ArchipelagoClient.Progress;
+            bool changed = false;
             while (progress.BankedRelicRewards > 0)
             {
                 var receipt = FindWaitingReceiptForNaturalReward(player);
                 if (receipt == null)
-                    return;
+                    break;
 
                 var choices = progress.GetOrAssignRelicChoices(
                     receipt.Index,
@@ -137,16 +144,21 @@ namespace StS2AP.Utils
                         $"for {player.APName()}; " +
                         "leaving both available for retry"
                     );
+                    if (changed)
+                        ApRunData.PublishLocalProgress(player);
                     return;
                 }
 
                 progress.BankedRelicRewards--;
+                changed = true;
                 RelicCoupons.Activate(player);
                 LogUtility.Info(
                     $"Assigned banked relic reward to AP item w/ index {receipt.Index}; " +
                     $"{progress.BankedRelicRewards} banked reward(s) remain"
                 );
             }
+            if (changed)
+                ApRunData.PublishLocalProgress(player);
         }
 
         /// <summary>
@@ -178,6 +190,7 @@ namespace StS2AP.Utils
                 progress.UsedItems.Add(itemIndex);
 
             progress.RelicChoiceAssignments.Remove(itemIndex);
+            ApRunData.PublishCurrentProgress();
         }
 
         private static IndexedItemInfo? FindWaitingReceiptForNaturalReward(Player player)

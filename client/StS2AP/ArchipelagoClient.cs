@@ -104,6 +104,18 @@ namespace StS2AP
         /// </summary>
         public static ArchipelagoSettings Settings { get; private set; }
 
+        /// <summary>Installs the fixed host's frozen settings on an AP Guest process.</summary>
+        internal static void UseMultiplayerHostSettings(ArchipelagoSettings settings)
+        {
+            Settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        }
+
+        internal static void RebuildUnlockedCharactersFromSettings()
+        {
+            Progress.UnlockedCharacters.Clear();
+            SetupUnlockedCharacters();
+        }
+
         public static ArchipelagoSession Session { get; set; }
 
         /// <summary>
@@ -166,6 +178,7 @@ namespace StS2AP
         /// </summary>
         internal static int GetAvailableRewardCount()
         {
+            // TODO: doesn't this depend on what type of guest you are:
             if (MultiplayerSupport.IsLocalGuest)
                 return 0;
 
@@ -721,10 +734,14 @@ namespace StS2AP
             // Restore goaled characters from DataStorage so cross-session goal tracking works
             _ = GameUtility.RestoreGoaledCharsFromStorage();
 
-            _ = GameUtility.SetupOnChangedSaves();
+            // Multiplayer progress is checkpointed only in the native host save. Do not attach
+            // the singleplayer AP DataStorage save mirror to a multiplayer session.
+            if (!MultiplayerSupport.IsMultiplayerScope)
+                _ = GameUtility.SetupOnChangedSaves();
 
             // Load the set of already-consumed buff indices from DataStorage before item processing begins.
-            _ = BuffUtility.LoadFromStorageAsync();
+            if (!MultiplayerSupport.IsMultiplayerScope)
+                _ = BuffUtility.LoadFromStorageAsync();
 
             // Let the game know that we've connected
             Callable
@@ -750,8 +767,7 @@ namespace StS2AP
             IReadOnlyList<ItemInfo> receivedItems = Session.Items.AllItemsReceived;
             // A different AP owner may have used this process previously. Rebuild the
             // selectable set only from this slot's settings and authoritative history.
-            Progress.UnlockedCharacters.Clear();
-            SetupUnlockedCharacters();
+            RebuildUnlockedCharactersFromSettings();
             if (!MultiplayerSupport.PrepareApSession(
                     Seed,
                     Session.ConnectionInfo.Team,
@@ -765,6 +781,14 @@ namespace StS2AP
             Patches_ItemProcessor.ClearQueue();
             Index = receivedItems.Count;
             Patches_ItemProcessor.LastIndexHandled = Index;
+            ApReceiptRelay.ReplaceHostCatalog(
+                Seed,
+                Session.ConnectionInfo.Team,
+                Session.ConnectionInfo.Slot,
+                receivedItems
+            );
+            ApReceiptRelay.PublishCurrentRunSnapshot();
+            MultiplayerSupport.RestoreFrozenHostSettingsForActiveRun();
             return true;
         }
 

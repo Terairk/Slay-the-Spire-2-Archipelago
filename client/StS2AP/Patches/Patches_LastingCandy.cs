@@ -133,6 +133,7 @@ public static class Patches_LastingCandy
         private static bool Prefix(LastingCandy __instance, ref Task __result)
         {
             // AP_MP: Card reward interception needs a synchronized final card selection.
+            // CONFIRM: did we not enable CardRewards yet in this branch
             if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CardRewards))
                 return true;
 

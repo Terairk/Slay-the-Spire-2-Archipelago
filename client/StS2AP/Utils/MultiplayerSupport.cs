@@ -35,6 +35,7 @@ public static class MultiplayerSupport
         MultiplayerFeature.RelicRewards,
         MultiplayerFeature.PotionRewards,
         MultiplayerFeature.AncientRewardChoices,
+        MultiplayerFeature.SaveAndReconnect,
     };
 
     private static readonly Dictionary<int, IndexedItemInfo> DeferredItems = new();
@@ -46,6 +47,7 @@ public static class MultiplayerSupport
     private static string? _deferredSessionKey;
     private static ApSessionIdentity? _preparedSessionIdentity;
     private static ApParticipationKind? _activeParticipation;
+    private static IReadOnlyList<ItemInfo> _preparedReceivedItems = Array.Empty<ItemInfo>();
 
     private readonly record struct ApSessionIdentity(string RoomSeed, int ApTeamId, int ApSlotId)
     {
@@ -57,7 +59,7 @@ public static class MultiplayerSupport
         ApPlayDestination.None;
 
     public static ApParticipationKind PendingParticipation { get; private set; } =
-        ApParticipationKind.Guest;
+        ApParticipationKind.VanillaGuest;
 
     public static bool IsRealMultiplayerRun { get; private set; }
 
@@ -65,9 +67,27 @@ public static class MultiplayerSupport
         IsRealMultiplayerRun && _experimentalEnabledForRun;
 
     public static bool IsLocalGuest => IsRealMultiplayerRun
-        ? _activeParticipation == ApParticipationKind.Guest
+        ? _activeParticipation == ApParticipationKind.VanillaGuest
         : PendingDestination == ApPlayDestination.Multiplayer
-            && PendingParticipation == ApParticipationKind.Guest;
+            && PendingParticipation == ApParticipationKind.VanillaGuest;
+
+    public static bool IsLocalApGuest => IsRealMultiplayerRun
+        ? _activeParticipation == ApParticipationKind.ApGuest
+        : PendingDestination == ApPlayDestination.Multiplayer
+            && PendingParticipation == ApParticipationKind.ApGuest;
+
+    public static bool IsLocalOwnApSlot => IsRealMultiplayerRun
+        ? _activeParticipation == ApParticipationKind.OwnApSlot
+        : PendingDestination == ApPlayDestination.Multiplayer
+            && PendingParticipation == ApParticipationKind.OwnApSlot;
+
+    public static bool IsLocalApParticipant =>
+        !IsLocalGuest && (IsRealMultiplayerRun || PendingDestination == ApPlayDestination.Multiplayer);
+
+    public static bool UsesFrozenHostSettings => IsLocalApGuest
+        || IsRealMultiplayerRun
+            && IsLocalOwnApSlot
+            && RunManager.Instance.NetService.Type == NetGameType.Host;
 
     public static bool ClaimsInvalidated { get; private set; }
 
@@ -92,6 +112,17 @@ public static class MultiplayerSupport
     public static int? PreparedApSlotId => _preparedSessionIdentity?.ApSlotId;
 
     public static bool InitialItemsLoaded => _apHistoryPrepared;
+
+    public static bool HostReceiptCatalogReady => ApReceiptRelay.GuestCatalogReady;
+
+    public static SharedSlotCheckScope ConfiguredSharedSlotCheckScope =>
+        string.Equals(
+            ArchipelagoClient.LocalSettings.Value.SharedSlotCheckScope,
+            "AllAPParticipants",
+            StringComparison.Ordinal
+        )
+            ? SharedSlotCheckScope.AllApParticipants
+            : SharedSlotCheckScope.HostCharacterOnly;
 
     /// <summary>
     /// Exposes only the currently displayed start lobby for read-only diagnostics. This is not
@@ -132,20 +163,29 @@ public static class MultiplayerSupport
     public static void ClearPendingPlaySelection()
     {
         PendingDestination = ApPlayDestination.None;
-        PendingParticipation = ApParticipationKind.Guest;
+        PendingParticipation = ApParticipationKind.VanillaGuest;
+        ApReceiptRelay.ResetGuestCatalog();
     }
 
     public static void BeginMultiplayerEntry()
     {
         PendingParticipation = ArchipelagoClient.IsConnected
-            ? ApParticipationKind.Archipelago
-            : ApParticipationKind.Guest;
+            ? ApParticipationKind.OwnApSlot
+            : string.Equals(
+                ArchipelagoClient.LocalSettings.Value.GuestRewardMode,
+                "APGuest",
+                StringComparison.Ordinal
+            )
+                ? ApParticipationKind.ApGuest
+                : ApParticipationKind.VanillaGuest;
+        if (PendingParticipation == ApParticipationKind.ApGuest)
+            ApReceiptRelay.ResetGuestCatalog();
         SelectDestination(ApPlayDestination.Multiplayer);
     }
 
     public static void BeginApBoundMultiplayerEntry()
     {
-        PendingParticipation = ApParticipationKind.Archipelago;
+        PendingParticipation = ApParticipationKind.OwnApSlot;
         SelectDestination(ApPlayDestination.Multiplayer);
     }
 
@@ -340,13 +380,11 @@ public static class MultiplayerSupport
         ApGrantDispatcher.RebuildGoldBank(receivedItems);
         _preparedSessionIdentity = identity;
         _deferredSessionKey = sessionKey;
+        _preparedReceivedItems = receivedItems.ToArray();
 
-        // TODO(AP_MP save/rejoin): this currently proves only that the AP SDK receipt snapshot
-        // was rebuilt. A rejoining owner must first load its durable run-scoped journal, restore
-        // consumed receipt indices (the multiplayer equivalent of UsedItems), gold redemption,
-        // stable card/relic/potion/Ancient assignments, and grant states, then reconcile those
-        // records with receivedItems and the restored host ledger. Do not treat this boolean by
-        // itself as complete rejoin restoration.
+        // Durable consumption and assignments are restored separately from the host-owned
+        // APProgressUnified snapshot. This flag says only that the transient receipt catalog is
+        // complete enough to reconcile against that progress.
         _apHistoryPrepared = true;
         RefreshObservedStartLobby();
         LogUtility.Info(
@@ -354,6 +392,24 @@ public static class MultiplayerSupport
                 + $"deferred={DeferredItems.Count}"
         );
         return true;
+    }
+
+    public static bool PrepareApGuestSession(
+        string roomSeed,
+        int apTeamId,
+        int apSlotId,
+        ArchipelagoSettings hostSettings,
+        IReadOnlyList<ItemInfo> receivedItems,
+        out string reason)
+    {
+        // The fixed STS host, not any AP identity previously used by this process, owns an
+        // AP Guest's receipt source.
+        _preparedSessionIdentity = null;
+        if (!ValidateApSessionIdentity(roomSeed, apTeamId, apSlotId, out reason))
+            return false;
+        ArchipelagoClient.UseMultiplayerHostSettings(hostSettings);
+        ArchipelagoClient.RebuildUnlockedCharactersFromSettings();
+        return PrepareApSession(roomSeed, apTeamId, apSlotId, receivedItems, out reason);
     }
 
     public static void OnApDisconnected()
@@ -365,7 +421,7 @@ public static class MultiplayerSupport
 
     public static bool CanEnterMultiplayerLobby(out string reason)
     {
-        if (PendingParticipation == ApParticipationKind.Guest)
+        if (PendingParticipation is ApParticipationKind.VanillaGuest or ApParticipationKind.ApGuest)
         {
             reason = string.Empty;
             return true;
@@ -392,10 +448,17 @@ public static class MultiplayerSupport
         if (!CanEnterMultiplayerLobby(out reason))
             return false;
 
-        if (PendingParticipation == ApParticipationKind.Guest)
+        if (PendingParticipation == ApParticipationKind.VanillaGuest)
         {
             reason = string.Empty;
             return true;
+        }
+
+        if (PendingParticipation == ApParticipationKind.ApGuest
+            && !HostReceiptCatalogReady)
+        {
+            reason = "Waiting for the host's AP settings and received-item catalog.";
+            return false;
         }
 
         if (!ArchipelagoClient.Settings.Characters.ContainsKey(character.Id.Entry))
@@ -582,6 +645,41 @@ public static class MultiplayerSupport
         if (ApRunData.TryGetLocalPlayerState(runState, localPlayer.NetId, out var savedPlayerState))
             _activeParticipation = savedPlayerState.Participation;
 
+        if (_activeParticipation == ApParticipationKind.OwnApSlot
+            && RunManager.Instance.NetService.Type == NetGameType.Host
+            && ApRunData.TryGetSharedState(runState, out ApRunSharedState hostShared)
+            && hostShared.HostSettings != null)
+        {
+            ArchipelagoClient.UseMultiplayerHostSettings(hostShared.HostSettings);
+        }
+
+        if (_activeParticipation == ApParticipationKind.ApGuest)
+        {
+            if (!ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
+                || shared.HostSettings == null
+                || !BetaMainCompatibility.TryGetHostNetId(
+                    RunManager.Instance.NetService,
+                    out ulong hostNetId
+                )
+                || !ApRunData.TryGetPlayerState(runState, hostNetId, out ApPlayerRunState hostState)
+                || hostState.ApRoomSeed == null
+                || hostState.ApTeamId == null
+                || hostState.ApSlotId == null)
+            {
+                ClaimsInvalidated = true;
+                LogUtility.Error("AP Guest launched without frozen host settings/source identity.");
+                return localPlayer;
+            }
+
+            ArchipelagoClient.UseMultiplayerHostSettings(shared.HostSettings);
+            _preparedSessionIdentity = new ApSessionIdentity(
+                hostState.ApRoomSeed,
+                hostState.ApTeamId.Value,
+                hostState.ApSlotId.Value
+            );
+            _preparedReceivedItems = ApReceiptRelay.GetGuestItems();
+        }
+
         CombatManager.Instance.CombatEnded += OnCombatEnded;
 
         LogUtility.Info(
@@ -591,6 +689,116 @@ public static class MultiplayerSupport
         );
         return localPlayer;
     }
+
+    public static IReadOnlyList<ItemInfo> GetPreparedReceivedItems() => _preparedReceivedItems;
+
+    public static bool RestorePreparedReceiptView(out string reason)
+    {
+        if (_preparedSessionIdentity is not { } identity)
+        {
+            reason = "No AP receipt source is bound to the local multiplayer player.";
+            return false;
+        }
+        return PrepareApSession(
+            identity.RoomSeed,
+            identity.ApTeamId,
+            identity.ApSlotId,
+            _preparedReceivedItems,
+            out reason
+        );
+    }
+
+    public static ArchipelagoSettings? CreateEffectiveHostSettingsSnapshot()
+    {
+        ArchipelagoSettings? source = ArchipelagoClient.Settings;
+        if (source == null)
+            return null;
+
+        ClientSettings local = ArchipelagoClient.LocalSettings.Value;
+        // TODO: is there seriously no automatic setter for this? where snapshot = source and then do slight modifications after
+        var snapshot = new ArchipelagoSettings
+        {
+            AscensionLevel = source.AscensionLevel,
+            ShouldShuffleAllCards = source.ShouldShuffleAllCards,
+            IsSeeded = source.IsSeeded,
+            NoCharactersLocked = source.NoCharactersLocked,
+            NumCharsGoal = source.NumCharsGoal,
+            TotalCharacters = source.TotalCharacters,
+            NeowSanity = source.NeowSanity,
+            AncientRelicLocation = source.AncientRelicLocation,
+            AncientRelicPool = source.AncientRelicPool,
+            RelicRewardsAvailableAnytime = local.OverrideRelicRewardsAvailableAnytime
+                ? local.RelicRewardsAvailableAnytime
+                : source.RelicRewardsAvailableAnytime,
+            ReleaseOnVictory = source.ReleaseOnVictory,
+            CampfireSanity = source.CampfireSanity,
+            GoldSanity = source.GoldSanity,
+            PotionSanity = source.PotionSanity,
+            Floorsanity = source.Floorsanity,
+            ProgressiveStarterCard = source.ProgressiveStarterCard,
+            ProgressiveStarterRelic = source.ProgressiveStarterRelic,
+            ShopSanity = source.ShopSanity,
+            ShopCardSlots = source.ShopCardSlots,
+            ShopNeutralSlots = source.ShopNeutralSlots,
+            ShopRelicSlots = source.ShopRelicSlots,
+            ShopPotionSlots = source.ShopPotionSlots,
+            ShopRemoveSlots = source.ShopRemoveSlots,
+            ShopSanityCosts = source.ShopSanityCosts,
+            IsDeathLinkEnabled = local.OverrideDeathLinkOptions
+                ? local.EnableDeathLink
+                : source.IsDeathLinkEnabled,
+            EnableDeathFragments = local.OverrideDeathLinkOptions
+                ? local.EnableDeathFragments
+                : source.EnableDeathFragments,
+            DeathLinkDamagePercent = local.OverrideDeathLinkOptions
+                ? local.DeathLinkPercentDamage
+                : source.DeathLinkDamagePercent,
+            APWorldVersion = source.APWorldVersion,
+        };
+
+        foreach ((string key, CharacterConfig config) in source.Characters)
+            snapshot.Characters[key] = CloneCharacterConfig(config);
+        foreach ((string key, CharacterConfig config) in source.UnrecognizedCharacters)
+            snapshot.UnrecognizedCharacters[key] = CloneCharacterConfig(config);
+        return snapshot;
+    }
+
+    public static ArchipelagoSettings? GetHostSettingsForReceiptRelay()
+    {
+        if (IsRealMultiplayerRun
+            && RunManager.Instance.DebugOnlyGetState() is RunState runState
+            && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
+            && shared.HostSettings != null)
+        {
+            return shared.HostSettings;
+        }
+        return CreateEffectiveHostSettingsSnapshot();
+    }
+
+    public static void RestoreFrozenHostSettingsForActiveRun()
+    {
+        if (!IsRealMultiplayerRun
+            || RunManager.Instance.NetService.Type != NetGameType.Host
+            || RunManager.Instance.DebugOnlyGetState() is not RunState runState
+            || !ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
+            || shared.HostSettings == null)
+        {
+            return;
+        }
+        ArchipelagoClient.UseMultiplayerHostSettings(shared.HostSettings);
+    }
+
+    private static CharacterConfig CloneCharacterConfig(CharacterConfig source) => new()
+    {
+        Name = source.Name,
+        OptionName = source.OptionName,
+        CharOffset = source.CharOffset,
+        OfficialName = source.OfficialName,
+        Seed = source.Seed,
+        Locked = source.Locked,
+        ModNum = source.ModNum,
+        Ascension = new HashSet<string>(source.Ascension, StringComparer.Ordinal),
+    };
 
     public static void EndRun()
     {

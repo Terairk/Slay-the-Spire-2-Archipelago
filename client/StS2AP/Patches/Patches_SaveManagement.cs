@@ -34,16 +34,17 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool replaceSave(AbstractRoom? preFinishedRoom, ref Task __result)
             {
-                // AP_MP: Remove this disposable-run save block only after owner overlays,
-                // protocol compatibility, save/load, and reconnect are implemented.
-                if (MultiplayerSupport.IsExperimentalMultiplayerRun
-                    && !MultiplayerSupport.IsFeatureEnabled(
-                        MultiplayerFeature.SaveAndReconnect
-                    ))
+                if (MultiplayerSupport.IsRealMultiplayerRun)
                 {
-                    LogUtility.Warn(
-                        "Skipping save for disposable experimental AP multiplayer run"
-                    );
+                    // MegaCrit owns the multiplayer save and RitsuLib embeds the authoritative
+                    // shared/per-player AP payload into that same host checkpoint.
+                    if (RunManager.Instance.NetService.Type
+                        == MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Host)
+                    {
+                        ApRunData.CaptureLocalHostProgressBeforeSave();
+                        return true;
+                    }
+
                     __result = Task.CompletedTask;
                     return false;
                 }

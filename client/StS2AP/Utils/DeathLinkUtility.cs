@@ -24,9 +24,11 @@ namespace StS2AP.Utils
         /// Based on both Client and Server settings, determines if Death Link is enabled for this player.
         /// </summary>
         // AP_MP: Death Link remains off until incoming effects sync without feedback loops.
+        // EXPLAIN: why even single player is affected by a multiplayer feature being disabled
         public static bool IsDeathLinkEnabled =>
             MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
-            && (ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
+            && (!MultiplayerSupport.UsesFrozenHostSettings
+                && ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
                 ? ArchipelagoClient.LocalSettings.Value.EnableDeathLink
                 : (ArchipelagoClient.Settings?.IsDeathLinkEnabled ?? false));
 
@@ -44,7 +46,8 @@ namespace StS2AP.Utils
         /// The percentage of your Max Health to use when calculating the damage you take from a Death Link.
         /// </summary>
         public static int DeathLinkDamagePercent =>
-            ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
+            !MultiplayerSupport.UsesFrozenHostSettings
+                && ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
                 ? ArchipelagoClient.LocalSettings.Value.DeathLinkPercentDamage
                 : ArchipelagoClient.Settings?.DeathLinkDamagePercent ?? 0;
 
@@ -56,9 +59,11 @@ namespace StS2AP.Utils
         /// Whether or not Death Fragments are enabled
         /// </summary>
         // AP_MP: Death fragments share the disabled multiplayer Death Link transport.
+        // EXPLAIN: why even single player is affected by a multiplayer feature being disabled
         public static bool AreDeathFragmentsEnabled =>
             MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
-            && (ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
+            && (!MultiplayerSupport.UsesFrozenHostSettings
+                && ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
                 ? ArchipelagoClient.LocalSettings.Value.EnableDeathFragments
                 : (ArchipelagoClient.Settings?.EnableDeathFragments ?? false));
 

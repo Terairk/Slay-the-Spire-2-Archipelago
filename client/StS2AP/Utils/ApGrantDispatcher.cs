@@ -1,13 +1,14 @@
 using Archipelago.MultiClient.Net.Models;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
-using STS2RitsuLib;
-using STS2RitsuLib.Data;
 using static StS2AP.Data.ItemTable;
 
 namespace StS2AP.Utils;
+
+// EXPLAIN: this entire file to me and why is the path for gold so different than singleplayer
 
 /// <summary>
 /// Routes AP-owned causes to their concrete game effects. The first supported route is
@@ -16,14 +17,9 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ApGrantDispatcher
 {
-    private const string GoldStoreKey = "multiplayer_gold";
     private static readonly object GoldClaimLock = new();
-    private static readonly ModDataStoreCache<MultiplayerGoldState> GoldStore =
-        RitsuLibFramework.GetDataStore(ModEntry.ModId)
-            .CreateCache<MultiplayerGoldState>(GoldStoreKey);
 
     private static bool _goldClaimInFlight;
-    private static string? _activeRunIdentity;
     private static long? _activeCharacterOffset;
 
     /// <summary>Rebuilds the raw per-character bank from authoritative AP history.</summary>
@@ -52,7 +48,7 @@ public static class ApGrantDispatcher
         );
     }
 
-    /// <summary>Binds the owner-private cursor to the newly launched local STS run.</summary>
+    /// <summary>Binds the host-owned per-player cursor to the launched local STS run.</summary>
     public static bool BeginRun(RunState runState, long characterOffset, out string reason)
     {
         reason = string.Empty;
@@ -64,30 +60,7 @@ public static class ApGrantDispatcher
             return false;
         }
 
-        string runIdentity;
-        MultiplayerGoldRunState? persisted;
-        try
-        {
-            long startTime = RunManager.Instance.ToSave(preFinishedRoom: null).StartTime;
-            runIdentity = $"{runState.Rng.StringSeed}:{startTime}";
-            persisted = GoldStore.Value.Runs.LastOrDefault(entry =>
-                entry.ApRoomSeed == roomSeed
-                && entry.ApTeamId == apTeamId
-                && entry.ApSlotId == apSlotId
-                && entry.StsRunIdentity == runIdentity
-            );
-        }
-        catch (Exception ex)
-        {
-            reason = $"The owner-private AP gold cursor could not be loaded: {ex.Message}";
-            LogUtility.Error(reason);
-            return false;
-        }
-
-        int redeemedRaw = 0;
-        if (persisted != null)
-            persisted.RedeemedRawByCharacter.TryGetValue(characterOffset, out redeemedRaw);
-
+        int redeemedRaw = ArchipelagoClient.Progress.GoldRedeemed;
         ArchipelagoClient.Progress.GoldReceived.TryGetValue(characterOffset, out int receivedRaw);
         if (redeemedRaw < 0 || redeemedRaw > receivedRaw)
         {
@@ -97,11 +70,11 @@ public static class ApGrantDispatcher
             redeemedRaw = Math.Clamp(redeemedRaw, 0, receivedRaw);
         }
 
-        _activeRunIdentity = runIdentity;
         _activeCharacterOffset = characterOffset;
         ArchipelagoClient.Progress.GoldRedeemed = redeemedRaw;
         LogUtility.Info(
-            $"Bound aggregate AP gold cursor: run={runIdentity}, character={characterOffset}, "
+            $"Bound aggregate AP gold cursor: room={roomSeed}, team={apTeamId}, slot={apSlotId}, "
+                + $"character={characterOffset}, "
                 + $"redeemedRaw={redeemedRaw}, receivedRaw={receivedRaw}"
         );
         return true;
@@ -146,9 +119,9 @@ public static class ApGrantDispatcher
                 return false;
             }
 
-            if (_activeRunIdentity == null || !_activeCharacterOffset.HasValue)
+            if (!_activeCharacterOffset.HasValue)
             {
-                LogUtility.Error("Cannot execute aggregate AP gold: no owner-private run binding");
+                LogUtility.Error("Cannot execute aggregate AP gold: no run-owned cursor binding");
                 return false;
             }
 
@@ -172,10 +145,11 @@ public static class ApGrantDispatcher
                 return false;
 
             ArchipelagoClient.Progress.GoldRedeemed = claim.RedeemedRawAfter;
-            if (!PersistActiveCursor(claim.RedeemedRawAfter))
+            Player? player = GameUtility.CurrentPlayer;
+            if (player == null || !ApRunData.PublishLocalProgress(player))
             {
                 MultiplayerSupport.InvalidateRunClaims(
-                    "the aggregate AP gold cursor could not be persisted after applying gold"
+                    "the aggregate AP gold cursor could not be published after applying gold"
                 );
             }
 
@@ -192,54 +166,8 @@ public static class ApGrantDispatcher
         }
     }
 
-    private static bool PersistActiveCursor(int redeemedRaw)
-    {
-        if (_activeRunIdentity == null
-            || !_activeCharacterOffset.HasValue
-            || MultiplayerSupport.PreparedApRoomSeed is not { } roomSeed
-            || MultiplayerSupport.PreparedApTeamId is not { } apTeamId
-            || MultiplayerSupport.PreparedApSlotId is not { } apSlotId)
-        {
-            return false;
-        }
-
-        try
-        {
-            GoldStore.Modify(document =>
-            {
-                MultiplayerGoldRunState? run = document.Runs.LastOrDefault(entry =>
-                    entry.ApRoomSeed == roomSeed
-                    && entry.ApTeamId == apTeamId
-                    && entry.ApSlotId == apSlotId
-                    && entry.StsRunIdentity == _activeRunIdentity
-                );
-                if (run == null)
-                {
-                    run = new MultiplayerGoldRunState
-                    {
-                        ApRoomSeed = roomSeed,
-                        ApTeamId = apTeamId,
-                        ApSlotId = apSlotId,
-                        StsRunIdentity = _activeRunIdentity,
-                    };
-                    document.Runs.Add(run);
-                }
-
-                run.RedeemedRawByCharacter[_activeCharacterOffset.Value] = redeemedRaw;
-            });
-            GoldStore.Save();
-            return true;
-        }
-        catch (Exception ex)
-        {
-            LogUtility.Error($"Failed to persist aggregate AP gold cursor: {ex}");
-            return false;
-        }
-    }
-
     public static void EndRun()
     {
-        _activeRunIdentity = null;
         _activeCharacterOffset = null;
         lock (GoldClaimLock)
             _goldClaimInFlight = false;

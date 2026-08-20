@@ -189,14 +189,26 @@ namespace StS2AP.Patches
                 }
 
                 GameUtility.CurrentConfig = config;
-                // AP_MP: Restore full run initialization after RestSites and the remaining
-                // AP-backed per-run state have multiplayer-safe ownership and persistence.
-                // Only initialize state used by this profile. The normal initialization reads
-                // AP-backed campfire state, which is both unsupported here and unavailable if
-                // AP disconnects after the lobby login.
-                ArchipelagoClient.Progress.ResetTrackers();
-                ArchipelagoClient.Progress.Ascensions.Initialize(config);
-                ArchipelagoClient.Progress.UsedItems.Clear();
+                bool restoredProgress = ApRunData.RestoreLocalProgress(localPlayer);
+                if (!restoredProgress)
+                {
+                    ArchipelagoClient.Progress = new ArchipelagoProgress();
+                    ArchipelagoClient.Progress.ResetTrackers();
+                    ArchipelagoClient.Progress.Ascensions.Initialize(config);
+                }
+                if (!MultiplayerSupport.RestorePreparedReceiptView(out string receiptError))
+                {
+                    MultiplayerSupport.InvalidateRunClaims(receiptError);
+                    return;
+                }
+                RelicCoupons.EnsureOwnedBy(localPlayer);
+                if (!ApRunData.PublishLocalProgress(localPlayer))
+                {
+                    MultiplayerSupport.InvalidateRunClaims(
+                        "initial AP progress could not be published to the host"
+                    );
+                    return;
+                }
                 if (!ApGrantDispatcher.BeginRun(__result, config.CharOffset, out string bindError))
                 {
                     MultiplayerSupport.InvalidateRunClaims(bindError);
@@ -208,8 +220,16 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                if (MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.PressStartCheck))
-                    GameUtility.TrySendPressStartCheck(includeUnrecognizedCharacters: false);
+                if (MultiplayerSupport.IsLocalOwnApSlot)
+                    PendingCheckUtility.ReconcileAndSend();
+                if (MultiplayerSupport.IsLocalOwnApSlot
+                    && MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.PressStartCheck))
+                {
+                    if (RunManager.Instance.NetService.Type == NetGameType.Host)
+                        ApRunData.SendSharedSlotPressStartChecks(__result);
+                    else
+                        GameUtility.TrySendPressStartCheck(includeUnrecognizedCharacters: false);
+                }
 
                 LogUtility.Info(
                     $"Bound local AP multiplayer player: netId={localPlayer.NetId}, "

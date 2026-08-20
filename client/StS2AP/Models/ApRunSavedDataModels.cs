@@ -7,22 +7,16 @@ namespace StS2AP.Models;
 public sealed class ApRunSharedState
 {
     /// <summary>Serialized payload schema only; this is not a multiplayer protocol version.</summary>
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
 
     /// <summary>Separates two AP/STSes runs even when their seeds and slot identities match.</summary>
     public Guid RunId { get; set; }
 
-    /// <summary>
-    /// The effective set chosen by the MegaCrit host. Host identity itself is derived from the
-    /// live network service and is deliberately not duplicated in this record.
-    /// </summary>
-    public List<int> HostEffectiveAscensions { get; set; } = new();
+    /// <summary>The host's resolved AP slot/client gameplay settings, frozen at run start.</summary>
+    public ArchipelagoSettings? HostSettings { get; set; }
 
-    /// <summary>
-    /// Durable proof that replicated effects are present in this checkpoint. The future effect
-    /// executor must apply an effect and add its stable ID in one host-ordered operation.
-    /// </summary>
-    public HashSet<string> AppliedEffectIds { get; set; } = new(StringComparer.Ordinal);
+    public SharedSlotCheckScope SharedSlotCheckScope { get; set; } =
+        SharedSlotCheckScope.HostCharacterOnly;
 }
 
 /// <summary>
@@ -33,29 +27,60 @@ public sealed class ApRunSharedState
 public sealed class ApPlayerRunState
 {
     /// <summary>Serialized payload schema only; this is not a multiplayer protocol version.</summary>
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
 
-    public ApParticipationKind Participation { get; set; } = ApParticipationKind.Guest;
+    // i wonder if we want to default this to ApGuest
+    public ApParticipationKind Participation { get; set; } = ApParticipationKind.VanillaGuest;
 
+    // I wonder if all 3 are needed or not. 
     public string? ApRoomSeed { get; set; }
-
     public int? ApTeamId { get; set; }
-
     public int? ApSlotId { get; set; }
 
     /// <summary>
-    /// Lobby readiness evidence contributed by this player. Complete means the initial AP
-    /// receipt history was ingested far enough to rebuild unlocks, progression banks, and
-    /// pending rewards; it does not mean every reward was claimed or applied. RitsuLib commits
-    /// the same per-player object into the run snapshot, but this value is deliberately ignored
-    /// after launch: an AP-bound rejoining process must prepare fresh server history again.
-    ///
-    /// TODO(AP_MP save/rejoin): receipt reconstruction is only half of rejoin readiness. Before
-    /// save/rejoin is enabled, restore the owner's durable local journal (consumed receipt IDs,
-    /// aggregate-gold cursor, stable reward assignments, pending/submitted/confirmed grants,
-    /// buffs, and checks), reconcile it with current AP history and the host ledger, and only
-    /// then contribute a complete readiness value. A missing journal uses the documented lossy
-    /// salvage path instead of silently pretending an exact restore occurred.
+    /// Lobby readiness evidence contributed by this player. This means either the independent
+    /// slot's SDK history or the fixed host's AP Guest receipt catalog has been reconstructed.
+    /// Durable consumption and assignments live in <see cref="Progress"/> instead.
     /// </summary>
-    public bool ApHistoryComplete { get; set; }
+    public bool ReceiptSourceReady { get; set; }
+
+    /// <summary>
+    /// Canonical run-scoped AP progress for this Net ID. Only the fixed host persists it;
+    /// clients receive an in-memory copy in the native run/rejoin snapshot.
+    /// </summary>
+    public APProgressUnified Progress { get; set; } = new();
+
+    /// <summary>Monotonic live-update revision used to reject stale client snapshots.</summary>
+    public long ProgressRevision { get; set; }
+}
+
+// CONFIRM: what's this used for? disconnects mid run, client side check?
+// CONFIRM: what are all these schema versions used for and do we care?
+public sealed class ApProgressUpdateMessage
+{
+    public int SchemaVersion { get; set; } = 1;
+    public Guid RunId { get; set; }
+    public ulong OwnerNetId { get; set; }
+    public long Revision { get; set; }
+    public APProgressUnified Progress { get; set; } = new();
+}
+
+// CONFIRM: what's this used for? Do we not need a slot asw or something
+public sealed class ApReceiptWireItem
+{
+    public int Index { get; set; }
+    public string SerializedItem { get; set; } = string.Empty;
+}
+
+// CONFIRM: purpose of this 
+public sealed class ApReceiptCatalogMessage
+{
+    public int SchemaVersion { get; set; } = 1;
+    public string RoomSeed { get; set; } = string.Empty;
+    public int ApTeamId { get; set; }
+    public int ApSlotId { get; set; }
+    public int Revision { get; set; }
+    public bool IsFullSnapshot { get; set; }
+    public ArchipelagoSettings? HostSettings { get; set; }
+    public List<ApReceiptWireItem> Items { get; set; } = new();
 }

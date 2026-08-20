@@ -16,7 +16,9 @@ public enum ApGrantState
     Blocked,
 }
 
-/// <summary>Native mirrored reward shapes currently supported by the AP reward menu.</summary>
+/// <summary>Native mirrored reward shapes currently supported by the AP reward menu.
+/// CONFIRM: Gold is handled separately I think
+/// </summary>
 public enum ApMirroredRewardKind
 {
     Card,
@@ -35,7 +37,6 @@ public sealed class ApMirroredRewardSpec
     public int SchemaVersion { get; set; } = 1;
 
     public int ApSlotId { get; set; }
-
     public int ReceivedItemIndex { get; set; }
 
     /// <summary>
@@ -46,12 +47,15 @@ public sealed class ApMirroredRewardSpec
 
     public ApMirroredRewardKind Kind { get; set; }
 
+    // maybe the card state can be its own data structure, maybe thats too much though
     public bool IsRareCardReward { get; set; }
 
     public int? CardRewardActIndex { get; set; }
 
+    // CONFIRM: future reroll support as I don't think driftwood works for AP card rewards
     public bool CardCanReroll { get; set; }
 
+    // CONFIRM: the datatype of serialized models, why string?
     public List<string> SerializedModels { get; set; } = new();
 
     public ApGrantId GrantId => new(ApSlotId, ReceivedItemIndex);

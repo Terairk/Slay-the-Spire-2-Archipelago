@@ -12,9 +12,7 @@ using MegaCrit.Sts2.Core.Saves.Runs;
 using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
-using STS2RitsuLib;
 using STS2RitsuLib.Combat.Rewards;
-using STS2RitsuLib.Data;
 using STS2RitsuLib.Networking.Sidecar;
 
 namespace StS2AP.Utils;
@@ -27,14 +25,9 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ApMirroredRewardDispatcher
 {
-    private const string GrantStoreKey = "multiplayer_grants";
     private const string SidecarMessageKey = "mirrored_received_reward_v1";
 
     private sealed record RuntimeReward(Reward Root, IReadOnlyList<Reward> SelectableChildren);
-
-    private static readonly ModDataStoreCache<MultiplayerGrantState> GrantStore =
-        RitsuLibFramework.GetDataStore(ModEntry.ModId)
-            .CreateCache<MultiplayerGrantState>(GrantStoreKey);
 
     private static readonly RitsuLibSidecarJsonSerializer<ApMirroredRewardSpec> SpecSerializer =
         new();
@@ -61,8 +54,9 @@ public static class ApMirroredRewardDispatcher
 
     private static readonly HashSet<(ulong OwnerNetId, ApGrantId GrantId)> ActiveAttempts = new();
 
-    private static MultiplayerGrantRunState? _activeOwnerRun;
     private static string? _activeRunIdentity;
+    private static readonly Dictionary<(ApGrantId GrantId, ApMirroredRewardKind Kind), string>
+        LastAttempts = new();
 
     [ThreadStatic]
     private static ulong? _buildingCardRewardOwner;
@@ -72,7 +66,7 @@ public static class ApMirroredRewardDispatcher
         RitsuLibSidecarSyncMessages.Register(SpecDescriptor);
     }
 
-    /// <summary>Binds owner-private assignments and applied IDs to the newly launched run.</summary>
+    /// <summary>Binds stable assignments and consumption to the host-owned run snapshot.</summary>
     public static bool BeginRun(RunState runState, out string reason)
     {
         reason = string.Empty;
@@ -86,52 +80,27 @@ public static class ApMirroredRewardDispatcher
             return false;
         }
 
-        try
+        if (!ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
+            || shared.RunId == Guid.Empty)
         {
-            long startTime = RunManager.Instance.ToSave(preFinishedRoom: null).StartTime;
-            _activeRunIdentity = $"{runState.Rng.StringSeed}:{startTime}";
-            _activeOwnerRun = GrantStore.Value.Runs.LastOrDefault(entry =>
-                entry.ApRoomSeed == roomSeed
-                && entry.ApTeamId == apTeamId
-                && entry.ApSlotId == apSlotId
-                && entry.StsRunIdentity == _activeRunIdentity
-            );
-
-            if (_activeOwnerRun == null)
-            {
-                _activeOwnerRun = new MultiplayerGrantRunState
-                {
-                    ApRoomSeed = roomSeed,
-                    ApTeamId = apTeamId,
-                    ApSlotId = apSlotId,
-                    StsRunIdentity = _activeRunIdentity,
-                };
-                GrantStore.Modify(document => document.Runs.Add(_activeOwnerRun));
-                GrantStore.Save();
-            }
-
-            RestoreOwnerProgressAssignments(runState);
-            LogUtility.Info(
-                $"Bound discrete AP grant ledger: run={_activeRunIdentity}, "
-                    + $"slot={apSlotId}, grants={_activeOwnerRun.Grants.Count}"
-            );
-            return true;
-        }
-        catch (Exception ex)
-        {
-            reason = $"The owner-private AP grant ledger could not be loaded: {ex.Message}";
-            LogUtility.Error(reason);
-            EndRun();
+            reason = "The host-owned AP run identity was missing when rewards were bound.";
             return false;
         }
+
+        _activeRunIdentity = shared.RunId.ToString("N");
+        LogUtility.Info(
+            $"Bound AP grant state: run={_activeRunIdentity}, room={roomSeed}, "
+                + $"team={apTeamId}, slot={apSlotId}"
+        );
+        return true;
     }
 
     public static void EndRun()
     {
-        _activeOwnerRun = null;
         _activeRunIdentity = null;
         RuntimeRewards.Clear();
         ActiveAttempts.Clear();
+        LastAttempts.Clear();
         _buildingCardRewardOwner = null;
     }
 
@@ -151,12 +120,9 @@ public static class ApMirroredRewardDispatcher
             if (!TryGetMirroredKind(receipt, out ApMirroredRewardKind kind))
                 continue;
 
-            MultiplayerGrantRecord? record = null;
-            _activeOwnerRun?.Grants.TryGetValue(receipt.Index, out record);
             ApGrantState state;
             string? blockedReason = null;
-            bool applied = record?.Applied == true
-                || ArchipelagoClient.Progress.UsedItems.Contains(receipt.Index);
+            bool applied = ArchipelagoClient.Progress.UsedItems.Contains(receipt.Index);
             if (applied)
             {
                 state = ApGrantState.Applied;
@@ -194,9 +160,9 @@ public static class ApMirroredRewardDispatcher
                 ownerNetId,
                 kind,
                 state,
-                DescribeAssignment(record),
+                DescribeAssignment(kind, receipt.Index),
                 blockedReason,
-                record?.LastAttempt
+                LastAttempts.GetValueOrDefault((new ApGrantId(apSlotId, receipt.Index), kind))
             ));
         }
         return snapshots;
@@ -328,7 +294,6 @@ public static class ApMirroredRewardDispatcher
         Player player = GameUtility.CurrentPlayer
             ?? throw new InvalidOperationException("No local AP player exists for a mirrored reward.");
 
-        EnsureRecord(itemIndex, kind, itemName);
         return new ApMirroredRewardSpec
         {
             ApSlotId = apSlotId,
@@ -338,29 +303,43 @@ public static class ApMirroredRewardDispatcher
         };
     }
 
+    // TODO: does this thing need to be extended in the future or???
+    // also comment here would be nice
     private static void ApplyPersistedAssignment(ApMirroredRewardSpec spec)
     {
-        if (_activeOwnerRun == null
-            || !_activeOwnerRun.Grants.TryGetValue(
-                spec.ReceivedItemIndex,
-                out MultiplayerGrantRecord? record
-            )
-            || record == null)
-            return;
-
-        if (record.Kind != spec.Kind)
+        int itemIndex = spec.ReceivedItemIndex;
+        switch (spec.Kind)
         {
-            throw new InvalidOperationException(
-                $"AP grant {spec.GrantId} changed kind from {record.Kind} to {spec.Kind}."
-            );
+            case ApMirroredRewardKind.Card
+                when ArchipelagoClient.Progress.CardAssignments.TryGetValue(
+                    itemIndex,
+                    out CardReward? card):
+                spec.CardCanReroll = card.CanReroll;
+                spec.SerializedModels = card.Cards.Select(SerializeCard).ToList();
+                break;
+            case ApMirroredRewardKind.Relic
+                when ArchipelagoClient.Progress.RelicChoiceAssignments.TryGetValue(
+                    itemIndex,
+                    out List<RelicModel>? relics):
+                spec.SerializedModels = relics.Select(SerializeRelic).ToList();
+                break;
+            case ApMirroredRewardKind.Potion
+                when ArchipelagoClient.Progress.PotionAssignments.TryGetValue(
+                    itemIndex,
+                    out PotionModel? potion):
+                spec.SerializedModels = new List<string> { SerializePotion(potion) };
+                break;
+            case ApMirroredRewardKind.Ancient
+                when ArchipelagoClient.Progress.AncientRelicChoiceAssignments.TryGetValue(
+                    itemIndex,
+                    out List<RelicModel>? ancients):
+                spec.SerializedModels = ancients.Select(SerializeRelic).ToList();
+                break;
         }
-
-        spec.IsRareCardReward = record.IsRareCardReward || spec.IsRareCardReward;
-        spec.CardRewardActIndex ??= record.CardRewardActIndex;
-        spec.CardCanReroll = record.CardCanReroll;
-        spec.SerializedModels = record.SerializedModels.ToList();
     }
 
+    
+    // TODO: name change here would be nice
     private static async Task<bool> ExecuteOwnerAttempt(
         ApMirroredRewardSpec spec,
         int? selectedChildIndex)
@@ -372,8 +351,7 @@ public static class ApMirroredRewardDispatcher
             return false;
         }
 
-        if (_activeOwnerRun?.Grants.TryGetValue(spec.ReceivedItemIndex, out var existing) == true
-            && existing.Applied)
+        if (ArchipelagoClient.Progress.UsedItems.Contains(spec.ReceivedItemIndex))
         {
             LogUtility.Warn($"Ignoring duplicate applied AP grant {spec.GrantId}");
             return true;
@@ -402,6 +380,7 @@ public static class ApMirroredRewardDispatcher
                 .WithCustomRewards(new List<Reward> { runtime.Root });
             Task completion = RunManager.Instance.RewardsSetSynchronizer.BeginRewardsSet(rewardsSet);
 
+            // EXPLAIN: this if statement and the insides of it
             if (!PersistRuntimeAssignment(spec, runtime, lastAttempt: null))
             {
                 RunManager.Instance.RewardsSetSynchronizer.SkipLocalRewardsSet();
@@ -417,6 +396,7 @@ public static class ApMirroredRewardDispatcher
             selectionStarted = true;
             bool consumed = await RunManager.Instance.RewardsSetSynchronizer
                 .SelectLocalReward(selectedReward);
+            // EXPLAIN: what is SkipLocalRewardsSet and what does it do and what is the above of SelectLocalReward
             if (!consumed)
             {
                 RunManager.Instance.RewardsSetSynchronizer.SkipLocalRewardsSet();
@@ -433,7 +413,7 @@ public static class ApMirroredRewardDispatcher
             if (!MarkApplied(spec))
             {
                 MultiplayerSupport.InvalidateRunClaims(
-                    $"AP grant {spec.GrantId} applied but its ledger could not be persisted"
+                    $"AP grant {spec.GrantId} applied but its progress could not reach the host"
                 );
             }
 
@@ -462,6 +442,8 @@ public static class ApMirroredRewardDispatcher
         }
     }
 
+    // EXPLAIN: im guessing this is called when the client receives said message
+    // EXPLAIN: what is MirroredSpec though
     private static Task HandleMirroredSpec(
         RitsuLibSidecarSyncMessageContext<ApMirroredRewardSpec> context)
     {
@@ -474,10 +456,61 @@ public static class ApMirroredRewardDispatcher
                 $"Mirrored reward owner {spec.OwnerNetId} did not match sender {context.SenderNetId}."
             );
         }
+        if (RunManager.Instance.NetService.Type == NetGameType.Host
+            && RunManager.Instance.DebugOnlyGetState() is RunState hostRunState)
+        {
+            if (!ApRunData.TryGetPlayerState(
+                    hostRunState,
+                    spec.OwnerNetId,
+                    out ApPlayerRunState ownerState)
+                || ownerState.Participation == ApParticipationKind.VanillaGuest)
+            {
+                throw new InvalidOperationException(
+                    $"Player {spec.OwnerNetId} is not an AP participant in this run."
+                );
+            }
+            if (ownerState.Participation == ApParticipationKind.OwnApSlot
+                && ownerState.ApSlotId != spec.ApSlotId)
+            {
+                throw new InvalidOperationException(
+                    $"AP grant {spec.GrantId} did not match its owner's frozen slot."
+                );
+            }
+            if (ownerState.Participation == ApParticipationKind.ApGuest)
+            {
+                ulong hostNetId = RunManager.Instance.NetService.NetId;
+                if (!ApRunData.TryGetPlayerState(
+                        hostRunState,
+                        hostNetId,
+                        out ApPlayerRunState hostState)
+                    || hostState.ApSlotId != spec.ApSlotId
+                    || !ApReceiptRelay.TryGetHostReceipt(
+                        spec.ReceivedItemIndex,
+                        out ItemInfo hostReceipt)
+                    || !TryGetMirroredKind(
+                        new IndexedItemInfo(hostReceipt, spec.ReceivedItemIndex),
+                        out ApMirroredRewardKind hostKind)
+                    || hostKind != spec.Kind)
+                {
+                    throw new InvalidOperationException(
+                        $"AP Guest grant {spec.GrantId} was absent from the host receipt catalog."
+                    );
+                }
+            }
+            if (ApRunData.IsReceiptUsed(
+                    hostRunState,
+                    spec.OwnerNetId,
+                    spec.ReceivedItemIndex))
+            {
+                throw new InvalidOperationException($"AP grant {spec.GrantId} was already consumed.");
+            }
+        }
 
         var completion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously
         );
+        
+        // EXPLAIN: this line to me
         bool posted = RitsuLibSidecarGodotMainLoopScheduling.TryPostToMainLoop(() =>
             CompleteRemoteAttempt(spec, completion)
         );
@@ -490,6 +523,7 @@ public static class ApMirroredRewardDispatcher
         return completion.Task;
     }
 
+    // TODO: comment here would also be nice
     private static async void CompleteRemoteAttempt(
         ApMirroredRewardSpec spec,
         TaskCompletionSource completion)
@@ -529,6 +563,7 @@ public static class ApMirroredRewardDispatcher
         }
     }
 
+    // EXPLAIN: and TODO: put comment
     private static RuntimeReward GetOrBuildRuntimeReward(ApMirroredRewardSpec spec)
     {
         var key = (spec.OwnerNetId, spec.GrantId);
@@ -687,142 +722,69 @@ public static class ApMirroredRewardDispatcher
 
     private static bool PersistAssignment(ApMirroredRewardSpec spec, string? lastAttempt)
     {
-        if (_activeOwnerRun == null || spec.ApSlotId != _activeOwnerRun.ApSlotId)
+        if (_activeRunIdentity == null
+            || MultiplayerSupport.PreparedApSlotId != spec.ApSlotId)
             return false;
 
-        MultiplayerGrantRecord record = EnsureRecord(
-            spec.ReceivedItemIndex,
-            spec.Kind,
-            FindItemName(spec.ReceivedItemIndex)
-        );
-        record.IsRareCardReward = spec.IsRareCardReward;
-        record.CardRewardActIndex = spec.CardRewardActIndex;
-        record.CardCanReroll = spec.CardCanReroll;
-        record.SerializedModels = spec.SerializedModels.ToList();
-        record.LastAttempt = lastAttempt;
-        return SaveOwnerLedger();
+        int itemIndex = spec.ReceivedItemIndex;
+        Player? player = GameUtility.CurrentPlayer;
+        if (player == null)
+            return false;
+        try
+        {
+            switch (spec.Kind)
+            {
+                case ApMirroredRewardKind.Card:
+                    if (RuntimeRewards.TryGetValue(
+                            (spec.OwnerNetId, spec.GrantId),
+                            out RuntimeReward? cardRuntime)
+                        && cardRuntime.Root is CardReward card)
+                    {
+                        ArchipelagoClient.Progress.CardAssignments[itemIndex] = card;
+                    }
+                    break;
+                case ApMirroredRewardKind.Relic:
+                    ArchipelagoClient.Progress.RelicChoiceAssignments[itemIndex] =
+                        spec.SerializedModels.Select(DeserializeRelic).ToList();
+                    break;
+                case ApMirroredRewardKind.Potion:
+                    if (spec.SerializedModels.Count > 0)
+                    {
+                        ArchipelagoClient.Progress.PotionAssignments[itemIndex] =
+                            PotionModel.FromSerializable(
+                                Deserialize<SerializablePotion>(spec.SerializedModels[0])
+                            ).CanonicalInstance;
+                    }
+                    break;
+                case ApMirroredRewardKind.Ancient:
+                    ArchipelagoClient.Progress.AncientRelicChoiceAssignments[itemIndex] =
+                        spec.SerializedModels.Select(DeserializeRelic).ToList();
+                    break;
+            }
+            if (lastAttempt != null)
+                LastAttempts[(spec.GrantId, spec.Kind)] = lastAttempt;
+            return ApRunData.PublishLocalProgress(player);
+        }
+        catch (Exception ex)
+        {
+            LogUtility.Error($"Failed to record AP assignment {spec.GrantId}: {ex}");
+            return false;
+        }
     }
 
     private static bool MarkApplied(ApMirroredRewardSpec spec)
     {
-        if (_activeOwnerRun == null)
-            return false;
-        MultiplayerGrantRecord record = EnsureRecord(
-            spec.ReceivedItemIndex,
-            spec.Kind,
-            FindItemName(spec.ReceivedItemIndex)
-        );
-        record.Applied = true;
-        record.LastAttempt = "applied";
         if (!ArchipelagoClient.Progress.UsedItems.Contains(spec.ReceivedItemIndex))
             ArchipelagoClient.Progress.UsedItems.Add(spec.ReceivedItemIndex);
-        return SaveOwnerLedger();
+        LastAttempts[(spec.GrantId, spec.Kind)] = "applied";
+        Player? player = GameUtility.CurrentPlayer;
+        return player != null && ApRunData.PublishLocalProgress(player);
     }
 
     private static void SetLastAttempt(ApMirroredRewardSpec spec, string attempt)
     {
-        if (_activeOwnerRun == null)
-            return;
-        MultiplayerGrantRecord record = EnsureRecord(
-            spec.ReceivedItemIndex,
-            spec.Kind,
-            FindItemName(spec.ReceivedItemIndex)
-        );
-        record.LastAttempt = attempt;
-        SaveOwnerLedger();
+        LastAttempts[(spec.GrantId, spec.Kind)] = attempt;
     }
-
-    private static MultiplayerGrantRecord EnsureRecord(
-        int itemIndex,
-        ApMirroredRewardKind kind,
-        string itemName)
-    {
-        if (_activeOwnerRun == null)
-            throw new InvalidOperationException("No active owner grant ledger is bound.");
-        if (!_activeOwnerRun.Grants.TryGetValue(itemIndex, out MultiplayerGrantRecord? record))
-        {
-            record = new MultiplayerGrantRecord
-            {
-                Kind = kind,
-                ItemName = itemName,
-            };
-            _activeOwnerRun.Grants[itemIndex] = record;
-        }
-        else if (record.Kind != kind)
-        {
-            throw new InvalidOperationException(
-                $"Received item index {itemIndex} was already assigned as {record.Kind}."
-            );
-        }
-
-        if (string.IsNullOrWhiteSpace(record.ItemName))
-            record.ItemName = itemName;
-        return record;
-    }
-
-    private static bool SaveOwnerLedger()
-    {
-        try
-        {
-            GrantStore.Save();
-            return true;
-        }
-        catch (Exception ex)
-        {
-            LogUtility.Error($"Failed to persist discrete AP grant ledger: {ex}");
-            return false;
-        }
-    }
-
-    private static void RestoreOwnerProgressAssignments(RunState runState)
-    {
-        if (_activeOwnerRun == null)
-            return;
-        Player? localPlayer = runState.GetPlayer(RunManager.Instance.NetService.NetId);
-        if (localPlayer == null)
-            return;
-
-        foreach ((int itemIndex, MultiplayerGrantRecord record) in _activeOwnerRun.Grants)
-        {
-            if (record.Applied && !ArchipelagoClient.Progress.UsedItems.Contains(itemIndex))
-                ArchipelagoClient.Progress.UsedItems.Add(itemIndex);
-            if (record.SerializedModels.Count == 0)
-                continue;
-
-            try
-            {
-                switch (record.Kind)
-                {
-                    case ApMirroredRewardKind.Ancient:
-                        ArchipelagoClient.Progress.AncientRelicChoiceAssignments[itemIndex] =
-                            record.SerializedModels.Select(DeserializeRelic).ToList();
-                        break;
-                    case ApMirroredRewardKind.Relic:
-                        ArchipelagoClient.Progress.RelicChoiceAssignments[itemIndex] =
-                            record.SerializedModels.Select(DeserializeRelic).ToList();
-                        break;
-                    case ApMirroredRewardKind.Potion:
-                        ArchipelagoClient.Progress.PotionAssignments[itemIndex] =
-                            PotionModel.FromSerializable(
-                                Deserialize<SerializablePotion>(record.SerializedModels[0])
-                            ).CanonicalInstance;
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.Error(
-                    $"Failed to restore AP assignment {_activeOwnerRun.ApSlotId}:{itemIndex}: {ex.Message}"
-                );
-            }
-        }
-    }
-
-    private static string FindItemName(int itemIndex) =>
-        ArchipelagoClient.Progress.AllReceivedItems
-            .Concat(MultiplayerSupport.PendingUnsupportedItems)
-            .FirstOrDefault(item => item.Index == itemIndex)?.Item.ItemDisplayName
-        ?? $"Received item {itemIndex}";
 
     private static bool TryGetMirroredKind(
         IndexedItemInfo receipt,
@@ -851,33 +813,33 @@ public static class ApMirroredRewardDispatcher
         }
     }
 
-    private static string DescribeAssignment(MultiplayerGrantRecord? record)
+    private static string DescribeAssignment(ApMirroredRewardKind kind, int itemIndex)
     {
-        if (record == null || record.SerializedModels.Count == 0)
-            return "<unassigned>";
         try
         {
-            return record.Kind switch
+            return kind switch
             {
-                ApMirroredRewardKind.Card => string.Join(", ", record.SerializedModels.Select(json =>
-                {
-                    CardModel card = CardModel.FromSerializable(Deserialize<SerializableCard>(json));
-                    return $"{card.Title} [{card.Id.Entry}]";
-                })),
-                ApMirroredRewardKind.Relic or ApMirroredRewardKind.Ancient =>
-                    string.Join(", ", record.SerializedModels.Select(json =>
-                    {
-                        RelicModel relic = DeserializeRelic(json);
-                        return $"{relic.Title.GetRawText()} [{relic.Id.Entry}]";
-                    })),
-                ApMirroredRewardKind.Potion => string.Join(", ", record.SerializedModels.Select(json =>
-                {
-                    PotionModel potion = PotionModel.FromSerializable(
-                        Deserialize<SerializablePotion>(json)
-                    );
-                    return $"{potion.Title.GetRawText()} [{potion.Id.Entry}]";
-                })),
-                _ => "<unknown assignment>",
+                ApMirroredRewardKind.Card
+                    when ArchipelagoClient.Progress.CardAssignments.TryGetValue(
+                        itemIndex,
+                        out CardReward? card) => string.Join(", ", card.Cards.Select(model =>
+                            $"{model.Title} [{model.Id.Entry}]")),
+                ApMirroredRewardKind.Relic
+                    when ArchipelagoClient.Progress.RelicChoiceAssignments.TryGetValue(
+                        itemIndex,
+                        out List<RelicModel>? relics) => string.Join(", ", relics.Select(model =>
+                            $"{model.Title.GetRawText()} [{model.Id.Entry}]")),
+                ApMirroredRewardKind.Ancient
+                    when ArchipelagoClient.Progress.AncientRelicChoiceAssignments.TryGetValue(
+                        itemIndex,
+                        out List<RelicModel>? ancients) => string.Join(", ", ancients.Select(model =>
+                            $"{model.Title.GetRawText()} [{model.Id.Entry}]")),
+                ApMirroredRewardKind.Potion
+                    when ArchipelagoClient.Progress.PotionAssignments.TryGetValue(
+                        itemIndex,
+                        out PotionModel? potion) =>
+                    $"{potion.Title.GetRawText()} [{potion.Id.Entry}]",
+                _ => "<unassigned>",
             };
         }
         catch (Exception ex)

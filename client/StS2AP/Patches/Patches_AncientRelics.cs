@@ -214,6 +214,7 @@ namespace StS2AP.Patches
 
             // This key is part of the stable SHA-256 ordering, not user-facing text. It gives
             // each start-of-act reward a repeatable choice set without consuming game RNG.
+            // TODO: don't we need to do a proper choice key for multiplayer or not
             var choiceKey = $"start-act-{currentAct}";
             var choices = AncientRelicPool.CreateChoices(
                 player,

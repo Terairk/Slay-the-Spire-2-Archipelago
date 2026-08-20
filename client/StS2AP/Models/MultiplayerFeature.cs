@@ -2,8 +2,8 @@ namespace StS2AP.Models;
 
 /// <summary>
 /// AP capabilities that must be reviewed independently before they are enabled in a real
-/// multiplayer run. The initial experimental profile deliberately enables only the small
-/// local-ownership and gold-reward slice.
+/// multiplayer run. Unsupported gameplay systems remain disabled independently of the
+/// persistence and participant-mode implementation.
 /// </summary>
 public enum MultiplayerFeature
 {
@@ -33,7 +33,7 @@ public enum MultiplayerFeature
     CombatEffects,
     DeathLink,
 
-    // AP_MP: Keep this disabled while multiplayer runs are intentionally disposable.
+    // Native host save/rejoin with AP progress embedded through RitsuLib run data.
     SaveAndReconnect,
 
     // AP_MP: Unknown received items fail closed until explicitly classified.
@@ -54,6 +54,13 @@ public enum ApPlayDestination
 /// </summary>
 public enum ApParticipationKind
 {
-    Guest,
-    Archipelago,
+    VanillaGuest,
+    ApGuest,
+    OwnApSlot,
+}
+
+public enum SharedSlotCheckScope
+{
+    HostCharacterOnly,
+    AllApParticipants,
 }

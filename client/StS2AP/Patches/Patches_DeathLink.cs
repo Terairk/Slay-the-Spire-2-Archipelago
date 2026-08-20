@@ -23,6 +23,7 @@ namespace StS2AP.Patches
         /// This prevents the infinite feedback loop where receiving a Death Link kill triggers us to send
         /// another one back, which kills the sender again, and so on.
         /// </summary>
+        // TODO: 3 seconds seems crazy small, especially once multiplayer is introduced
         private const double DeathLinkSuppressionWindowSeconds = 3.0;
 
         /// <summary>

@@ -380,6 +380,8 @@ namespace StS2AP.UI
             var currentPlayer = GameUtility.CurrentPlayer;
             if (currentPlayer == null) return;
 
+            // CONFIRM / CHANGE: doesn't this depend if the Guest is an AP Guest or Vanilla Guest
+            // AP Guests should get the same as the HOST
             if (MultiplayerSupport.IsLocalGuest)
             {
                 ShowRewards(new List<ArchipelagoRewardData>());
@@ -390,6 +392,8 @@ namespace StS2AP.UI
             // unexpected assignment failure recoverable without another tracking state.
             // AP_MP: Mirrored relics are populated on every peer only after their Sidecar spec.
             // Owner-only reconciliation would pull from just this process's relic bag.
+            // EXPLAIN: what the hell does MultiplayerSupport IsFeatureEnabled even do if we also have to check
+            // also why are we doing a multiplayer support feature and then checking if its a real multiplayer run???
             if (MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.RelicRewards)
                 && !MultiplayerSupport.IsRealMultiplayerRun)
                 RelicRewardUtility.ReconcileBankedRewards(currentPlayer);
@@ -445,6 +449,7 @@ namespace StS2AP.UI
                 var rawId = i.Item.GetCharacterSpecificItemID();
                 if (rawId == APItem.Relic)
                 {
+                    // EXPLAIN: the following 30 lines to me thanks
                     if (MultiplayerSupport.IsRealMultiplayerRun)
                     {
                         var relic = ApMirroredRewardDispatcher.GetOrAssignRelic(
@@ -506,6 +511,7 @@ namespace StS2AP.UI
                         data.UseAncientRelicStyle = true;
                         if (MultiplayerSupport.IsRealMultiplayerRun)
                         {
+                            // CONFIRM: didn't we already move to RitsuLib's native LinkedRewardSet?
                             // TODO AP_MP: Move this presentation to MegaCrit's NLinkedRewardSet
                             // once the AP overlay can embed native reward rows. The replicated
                             // selection backend already uses Ritsu's native LinkedRewardSet.
@@ -543,6 +549,7 @@ namespace StS2AP.UI
 
                 if(rawId == APItem.Potion)
                 {
+                    // EXPLAIN: the following 30 lines for me
                     if (MultiplayerSupport.IsRealMultiplayerRun)
                     {
                         var potion = ApMirroredRewardDispatcher.GetOrAssignPotion(
@@ -583,7 +590,7 @@ namespace StS2AP.UI
                     }
                     }
                 }
-
+                // EXPLAIN: the following 20 lines for me
                 if (MultiplayerSupport.IsRealMultiplayerRun)
                 {
                     ApMirroredRewardKind? mirroredKind = rawId switch
@@ -613,6 +620,7 @@ namespace StS2AP.UI
                 // Mark the item as used in the Multiworld so it doesn't show up again if we reopen the screen
                 if (!ArchipelagoClient.Progress.UsedItems.Contains(item.Index))
                     ArchipelagoClient.Progress.UsedItems.Add(item.Index);
+                ApRunData.PublishCurrentProgress();
             });
 
             // Show the UI with these rewards
@@ -647,6 +655,8 @@ namespace StS2AP.UI
 
                 // Inject one immutable aggregate row for all currently unredeemed raw gold.
                 // New receipts never change an already materialized multiplayer claim.
+                // EXPLAIN: the following 60 linse to me nd why the gold path looks so different
+                // compared to singleplayer
                 if (MultiplayerSupport.IsRealMultiplayerRun)
                 {
                     _activeGoldClaim ??= ApGrantDispatcher.MaterializeGoldClaim();

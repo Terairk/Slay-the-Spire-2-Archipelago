@@ -602,6 +602,7 @@ namespace StS2AP.Patches
                 {
                     return true;
                 }
+                // FLAG: i bet you if anything softlocks, it'll be here
 
                 string message = $"AP multiplayer launch blocked: {blockedReason}";
                 LogUtility.Warn(message);
@@ -629,30 +630,6 @@ namespace StS2AP.Patches
                 }
 
                 __instance.GetNode<MegaLabel>("%NameplateLabel").SetTextAutoSize(label);
-            }
-        }
-
-        /// <summary>
-        /// This first spike supports fresh disposable runs only. An unrelated vanilla save must
-        /// not replace Host with Load/Abandon inside the AP multiplayer entry flow.
-        /// </summary>
-        [HarmonyPatch(typeof(NMultiplayerSubmenu), nameof(NMultiplayerSubmenu._Ready))]
-        public static class FreshMultiplayerRunsOnly
-        {
-            [HarmonyPostfix]
-            public static void Postfix(NMultiplayerSubmenu __instance)
-            {
-                // AP_MP: Keep Continue/Load hidden until SaveAndReconnect is supported.
-                if (MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer
-                    || !MultiplayerSupport.ExperimentalSettingEnabled
-                    || MultiplayerSupport.IsFeatureEnabled(
-                        MultiplayerFeature.SaveAndReconnect
-                    ))
-                    return;
-
-                __instance.GetNode<NSubmenuButton>("ButtonContainer/HostButton").Visible = true;
-                __instance.GetNode<NSubmenuButton>("ButtonContainer/LoadButton").Visible = false;
-                __instance.GetNode<NSubmenuButton>("ButtonContainer/AbandonButton").Visible = false;
             }
         }
 

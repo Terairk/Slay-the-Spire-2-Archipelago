@@ -20,6 +20,12 @@ namespace StS2AP.Utils
         /// <param name="locationId">The Archipelago location ID earned by the player.</param>
         public static void RecordAndSend(long locationId)
         {
+            if (MultiplayerSupport.IsMultiplayerScope)
+            {
+                RecordAndSendMultiplayer(locationId);
+                return;
+            }
+
             if (!TryRecord(locationId))
             {
                 return;
@@ -47,6 +53,12 @@ namespace StS2AP.Utils
         /// </remarks>
         public static void ReconcileAndSend()
         {
+            if (MultiplayerSupport.IsMultiplayerScope)
+            {
+                ReconcileAndSendMultiplayer();
+                return;
+            }
+
             if (!ArchipelagoClient.IsConnected)
             {
                 return;
@@ -92,6 +104,48 @@ namespace StS2AP.Utils
                 $"Replaying {pending.Count} pending location check(s) after reconnecting"
             );
             _ = SendAsync(session, pending.ToArray(), replaying: true);
+        }
+
+        // EXPLAIN: the RecordAndSendMultiplayer vs ReconcileAndSendMultiplayer
+        private static void RecordAndSendMultiplayer(long locationId)
+        {
+            // A shared-slot AP Guest never submits checks. When All AP Participants is enabled,
+            // the connected host derives those checks from the host-owned player roster.
+            if (!MultiplayerSupport.IsLocalOwnApSlot)
+                return;
+
+            if (!ArchipelagoClient.Progress.PendingLocationChecks.Add(locationId))
+                return;
+            if (GameUtility.CurrentPlayer is { } player)
+                ApRunData.PublishLocalProgress(player);
+
+            if (!ArchipelagoClient.IsConnected)
+            {
+                LogUtility.Warn($"Queued multiplayer location check {locationId} until AP reconnects");
+                return;
+            }
+            _ = SendAsync(ArchipelagoClient.Session, new[] { locationId }, replaying: false);
+        }
+
+        private static void ReconcileAndSendMultiplayer()
+        {
+            if (!MultiplayerSupport.IsLocalOwnApSlot || !ArchipelagoClient.IsConnected)
+                return;
+
+            HashSet<long> pending = ArchipelagoClient.Progress.PendingLocationChecks;
+            pending.ExceptWith(ArchipelagoClient.Session.Locations.AllLocationsChecked);
+            if (GameUtility.CurrentPlayer is { } player)
+                ApRunData.PublishLocalProgress(player);
+            if (pending.Count == 0)
+                return;
+
+            foreach (long locationId in pending)
+            {
+                if (!ArchipelagoClient.CheckedLocations.Contains(locationId))
+                    ArchipelagoClient.CheckedLocations.Add(locationId);
+            }
+            LogUtility.Info($"Replaying {pending.Count} host-owned multiplayer check(s)");
+            _ = SendAsync(ArchipelagoClient.Session, pending.ToArray(), replaying: true);
         }
 
         /// <summary>
