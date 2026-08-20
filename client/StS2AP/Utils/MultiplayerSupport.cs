@@ -383,7 +383,7 @@ public static class MultiplayerSupport
         _preparedReceivedItems = receivedItems.ToArray();
 
         // Durable consumption and assignments are restored separately from the host-owned
-        // APProgressUnified snapshot. This flag says only that the transient receipt catalog is
+        // ApRunProgressState snapshot. This flag says only that the transient receipt catalog is
         // complete enough to reconcile against that progress.
         _apHistoryPrepared = true;
         RefreshObservedStartLobby();

@@ -48,7 +48,7 @@ public static class ApRunData
     private static IDisposable? _progressDeltaSubscription;
     private static bool _initialized;
     private static long _localProgressRevision;
-    private static APProgressUnified? _lastPublishedLocalProgress;
+    private static ApRunProgressState? _lastPublishedLocalProgress;
 
     public static void Initialize()
     {
@@ -115,7 +115,7 @@ public static class ApRunData
                 ApParticipationKind.ApGuest => MultiplayerSupport.HostReceiptCatalogReady,
                 _ => true,
             },
-            Progress = existing?.Progress ?? new APProgressUnified(),
+            Progress = existing?.Progress ?? new ApRunProgressState(),
             ProgressRevision = existing?.ProgressRevision ?? 0,
         };
         // SyncLobbyOnChange makes this a contribution to the authoritative host staging
@@ -280,8 +280,8 @@ public static class ApRunData
         if (!state.Progress.Initialized)
             return false;
 
-        ArchipelagoClient.Progress = ArchipelagoProgress.FromUnified(state.Progress, player);
-        _lastPublishedLocalProgress = ArchipelagoClient.Progress.ToUnified();
+        ArchipelagoClient.Progress = ArchipelagoProgress.FromRunProgressState(state.Progress, player);
+        _lastPublishedLocalProgress = ArchipelagoClient.Progress.ToRunProgressState();
         return true;
     }
 
@@ -301,7 +301,7 @@ public static class ApRunData
             return false;
         }
 
-        APProgressUnified snapshot = ArchipelagoClient.Progress.ToUnified();
+        ApRunProgressState snapshot = ArchipelagoClient.Progress.ToRunProgressState();
         ApProgressDelta? delta = _lastPublishedLocalProgress == null
             ? null
             : ApProgressDelta.Between(_lastPublishedLocalProgress, snapshot);

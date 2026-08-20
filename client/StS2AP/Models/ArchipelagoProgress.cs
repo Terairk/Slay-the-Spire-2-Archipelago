@@ -17,9 +17,9 @@ using System.Text.Json;
 namespace StS2AP.Models
 {
     /// <summary>
-    /// Tracks the progress of how far along the player is through their Archipelago game
-    /// PLEASE NOTE IF YOU CHANGE THIS DATASTRUCTURE, YOU NEED TO UPDATE THE SAVE DATA STRUCTURE
-    /// AS WELL. SEE SerializableAP
+    /// Runtime AP progress for the current player. <see cref="ToRunProgressState"/> and
+    /// <see cref="FromRunProgressState"/> are the single persistence boundary used by both
+    /// singleplayer saves and multiplayer host checkpoints.
     /// </summary>
     public class ArchipelagoProgress
     {
@@ -636,11 +636,9 @@ namespace StS2AP.Models
 
         #region StS Save
 
-        public APProgressUnified ToUnified() => ToUnified<APProgressUnified>();
-
-        private T ToUnified<T>() where T : APProgressUnified, new()
+        public ApRunProgressState ToRunProgressState()
         {
-            return new T
+            return new ApRunProgressState
             {
                 Initialized = true,
                 CardRewardsAttempted = CardRewardsAttempted,
@@ -677,7 +675,7 @@ namespace StS2AP.Models
                 ProgressiveStarterRelicTier = ProgressiveStarterRelicTier,
                 CardAssignments = CardAssignments.ToDictionary(
                     kv => kv.Key,
-                    kv => new APCardAssignmentUnified
+                    kv => new ApCardAssignmentState
                     {
                         SerializedCards = kv.Value.Cards
                             .Select(card => SerializeAssignment(card.ToSerializable()))
@@ -697,39 +695,19 @@ namespace StS2AP.Models
         public SerializableAP ToSerializable(SerializableRun run)
         {
             using var runJson = JsonDocument.Parse(JsonSerializationUtility.ToJson(run));
-            SerializableAP save = ToUnified<SerializableAP>();
-            save.LegacyRelicChoiceAssignments = RelicChoiceAssignments.ToDictionary(
-                kv => kv.Key,
-                kv => kv.Value.Select(relic =>
-                    (relic.IsMutable ? relic : relic.ToMutable()).ToSerializable()
-                ).ToList()
-            );
-            save.LegacyAncientRelicChoiceAssignments = AncientRelicChoiceAssignments.ToDictionary(
-                kv => kv.Key,
-                kv => kv.Value.Select(relic =>
-                    (relic.IsMutable ? relic : relic.ToMutable()).ToSerializable()
-                ).ToList()
-            );
-            save.LegacyCardAssignments = CardAssignments.ToDictionary(
-                kv => kv.Key,
-                kv => kv.Value.ToSerializable()
-            );
-            save.LegacyCardAssignmentModels = CardAssignments.ToDictionary(
-                kv => kv.Key,
-                kv => kv.Value.Cards.Select(card => card.ToSerializable()).ToList()
-            );
-            save.LegacyPotionAssignments = PotionAssignments.ToDictionary(
-                kv => kv.Key,
-                kv => kv.Value.ToMutable().ToSerializable(-1)
-            );
-            save.SaveData = runJson.RootElement.Clone();
-            return save;
+            return new SerializableAP
+            {
+                Progress = ToRunProgressState(),
+                SaveData = runJson.RootElement.Clone(),
+            };
         }
 
         public static ArchipelagoProgress FromSerializable(SerializableAP saveData, Player player) =>
-            FromUnified(saveData, player);
+            FromRunProgressState(saveData.Progress, player);
 
-        public static ArchipelagoProgress FromUnified(APProgressUnified saveData, Player player)
+        public static ArchipelagoProgress FromRunProgressState(
+            ApRunProgressState saveData,
+            Player player)
         {
             LogUtility.Info($"Card Assignments {string.Join(",", saveData.CardAssignments)}");
             var progress = new ArchipelagoProgress()
@@ -775,34 +753,6 @@ namespace StS2AP.Models
                 PendingLocationChecks = new HashSet<long>(saveData.PendingLocationChecks ?? new HashSet<long>()),
             };
 
-            if (saveData is SerializableAP legacy)
-            {
-                if (progress.RelicChoiceAssignments.Count == 0)
-                {
-                    progress.RelicChoiceAssignments = legacy.LegacyRelicChoiceAssignments
-                        .ToDictionary(
-                            kv => kv.Key,
-                            kv => kv.Value.Select(RelicModel.FromSerializable).ToList()
-                        );
-                }
-                if (progress.AncientRelicChoiceAssignments.Count == 0)
-                {
-                    progress.AncientRelicChoiceAssignments =
-                        (legacy.LegacyAncientRelicChoiceAssignments
-                            ?? new Dictionary<int, List<SerializableRelic>>()).ToDictionary(
-                            kv => kv.Key,
-                            kv => kv.Value.Select(RelicModel.FromSerializable).ToList()
-                        );
-                }
-                if (progress.PotionAssignments.Count == 0)
-                {
-                    progress.PotionAssignments = legacy.LegacyPotionAssignments.ToDictionary(
-                        kv => kv.Key,
-                        kv => PotionModel.FromSerializable(kv.Value).CanonicalInstance
-                    );
-                }
-            }
-
             var cardRewards = new Dictionary<int, CardReward>();
             foreach(var kv in saveData.CardAssignments)
             {
@@ -828,40 +778,6 @@ namespace StS2AP.Models
                 {
                     CanReroll = kv.Value.CanReroll,
                 };
-            }
-
-            if (cardRewards.Count == 0 && saveData is SerializableAP legacyCards)
-            {
-                var cardModels = legacyCards.LegacyCardAssignmentModels.ToDictionary(
-                    kv => kv.Key,
-                    kv => kv.Value.Select(serialized => player.RunState.CreateCard(
-                        CardModel.FromSerializable(serialized).CanonicalInstance,
-                        player
-                    )).ToList()
-                );
-                var cardsInfo = typeof(CardReward).GetField(
-                    "_cards",
-                    System.Reflection.BindingFlags.NonPublic
-                        | System.Reflection.BindingFlags.Instance
-                );
-                if (cardsInfo != null)
-                {
-                    foreach ((int itemIndex, SerializableReward serializedReward)
-                        in legacyCards.LegacyCardAssignments)
-                    {
-                        if (!cardModels.TryGetValue(itemIndex, out List<CardModel>? cards))
-                            continue;
-                        var reward = (CardReward)CardReward.FromSerializable(
-                            serializedReward,
-                            player
-                        );
-                        cardRewards[itemIndex] = reward;
-                        if (cardsInfo.GetValue(reward) is List<CardCreationResult> creations)
-                        {
-                            creations.AddRange(cards.Select(card => new CardCreationResult(card)));
-                        }
-                    }
-                }
             }
 
             var ascensionLevels = saveData.Ascensions?.Select((level) => (AscensionLevel)level).ToHashSet() ?? new HashSet<AscensionLevel>();

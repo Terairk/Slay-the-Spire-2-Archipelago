@@ -1,16 +1,17 @@
-﻿using MegaCrit.Sts2.Core.Saves;
-using MegaCrit.Sts2.Core.Saves.Managers;
-using MegaCrit.Sts2.Core.Saves.Runs;
+﻿using MegaCrit.Sts2.Core.Saves.Managers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
 namespace StS2AP.Models
 {
-    public sealed class APCardAssignmentUnified
+    public sealed class ApCardAssignmentState
     {
+        [JsonPropertyName("serialized_cards")]
         public List<string> SerializedCards { get; set; } = new();
-        // CONFIRM: do we need this as we don't support driftwood atm with AP card rewards
+        // Preserve the native reroll contract with the concrete card choices so restoring or
+        // mirroring the assignment does not silently remove Driftwood's reroll behavior.
+        [JsonPropertyName("can_reroll")]
         public bool CanReroll { get; set; }
     }
 
@@ -18,7 +19,7 @@ namespace StS2AP.Models
     /// Run-scoped AP progress shared by the singleplayer envelope and the host-owned
     /// per-player multiplayer snapshot. Received-item history is reconstructed separately.
     /// </summary>
-    public class APProgressUnified
+    public sealed class ApRunProgressState
     {
         [JsonPropertyName("initialized")]
         public bool Initialized { get; set; }
@@ -40,13 +41,13 @@ namespace StS2AP.Models
         public int PotionRewardsAttempted { get; set; }
         [JsonPropertyName("boss_rewards_distributed")]
         public int BossRewardsDistributed { get; set; }
-        [JsonPropertyName("unified_relic_choice_assignments")]
+        [JsonPropertyName("relic_choice_assignments")]
         public Dictionary<int, List<string>> RelicChoiceAssignments { get; set; } = new();
-        [JsonPropertyName("unified_ancient_relic_choice_assignments")]
+        [JsonPropertyName("ancient_relic_choice_assignments")]
         public Dictionary<int, List<string>> AncientRelicChoiceAssignments { get; set; } = new();
-        [JsonPropertyName("unified_card_assignments")]
-        public Dictionary<int, APCardAssignmentUnified> CardAssignments { get; set; } = new();
-        [JsonPropertyName("unified_potion_assignments")]
+        [JsonPropertyName("card_assignments")]
+        public Dictionary<int, ApCardAssignmentState> CardAssignments { get; set; } = new();
+        [JsonPropertyName("potion_assignments")]
         public Dictionary<int, string> PotionAssignments { get; set; } = new();
         [JsonPropertyName("used_items")]
         public List<int> UsedItems { get; set; } = new List<int>();
@@ -66,27 +67,19 @@ namespace StS2AP.Models
         public ProgressiveStarterTier ProgressiveStarterRelicTier { get; set; } = ProgressiveStarterTier.Unsupported;
         [JsonPropertyName("pending_location_checks")]
         public HashSet<long> PendingLocationChecks { get; set; } = new HashSet<long>();
+        [JsonPropertyName("ascensions")]
         public List<int> Ascensions { get; set; } = new List<int>();
     }
 
     /// <summary>
-    /// Singleplayer persistence envelope. Multiplayer stores <see cref="APProgressUnified"/>
-    /// in RitsuLib host run data and lets MegaCrit persist the native run itself.
+    /// Singleplayer persistence envelope. Its progress property is the same canonical state that
+    /// multiplayer stores in RitsuLib host run data; only the native save payload is specific to
+    /// singleplayer persistence.
     /// </summary>
-    public class SerializableAP : APProgressUnified
+    public sealed class SerializableAP
     {
-        // CONFIRM: why are these legacy, i can see they're different datatypes
-        // but still, can we not actually unify them. don't care about old saves
-        [JsonPropertyName("relic_choice_assignments")]
-        public Dictionary<int, List<SerializableRelic>> LegacyRelicChoiceAssignments { get; set; } = new();
-        [JsonPropertyName("ancient_relic_choice_assignments")]
-        public Dictionary<int, List<SerializableRelic>> LegacyAncientRelicChoiceAssignments { get; set; } = new();
-        [JsonPropertyName("card_assignments")]
-        public Dictionary<int, SerializableReward> LegacyCardAssignments { get; set; } = new();
-        [JsonPropertyName("card_models")]
-        public Dictionary<int, List<SerializableCard>> LegacyCardAssignmentModels { get; set; } = new();
-        [JsonPropertyName("potion_assignments")]
-        public Dictionary<int, SerializablePotion> LegacyPotionAssignments { get; set; } = new();
+        [JsonPropertyName("progress")]
+        public ApRunProgressState Progress { get; set; } = new();
 
         [JsonPropertyName("save_data")]
         // Keep the base-game save opaque to AP's source-generated serializer. The
@@ -96,7 +89,7 @@ namespace StS2AP.Models
     }
 
     [JsonSerializable(typeof(SerializableAP))]
-    [JsonSerializable(typeof(APProgressUnified))]
+    [JsonSerializable(typeof(ApRunProgressState))]
     public partial class APSerializationContext : JsonSerializerContext
     {
         // Code gets generated I guess

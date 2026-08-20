@@ -48,7 +48,7 @@ public sealed class ApPlayerRunState
     /// Canonical run-scoped AP progress for this Net ID. Only the fixed host persists it;
     /// clients receive an in-memory copy in the native run/rejoin snapshot.
     /// </summary>
-    public APProgressUnified Progress { get; set; } = new();
+    public ApRunProgressState Progress { get; set; } = new();
 
     /// <summary>Monotonic live-update revision used to reject stale client snapshots.</summary>
     public long ProgressRevision { get; set; }
@@ -63,7 +63,7 @@ public sealed class ApProgressSnapshotMessage
     public Guid RunId { get; set; }
     public ulong OwnerNetId { get; set; }
     public long Revision { get; set; }
-    public APProgressUnified Progress { get; set; } = new();
+    public ApRunProgressState Progress { get; set; } = new();
 }
 
 /// <summary>
