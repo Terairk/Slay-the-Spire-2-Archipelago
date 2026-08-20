@@ -39,7 +39,7 @@ Register the RitsuLib run slots at mod initialization with stable keys:
 
 | Slot | Owner and purpose | Target fields |
 |---|---|---|
-| `RunSavedData<ApRunSharedState>` / `ap_run` | Fixed host's canonical launch/run record | schema, opaque `RunId`, host effective Ascensions, frozen `SharedSlotCheckScope` |
+| `RunSavedData<ApRunSharedState>` / `ap_run` | Fixed host's canonical launch/run record | schema, opaque `RunId`, frozen host client/YAML gameplay settings, host effective Ascensions, frozen `SharedSlotCheckScope` |
 | `PlayerRunSavedData<ApPlayerRunState>` / `ap_players` | Host-owned per-Net-ID participant and AP progress | participation mode, AP source, receipt-source readiness, `APProgressUnified` |
 
 `PlayerRunSavedData` is per-player-shaped data in the host-carried snapshot. It
@@ -100,10 +100,12 @@ unnecessary.
 - Require one complete contribution per active Net ID.
 - Own-slot readiness requires that player's direct AP slot data and initial
   receipt history.
-- AP Guest readiness requires the host AP source and host receipt catalog.
+- AP Guest readiness requires the host AP source, frozen host settings, and host
+  receipt catalog.
 - Vanilla Guest has no AP receipt-readiness gate.
-- Freeze `RunId`, participant/AP-source mapping, host effective Ascensions, and
-  `SharedSlotCheckScope` in the committed run snapshot.
+- Freeze `RunId`, participant/AP-source mapping, host client/YAML gameplay
+  settings, host effective Ascensions, and `SharedSlotCheckScope` in the
+  committed run snapshot.
 - Treat `SyncLobbyOnChange` as client-to-host staging only, not general mid-run
   transport.
 

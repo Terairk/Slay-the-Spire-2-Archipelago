@@ -211,6 +211,7 @@ general mid-run broadcast mechanism.
 ```csharp
 public sealed record ApLobbyRunState(
     Guid RunId,
+    HostApSettings HostSettings,
     IReadOnlyList<int> HostEffectiveAscensions,
     SharedSlotCheckScope SharedSlotCheckScope);
 
@@ -226,17 +227,17 @@ public sealed record ApLobbyPlayerState(
 The exact serializer shape may change, but the responsibilities must not:
 
 - `RunSavedData<ApLobbyRunState>` stores the host-owned launch contract: opaque
-  `RunId`, the effective Ascension set used by the actual run, and the
-  launch-frozen `SharedSlotCheckScope` selected in the ordinary AP settings
-  menu.
+  `RunId`, the host's resolved client/YAML gameplay settings, the effective
+  Ascension set used by the actual run, and the launch-frozen
+  `SharedSlotCheckScope` selected in the ordinary AP settings menu.
 - `PlayerRunSavedData<ApLobbyPlayerState>` stores each player's frozen
   participation/AP source and host-owned `APProgressUnified`. Its values are
   keyed by STS player Net ID and are part of the host-carried snapshot, not
   durable client-local saves.
 - Own AP Slot players cannot become Ready until their AP connection has loaded
   slot data and initial received history. AP Guests cannot become Ready until
-  the host is AP-bound and its host-slot receipt catalog is ready. Vanilla
-  Guests have no AP receipt-readiness gate.
+  the host is AP-bound and its host settings and host-slot receipt catalog are
+  ready. Vanilla Guests have no AP receipt-readiness gate.
 - The host validates that every AP Guest resolves specifically to the fixed
   host's AP source. It never binds a guest to another client's slot.
 - Shared mod settings that affect run generation belong in the host run record.
@@ -643,8 +644,9 @@ player reaction before designing custom recovery UI.
 ## 13. Persistence, reconnect, and compatibility
 
 - Restore shared STS state from the MegaCrit run snapshot.
-- Restore the opaque `RunId`, launch-frozen settings, participation/AP-source
-  mapping, and every player's `APProgressUnified` from the host snapshot.
+- Restore the opaque `RunId`, frozen host settings, participation/AP-source
+  mapping, and every player's `APProgressUnified` from the host snapshot. AP
+  Guests continue using those saved host settings after load or rejoin.
 - Own-slot players enumerate current `AllReceivedItems` and checked locations
   from their direct AP connection. AP Guests receive the host's current
   revisioned receipt catalog. Vanilla Guests require neither.

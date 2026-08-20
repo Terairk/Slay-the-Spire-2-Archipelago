@@ -40,6 +40,10 @@ always follows the host slot, never another non-host player's slot. A lobby may
 mix all three modes: for example, an AP-bound host, an AP Guest following the
 host, an independently AP-bound player, and a Vanilla Guest.
 
+The host's resolved client/YAML gameplay settings are stored in the lobby run
+data and frozen at launch. They are then saved in the host-owned run snapshot,
+so AP Guests use the same host settings after load or rejoin.
+
 The host creates an in-memory, revisioned catalog from its AP SDK
 `AllReceivedItems`. It sends AP Guests a full catalog snapshot at lobby
 preparation or rejoin and small deltas for later receipts. The catalog contains
