@@ -135,7 +135,6 @@ public static class ApRunData
         {
             EnsureLobbyRunId(lobby);
             StageHostSettings(lobby, participation);
-            ApReceiptRelay.PublishLobbySnapshot(lobby);
         }
     }
 
@@ -416,7 +415,10 @@ public static class ApRunData
         }
     }
 
-    // TOOD: say why this is needed
+    /// <summary>
+    /// Returns the distinct character offsets whose checks the fixed host must additionally send
+    /// for AP Guests. Vanilla Guests and peers connected to their own AP slots are excluded.
+    /// </summary>
     public static IReadOnlyList<long> GetSharedSlotApGuestCharacterOffsets(RunState runState)
     {
         if (RunManager.Instance.NetService.Type != NetGameType.Host
@@ -572,7 +574,6 @@ public static class ApRunData
         });
     }
 
-    // TODO: state why this is needed
     private static bool HasSameLobbyContribution(
         ApPlayerRunState left,
         ApPlayerRunState right) =>

@@ -403,8 +403,10 @@ public static class MultiplayerSupport
         out string reason)
     {
         // The fixed STS host, not any AP identity previously used by this process, owns an
-        // AP Guest's receipt source.
-        _preparedSessionIdentity = null;
+        // AP Guest's receipt source. Clear a stale pre-lobby identity, but never weaken the
+        // identity lock after a run has actually bound this Net ID.
+        if (!IsRealMultiplayerRun)
+            _preparedSessionIdentity = null;
         if (!ValidateApSessionIdentity(roomSeed, apTeamId, apSlotId, out reason))
             return false;
         ArchipelagoClient.UseMultiplayerHostSettings(hostSettings);
@@ -498,9 +500,20 @@ public static class MultiplayerSupport
             return;
 
         _observedStartLobbyScreen = screen;
+        if (PendingParticipation == ApParticipationKind.ApGuest
+            && !HostReceiptCatalogReady)
+        {
+            ApReceiptRelay.RequestSnapshot(screen.Lobby.NetService);
+        }
         ApRunData.StageLocalPlayer(screen.Lobby);
         RefreshObservedStartLobby();
     }
+
+    internal static void NotifyApGuestCatalogInstalled() =>
+        Callable.From(RefreshObservedStartLobby).CallDeferred();
+
+    internal static void NotifyApGuestCatalogInvalidated() =>
+        Callable.From(RefreshObservedStartLobby).CallDeferred();
 
     public static void StopObservingStartLobby(NCharacterSelectScreen screen)
     {
@@ -678,6 +691,8 @@ public static class MultiplayerSupport
                 hostState.ApSlotId.Value
             );
             _preparedReceivedItems = ApReceiptRelay.GetGuestItems();
+            if (!HostReceiptCatalogReady)
+                ApReceiptRelay.RequestSnapshot(RunManager.Instance.NetService);
         }
 
         LogUtility.Info(
@@ -828,6 +843,12 @@ public static class MultiplayerSupport
             return false;
         }
 
+        if (IsLocalApGuest && !HostReceiptCatalogReady)
+        {
+            reason = "Waiting for a complete host AP receipt catalog.";
+            return false;
+        }
+
         if (ClaimsInvalidated)
         {
             reason = "This AP multiplayer run encountered an unrecoverable binding or grant failure.";
@@ -872,6 +893,11 @@ public static class MultiplayerSupport
         if (!IsFeatureEnabled(feature))
         {
             reason = $"{feature} is not enabled for this multiplayer profile.";
+            return false;
+        }
+        if (IsLocalApGuest && !HostReceiptCatalogReady)
+        {
+            reason = "Waiting for a complete host AP receipt catalog.";
             return false;
         }
         if (ClaimsInvalidated)

@@ -171,7 +171,7 @@ public static class ModSettingsRegistration
                 options: new[]
                 {
                     new ModSettingsChoiceOption<string>("HostCharacterOnly", ModSettingsText.Literal("Host Character Only")),
-                    new ModSettingsChoiceOption<string>("AllAPParticipants", ModSettingsText.Literal("All AP Participants")),
+                    new ModSettingsChoiceOption<string>("AllAPParticipants", ModSettingsText.Literal("Host + AP Guests")),
                 },
                 description: ModSettingsText.Literal(
                     "Controls which character-specific checks the host sends for a shared AP slot."

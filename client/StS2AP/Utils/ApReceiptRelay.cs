@@ -1,7 +1,6 @@
 using Archipelago.MultiClient.Net.DataPackage;
 using Archipelago.MultiClient.Net.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
-using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Models;
 using STS2RitsuLib.Networking.Sidecar;
@@ -9,27 +8,40 @@ using STS2RitsuLib.Networking.Sidecar;
 namespace StS2AP.Utils;
 
 /// <summary>
-/// Relays the fixed host's authoritative AP receipt history to AP Guests. The catalog is only a
-/// receipt source: each guest's consumption and stable reward assignments remain in that guest's
-/// Net-ID-keyed <see cref="ApPlayerRunState"/>.
+/// Relays the fixed host's authoritative AP receipt history to AP Guests. Full snapshots are used
+/// only for binding/recovery; normal receipts are ordered deltas. Each guest's consumption and
+/// stable assignments remain in that guest's Net-ID-keyed <see cref="ApPlayerRunState"/>.
 /// </summary>
 public static class ApReceiptRelay
 {
-    private const string MessageKey = "host_ap_receipt_catalog_v1";
+    private const string CatalogMessageKey = "host_ap_receipt_catalog_v2";
+    private const string RequestMessageKey = "host_ap_receipt_catalog_request_v1";
     private static readonly object CatalogLock = new();
-    private static readonly RitsuLibSidecarJsonSerializer<ApReceiptCatalogMessage> Serializer = new();
-    private static readonly RitsuLibSidecarMessageDescriptor<ApReceiptCatalogMessage> Descriptor =
-        new(
+    private static readonly RitsuLibSidecarJsonSerializer<ApReceiptCatalogMessage>
+        CatalogSerializer = new();
+    private static readonly RitsuLibSidecarMessageDescriptor<ApReceiptCatalogMessage>
+        CatalogDescriptor = new(
             ModEntry.ModId,
-            MessageKey,
-            Serializer.Serialize,
-            Serializer.Deserialize,
+            CatalogMessageKey,
+            CatalogSerializer.Serialize,
+            CatalogSerializer.Deserialize,
+            Required: true
+        );
+    private static readonly RitsuLibSidecarJsonSerializer<ApReceiptCatalogRequestMessage>
+        RequestSerializer = new();
+    private static readonly RitsuLibSidecarMessageDescriptor<ApReceiptCatalogRequestMessage>
+        RequestDescriptor = new(
+            ModEntry.ModId,
+            RequestMessageKey,
+            RequestSerializer.Serialize,
+            RequestSerializer.Deserialize,
             Required: true
         );
 
     private static readonly SortedDictionary<int, ItemInfo> HostItems = new();
     private static readonly SortedDictionary<int, ItemInfo> GuestItems = new();
-    private static IDisposable? _subscription;
+    private static IDisposable? _catalogSubscription;
+    private static IDisposable? _requestSubscription;
     private static string _hostRoomSeed = string.Empty;
     private static int _hostTeamId;
     private static int _hostSlotId;
@@ -38,16 +50,25 @@ public static class ApReceiptRelay
     private static int _guestTeamId;
     private static int _guestSlotId;
     private static int _guestRevision;
+    private static ArchipelagoSettings? _guestHostSettings;
+    private static bool _snapshotRequestOutstanding;
+    private static bool _guestHasCompleteCatalog;
+    private static volatile bool _guestCatalogReady;
 
-    public static bool GuestCatalogReady { get; private set; }
+    /// <summary>True only after the current catalog has been installed into the local AP view.</summary>
+    public static bool GuestCatalogReady => _guestCatalogReady;
 
     public static void Initialize()
     {
-        if (_subscription != null)
+        if (_catalogSubscription != null)
             return;
-        _subscription = RitsuLibSidecarTypedMessageRegistry.Subscribe(
-            Descriptor,
+        _catalogSubscription = RitsuLibSidecarTypedMessageRegistry.Subscribe(
+            CatalogDescriptor,
             OnCatalogReceived
+        );
+        _requestSubscription = RitsuLibSidecarTypedMessageRegistry.Subscribe(
+            RequestDescriptor,
+            OnSnapshotRequested
         );
     }
 
@@ -59,10 +80,13 @@ public static class ApReceiptRelay
     {
         lock (CatalogLock)
         {
+            bool sameIdentity = string.Equals(_hostRoomSeed, roomSeed, StringComparison.Ordinal)
+                && _hostTeamId == apTeamId
+                && _hostSlotId == apSlotId;
             _hostRoomSeed = roomSeed;
             _hostTeamId = apTeamId;
             _hostSlotId = apSlotId;
-            _hostRevision = 1;
+            _hostRevision = sameIdentity ? Math.Max(1, _hostRevision + 1) : 1;
             HostItems.Clear();
             for (int index = 0; index < items.Count; index++)
                 HostItems[index + 1] = items[index];
@@ -72,18 +96,11 @@ public static class ApReceiptRelay
     public static void PublishCurrentRunSnapshot()
     {
         INetGameService netService = RunManager.Instance.NetService;
-        if (netService.Type != NetGameType.Host || !netService.IsConnected)
-            return;
-        PublishSnapshot(netService);
+        if (netService.Type == NetGameType.Host && netService.IsConnected)
+            PublishSnapshot(netService, targetNetId: null);
     }
 
-    public static void PublishLobbySnapshot(StartRunLobby lobby)
-    {
-        if (lobby.NetService.Type != NetGameType.Host || !lobby.NetService.IsConnected)
-            return;
-        PublishSnapshot(lobby.NetService);
-    }
-
+    /// <summary>Sends one new/changed receipt without resending the full host history.</summary>
     public static void PublishLiveReceipt(IndexedItemInfo receipt)
     {
         INetGameService netService = RunManager.Instance.NetService;
@@ -101,14 +118,50 @@ public static class ApReceiptRelay
                 return;
             }
 
+            int baseRevision = _hostRevision;
             HostItems[receipt.Index] = receipt.Item;
             _hostRevision++;
-            message = CreateMessage(
+            message = CreateCatalogMessage(
                 isFullSnapshot: false,
+                baseRevision,
                 new[] { ToWireItem(receipt.Index, receipt.Item) }
             );
         }
-        RitsuLibSidecarTypedMessageRegistry.Broadcast(netService, Descriptor, message);
+        RitsuLibSidecarTypedMessageRegistry.Broadcast(netService, CatalogDescriptor, message);
+    }
+
+    /// <summary>Sends one targeted full-snapshot request to the fixed STS host.</summary>
+    public static void RequestSnapshot(INetGameService netService, bool force = false)
+    {
+        if (netService.Type == NetGameType.Host
+            || !netService.IsConnected
+            || !MultiplayerSupport.IsLocalApGuest)
+        {
+            return;
+        }
+
+        ApReceiptCatalogRequestMessage request;
+        lock (CatalogLock)
+        {
+            if (_snapshotRequestOutstanding && !force)
+                return;
+            request = new ApReceiptCatalogRequestMessage
+            {
+                KnownRoomSeed = _guestRoomSeed,
+                KnownRevision = _guestRevision,
+            };
+            _snapshotRequestOutstanding = true;
+        }
+
+        if (!RitsuLibSidecarTypedMessageRegistry.SendToHost(
+                netService,
+                RequestDescriptor,
+                request
+            ))
+        {
+            lock (CatalogLock)
+                _snapshotRequestOutstanding = false;
+        }
     }
 
     public static IReadOnlyList<ItemInfo> GetGuestItems()
@@ -132,47 +185,91 @@ public static class ApReceiptRelay
             _guestTeamId = 0;
             _guestSlotId = 0;
             _guestRevision = 0;
-            GuestCatalogReady = false;
+            _guestHostSettings = null;
+            _snapshotRequestOutstanding = false;
+            _guestHasCompleteCatalog = false;
+            _guestCatalogReady = false;
         }
     }
 
-    private static void PublishSnapshot(INetGameService netService)
+    private static void PublishSnapshot(INetGameService netService, ulong? targetNetId)
     {
         ApReceiptCatalogMessage message;
         lock (CatalogLock)
         {
             if (_hostRevision == 0 || string.IsNullOrEmpty(_hostRoomSeed))
                 return;
-            message = CreateMessage(
+            message = CreateCatalogMessage(
                 isFullSnapshot: true,
+                baseRevision: 0,
                 HostItems.Select(pair => ToWireItem(pair.Key, pair.Value))
             );
         }
-        RitsuLibSidecarTypedMessageRegistry.Broadcast(netService, Descriptor, message);
+
+        if (targetNetId.HasValue)
+        {
+            RitsuLibSidecarTypedMessageRegistry.SendToPeer(
+                netService,
+                targetNetId.Value,
+                CatalogDescriptor,
+                message
+            );
+        }
+        else
+        {
+            RitsuLibSidecarTypedMessageRegistry.Broadcast(
+                netService,
+                CatalogDescriptor,
+                message
+            );
+        }
     }
 
-    private static ApReceiptCatalogMessage CreateMessage(
+    private static ApReceiptCatalogMessage CreateCatalogMessage(
         bool isFullSnapshot,
+        int baseRevision,
         IEnumerable<ApReceiptWireItem> items) => new()
     {
         RoomSeed = _hostRoomSeed,
         ApTeamId = _hostTeamId,
         ApSlotId = _hostSlotId,
+        BaseRevision = baseRevision,
         Revision = _hostRevision,
         IsFullSnapshot = isFullSnapshot,
-        HostSettings = MultiplayerSupport.GetHostSettingsForReceiptRelay(),
+        HostSettings = isFullSnapshot
+            ? MultiplayerSupport.GetHostSettingsForReceiptRelay()
+            : null,
         Items = items.ToList(),
     };
 
     private static ApReceiptWireItem ToWireItem(int index, ItemInfo item) => new()
     {
         Index = index,
-        SerializedItem = item.ToSerializable().ToJson(false),
+        // AP Guests deliberately have no AP SDK session, so every wire item must carry its
+        // complete names/player context rather than the SDK's session-dependent compact form.
+        SerializedItem = item.ToSerializable().ToJson(true),
     };
+
+    private static void OnSnapshotRequested(
+        RitsuLibSidecarTypedDispatchContext<ApReceiptCatalogRequestMessage> context)
+    {
+        INetGameService netService = RunManager.Instance.NetService;
+        if (netService.Type != NetGameType.Host || context.Message.SchemaVersion != 1)
+            return;
+
+        LogUtility.Debug(
+            $"Sending targeted AP receipt snapshot to {context.SenderNetId}; "
+                + $"peerRevision={context.Message.KnownRevision}"
+        );
+        PublishSnapshot(netService, context.SenderNetId);
+    }
 
     private static void OnCatalogReceived(
         RitsuLibSidecarTypedDispatchContext<ApReceiptCatalogMessage> context)
     {
+        if (!MultiplayerSupport.IsLocalApGuest)
+            return;
+
         INetGameService netService = RunManager.Instance.NetService;
         if (!BetaMainCompatibility.TryGetHostNetId(netService, out ulong hostNetId)
             || context.SenderNetId != hostNetId)
@@ -182,9 +279,11 @@ public static class ApReceiptRelay
         }
 
         ApReceiptCatalogMessage message = context.Message;
-        if (message.SchemaVersion != 1
+        if (message.SchemaVersion != 2
             || message.Revision <= 0
-            || string.IsNullOrEmpty(message.RoomSeed))
+            || string.IsNullOrEmpty(message.RoomSeed)
+            || message.IsFullSnapshot && (message.BaseRevision != 0 || message.HostSettings == null)
+            || !message.IsFullSnapshot && message.HostSettings != null)
         {
             LogUtility.Warn("Ignored malformed AP receipt catalog.");
             return;
@@ -196,16 +295,21 @@ public static class ApReceiptRelay
             foreach (ApReceiptWireItem wire in message.Items)
             {
                 if (wire.Index <= 0 || string.IsNullOrEmpty(wire.SerializedItem))
-                    throw new InvalidOperationException("Receipt wire item had no stable index or payload.");
+                    throw new InvalidOperationException(
+                        "Receipt wire item had no stable index or payload."
+                    );
                 decoded.Add((wire.Index, FromWireItem(wire.SerializedItem)));
             }
         }
         catch (Exception ex)
         {
             LogUtility.Error($"Could not decode the host AP receipt catalog: {ex}");
+            InvalidateAndRequestRecovery(netService, "receipt payload could not be decoded");
             return;
         }
 
+        bool needsRecovery = false;
+        int installRevision = 0;
         lock (CatalogLock)
         {
             bool sameIdentity = string.Equals(
@@ -221,23 +325,113 @@ public static class ApReceiptRelay
                 if (sameIdentity && message.Revision < _guestRevision)
                     return;
                 GuestItems.Clear();
+                _guestHostSettings = message.HostSettings;
+                _guestHasCompleteCatalog = true;
+                _guestCatalogReady = false;
+                _snapshotRequestOutstanding = false;
             }
-            else if (!GuestCatalogReady
+            else if (!_guestHasCompleteCatalog
                 || !sameIdentity
-                || message.Revision != _guestRevision + 1)
+                || message.BaseRevision != _guestRevision
+                || message.Revision != message.BaseRevision + 1)
             {
-                LogUtility.Warn("Ignored an out-of-order AP receipt catalog delta.");
+                _guestHasCompleteCatalog = false;
+                _guestCatalogReady = false;
+                _snapshotRequestOutstanding = false;
+                needsRecovery = true;
+            }
+
+            if (!needsRecovery)
+            {
+                foreach ((int index, ItemInfo item) in decoded)
+                    GuestItems[index] = item;
+                _guestRoomSeed = message.RoomSeed;
+                _guestTeamId = message.ApTeamId;
+                _guestSlotId = message.ApSlotId;
+                _guestRevision = message.Revision;
+                installRevision = _guestRevision;
+            }
+        }
+
+        if (needsRecovery)
+        {
+            InvalidateAndRequestRecovery(netService, "receipt catalog revision gap");
+            return;
+        }
+
+        ScheduleGuestCatalogInstall(installRevision);
+    }
+
+    private static void ScheduleGuestCatalogInstall(int expectedRevision)
+    {
+        bool posted = RitsuLibSidecarGodotMainLoopScheduling.TryPostToMainLoop(() =>
+        {
+            string roomSeed;
+            int teamId;
+            int slotId;
+            ArchipelagoSettings hostSettings;
+            ItemInfo[] items;
+            lock (CatalogLock)
+            {
+                if (_guestRevision != expectedRevision || _guestHostSettings == null)
+                    return;
+                roomSeed = _guestRoomSeed;
+                teamId = _guestTeamId;
+                slotId = _guestSlotId;
+                hostSettings = _guestHostSettings;
+                items = GuestItems.Values.ToArray();
+            }
+
+            if (!MultiplayerSupport.PrepareApGuestSession(
+                    roomSeed,
+                    teamId,
+                    slotId,
+                    hostSettings,
+                    items,
+                    out string reason
+                ))
+            {
+                lock (CatalogLock)
+                    _guestCatalogReady = false;
+                LogUtility.Error($"Could not install AP Guest receipt catalog: {reason}");
+                MultiplayerSupport.NotifyApGuestCatalogInvalidated();
                 return;
             }
 
-            foreach ((int index, ItemInfo item) in decoded)
-                GuestItems[index] = item;
-            _guestRoomSeed = message.RoomSeed;
-            _guestTeamId = message.ApTeamId;
-            _guestSlotId = message.ApSlotId;
-            _guestRevision = message.Revision;
-            GuestCatalogReady = message.IsFullSnapshot || GuestCatalogReady;
+            lock (CatalogLock)
+            {
+                if (_guestRevision != expectedRevision)
+                    return;
+                _guestCatalogReady = true;
+            }
+            MultiplayerSupport.NotifyApGuestCatalogInstalled();
+            LogUtility.Info(
+                $"Installed AP Guest receipt catalog revision {expectedRevision}: "
+                    + $"receipts={items.Length}"
+            );
+        });
+        if (!posted)
+        {
+            lock (CatalogLock)
+                _guestCatalogReady = false;
+            LogUtility.Error("Could not schedule AP Guest receipt catalog installation.");
+            MultiplayerSupport.NotifyApGuestCatalogInvalidated();
         }
+    }
+
+    private static void InvalidateAndRequestRecovery(
+        INetGameService netService,
+        string reason)
+    {
+        lock (CatalogLock)
+        {
+            _guestHasCompleteCatalog = false;
+            _guestCatalogReady = false;
+            _snapshotRequestOutstanding = false;
+        }
+        LogUtility.Warn($"AP Guest catalog invalidated: {reason}; requesting full snapshot");
+        MultiplayerSupport.NotifyApGuestCatalogInvalidated();
+        RequestSnapshot(netService, force: true);
     }
 
     private static ItemInfo FromWireItem(string json)

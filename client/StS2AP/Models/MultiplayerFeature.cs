@@ -49,8 +49,9 @@ public enum ApPlayDestination
 }
 
 /// <summary>
-/// The local player's identity source for an AP multiplayer run. A guest participates in
-/// MegaCrit multiplayer but owns no AP connection, receipts, checks, or private AP journal.
+/// The local player's identity source for an AP multiplayer run. An AP Guest borrows the fixed
+/// STS host's receipt/check source while retaining independent Net-ID-keyed consumption state;
+/// a Vanilla Guest has no AP rewards or checks.
 /// </summary>
 public enum ApParticipationKind
 {

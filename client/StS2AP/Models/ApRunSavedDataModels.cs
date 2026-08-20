@@ -29,10 +29,11 @@ public sealed class ApPlayerRunState
     /// <summary>Serialized payload schema only; this is not a multiplayer protocol version.</summary>
     public int SchemaVersion { get; set; } = 2;
 
-    // i wonder if we want to default this to ApGuest
+    // An unstaged/missing contribution must be harmless; AP Guest is always an explicit choice.
     public ApParticipationKind Participation { get; set; } = ApParticipationKind.VanillaGuest;
 
-    // I wonder if all 3 are needed or not. 
+    // Together these identify the exact AP slot/room whose receipt history an OwnApSlot player
+    // prepared. They are intentionally absent on AP Guests, which bind to the fixed host's tuple.
     public string? ApRoomSeed { get; set; }
     public int? ApTeamId { get; set; }
     public int? ApSlotId { get; set; }
@@ -79,22 +80,34 @@ public sealed class ApProgressDeltaMessage
     public ApProgressDelta Delta { get; set; } = new();
 }
 
-// CONFIRM: what's this used for? Do we not need a slot asw or something
+/// <summary>One stable entry in the host AP slot's received-item catalog.</summary>
 public sealed class ApReceiptWireItem
 {
     public int Index { get; set; }
     public string SerializedItem { get; set; } = string.Empty;
 }
 
-// CONFIRM: purpose of this 
+/// <summary>
+/// A complete host receipt catalog or one ordered append/update delta. Frozen host settings are
+/// carried only by complete snapshots.
+/// </summary>
 public sealed class ApReceiptCatalogMessage
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public string RoomSeed { get; set; } = string.Empty;
     public int ApTeamId { get; set; }
     public int ApSlotId { get; set; }
+    public int BaseRevision { get; set; }
     public int Revision { get; set; }
     public bool IsFullSnapshot { get; set; }
     public ArchipelagoSettings? HostSettings { get; set; }
     public List<ApReceiptWireItem> Items { get; set; } = new();
+}
+
+/// <summary>Requests a targeted full catalog after initial join, rejoin, or a revision gap.</summary>
+public sealed class ApReceiptCatalogRequestMessage
+{
+    public int SchemaVersion { get; set; } = 1;
+    public string KnownRoomSeed { get; set; } = string.Empty;
+    public int KnownRevision { get; set; }
 }
