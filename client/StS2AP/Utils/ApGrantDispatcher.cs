@@ -17,9 +17,6 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ApGrantDispatcher
 {
-    private static readonly object GoldClaimLock = new();
-
-    private static bool _goldClaimInFlight;
     private static long? _activeCharacterOffset;
 
     /// <summary>Rebuilds the raw per-character bank from authoritative AP history.</summary>
@@ -95,81 +92,42 @@ public static class ApGrantDispatcher
     }
 
     /// <summary>
-    /// Applies and synchronizes the immutable claim, then advances and persists the raw cursor.
-    /// Crash recovery between those systems is intentionally unresolved; this method never
-    /// speculatively rolls back or automatically replays an already-applied wallet mutation.
+    /// Advances the AP source cursor after a native GoldReward has already applied its concrete
+    /// wallet mutation. This is owner-only bookkeeping; remote replicas must never call it.
     /// </summary>
-    public static async Task<bool> ExecuteGoldClaim(ApGoldClaim claim)
+    public static bool CommitGoldClaim(ApGoldClaim claim)
     {
-        lock (GoldClaimLock)
+        int expectedBefore = claim.RedeemedRawAfter - claim.SourceAmount;
+        if (claim.SourceAmount <= 0
+            || claim.GrantedAmount <= 0
+            || ArchipelagoClient.Progress.GoldRedeemed != expectedBefore
+            || ArchipelagoClient.Progress.GoldRemaining < claim.SourceAmount)
         {
-            if (_goldClaimInFlight)
-            {
-                LogUtility.Warn("Ignoring aggregate AP gold claim while another claim is active");
-                return false;
-            }
-            _goldClaimInFlight = true;
-        }
-
-        try
-        {
-            if (!MultiplayerSupport.CanClaimGold(out string blockedReason))
-            {
-                LogUtility.Warn($"AP gold claim blocked: {blockedReason}");
-                return false;
-            }
-
-            if (!_activeCharacterOffset.HasValue)
-            {
-                LogUtility.Error("Cannot execute aggregate AP gold: no run-owned cursor binding");
-                return false;
-            }
-
-            int expectedBefore = claim.RedeemedRawAfter - claim.SourceAmount;
-            if (claim.SourceAmount <= 0
-                || claim.GrantedAmount <= 0
-                || ArchipelagoClient.Progress.GoldRedeemed != expectedBefore
-                || ArchipelagoClient.Progress.GoldRemaining < claim.SourceAmount)
-            {
-                LogUtility.Warn(
-                    $"Refusing stale aggregate AP gold claim: source={claim.SourceAmount}, "
-                        + $"granted={claim.GrantedAmount}, expectedCursor={expectedBefore}, "
-                        + $"actualCursor={ArchipelagoClient.Progress.GoldRedeemed}, "
-                        + $"remaining={ArchipelagoClient.Progress.GoldRemaining}"
-                );
-                return false;
-            }
-
-            bool granted = await GameUtility.GrantGold(claim.GrantedAmount);
-            if (!granted)
-                return false;
-
-            ArchipelagoClient.Progress.GoldRedeemed = claim.RedeemedRawAfter;
-            Player? player = GameUtility.CurrentPlayer;
-            if (player == null || !ApRunData.PublishLocalProgress(player))
-            {
-                MultiplayerSupport.InvalidateRunClaims(
-                    "the aggregate AP gold cursor could not be published after applying gold"
-                );
-            }
-
-            LogUtility.Info(
-                $"Aggregate AP gold committed: source={claim.SourceAmount}, "
-                    + $"granted={claim.GrantedAmount}, redeemedRawAfter={claim.RedeemedRawAfter}"
+            LogUtility.Error(
+                $"Could not commit native AP gold claim: source={claim.SourceAmount}, "
+                    + $"granted={claim.GrantedAmount}, expectedCursor={expectedBefore}, "
+                    + $"actualCursor={ArchipelagoClient.Progress.GoldRedeemed}, "
+                    + $"remaining={ArchipelagoClient.Progress.GoldRemaining}"
             );
+            MultiplayerSupport.InvalidateRunClaims(
+                "a native AP gold reward was applied after its source cursor became invalid"
+            );
+            return false;
+        }
+
+        ArchipelagoClient.Progress.GoldRedeemed = claim.RedeemedRawAfter;
+        Player? player = GameUtility.CurrentPlayer;
+        if (player != null && ApRunData.PublishLocalProgress(player))
             return true;
-        }
-        finally
-        {
-            lock (GoldClaimLock)
-                _goldClaimInFlight = false;
-        }
+
+        MultiplayerSupport.InvalidateRunClaims(
+            "the aggregate AP gold cursor could not be published after applying gold"
+        );
+        return false;
     }
 
     public static void EndRun()
     {
         _activeCharacterOffset = null;
-        lock (GoldClaimLock)
-            _goldClaimInFlight = false;
     }
 }

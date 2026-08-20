@@ -680,8 +680,6 @@ public static class MultiplayerSupport
             _preparedReceivedItems = ApReceiptRelay.GetGuestItems();
         }
 
-        CombatManager.Instance.CombatEnded += OnCombatEnded;
-
         LogUtility.Info(
             $"Experimental AP multiplayer launched: enabled={_experimentalEnabledForRun}, "
                 + $"netType={RunManager.Instance.NetService.Type}, localNetId={localPlayer.NetId}, "
@@ -802,7 +800,6 @@ public static class MultiplayerSupport
 
     public static void EndRun()
     {
-        CombatManager.Instance.CombatEnded -= OnCombatEnded;
         IsRealMultiplayerRun = false;
         _experimentalEnabledForRun = false;
         _activeParticipation = null;
@@ -915,9 +912,4 @@ public static class MultiplayerSupport
 
     public static void InvalidateRunClaims(string reason) => InvalidateClaims(reason);
 
-    private static void OnCombatEnded(MegaCrit.Sts2.Core.Rooms.CombatRoom _)
-    {
-        if (IsExperimentalMultiplayerRun && ArchipelagoRewardUI.IsOpen)
-            Callable.From(ArchipelagoRewardUI.ShowRewards).CallDeferred();
-    }
 }

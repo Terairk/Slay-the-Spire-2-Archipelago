@@ -293,6 +293,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix()
             {
+                ArchipelagoRewardUI.RemoveUI();
                 MultiplayerSupport.EndRun();
                 GameUtility.CurrentPlayer = null;
                 GameUtility.CurrentConfig = null;

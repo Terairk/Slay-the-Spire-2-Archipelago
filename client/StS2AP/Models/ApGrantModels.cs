@@ -25,6 +25,7 @@ public enum ApMirroredRewardKind
     Relic,
     Potion,
     Ancient,
+    Unavailable,
 }
 
 /// <summary>
@@ -47,6 +48,12 @@ public sealed class ApMirroredRewardSpec
 
     public ApMirroredRewardKind Kind { get; set; }
 
+    /// <summary>Display text used only when no concrete native reward type exists.</summary>
+    public string ItemName { get; set; } = string.Empty;
+
+    /// <summary>Owner-facing reason that this receipt cannot currently be claimed.</summary>
+    public string UnavailableReason { get; set; } = string.Empty;
+
     // maybe the card state can be its own data structure, maybe thats too much though
     public bool IsRareCardReward { get; set; }
 
@@ -59,6 +66,31 @@ public sealed class ApMirroredRewardSpec
     public List<string> SerializedModels { get; set; } = new();
 
     public ApGrantId GrantId => new(ApSlotId, ReceivedItemIndex);
+}
+
+/// <summary>Serializable form of one condensed AP gold row in a native reward menu.</summary>
+public sealed class ApMenuGoldSpec
+{
+    public int SourceAmount { get; set; }
+    public int GrantedAmount { get; set; }
+    public int RedeemedRawAfter { get; set; }
+
+    public ApGoldClaim ToClaim() => new(SourceAmount, GrantedAmount, RedeemedRawAfter);
+}
+
+/// <summary>
+/// One immutable AP reward-menu snapshot. Every multiplayer replica builds the same ordered
+/// native RewardsSet before MegaCrit begins synchronizing selections for its owner.
+/// </summary>
+public sealed class ApRewardMenuSpec
+{
+    public int SchemaVersion { get; set; } = 1;
+    public Guid RunId { get; set; }
+    public Guid MenuId { get; set; } = Guid.NewGuid();
+    public int ApSlotId { get; set; }
+    public ulong OwnerNetId { get; set; }
+    public ApMenuGoldSpec? Gold { get; set; }
+    public List<ApMirroredRewardSpec> Rewards { get; set; } = new();
 }
 
 /// <summary>Human-readable snapshot used by the AP developer-console providers.</summary>

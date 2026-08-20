@@ -3,6 +3,7 @@ using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Rewards;
+using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
 using StS2AP.Utils;
 using static StS2AP.Data.CharTable;
@@ -209,12 +210,6 @@ namespace StS2AP.Models
         {
             if (AncientRelicChoiceAssignments.TryGetValue(index, out var existing))
                 return existing;
-
-            if (player == null)
-            {
-                LogUtility.Warn($"Cannot assign Ancient relic choices for item w/ index {index}: no active player");
-                return Array.Empty<RelicModel>();
-            }
 
             var reservedRelicIds = AncientRelicChoiceAssignments.Values
                 .SelectMany(assignment => assignment)
