@@ -27,7 +27,8 @@ public sealed class ApRunSharedState
 
 /// <summary>
 /// One player's contribution to the canonical run snapshot. RitsuLib keys this value by the
-/// MegaCrit Net ID; AP identity fields are absent for guests.
+/// MegaCrit Net ID, which is stable across disconnect/rejoin within this run; AP identity fields
+/// are absent for guests. Do not remap this record by AP identity when a peer reconnects.
 /// </summary>
 public sealed class ApPlayerRunState
 {

@@ -53,8 +53,51 @@ public static class BetaMainCompatibility
         ArgumentNullException.ThrowIfNull(lobby);
         object players = AccessTools.Property(lobby.GetType(), "Players")?.GetValue(lobby)
             ?? throw new MissingMemberException(lobby.GetType().FullName, "Players");
+        return ReadPlayerNetIds(players, $"{lobby.GetType().FullName}.Players");
+    }
+
+    /// <summary>
+    /// Enumerates only the players currently connected to an active run. The public branch calls
+    /// this collection ConnectedPlayerIds, while newer beta branches expose PlayerIds.
+    /// </summary>
+    public static IReadOnlyList<ulong> GetConnectedRunPlayerNetIds(object runLobby)
+    {
+        ArgumentNullException.ThrowIfNull(runLobby);
+        Type lobbyType = runLobby.GetType();
+        foreach (string propertyName in new[] { "ConnectedPlayerIds", "PlayerIds" })
+        {
+            object? ids = AccessTools.Property(lobbyType, propertyName)?.GetValue(runLobby);
+            if (ids != null)
+                return ReadNetIds(ids, $"{lobbyType.FullName}.{propertyName}");
+        }
+
+        object players = AccessTools.Property(lobbyType, "Players")?.GetValue(runLobby)
+            ?? throw new MissingMemberException(
+                lobbyType.FullName,
+                "ConnectedPlayerIds, PlayerIds, or Players"
+            );
+        return ReadPlayerNetIds(players, $"{lobbyType.FullName}.Players");
+    }
+
+    private static IReadOnlyList<ulong> ReadNetIds(object values, string source)
+    {
+        if (values is not System.Collections.IEnumerable sequence)
+            throw new InvalidCastException($"{source} is not enumerable.");
+
+        var netIds = new List<ulong>();
+        foreach (object value in sequence)
+        {
+            if (value is not ulong netId)
+                throw new InvalidCastException($"Could not read a UInt64 from {source}.");
+            netIds.Add(netId);
+        }
+        return netIds;
+    }
+
+    private static IReadOnlyList<ulong> ReadPlayerNetIds(object players, string source)
+    {
         if (players is not System.Collections.IEnumerable sequence)
-            throw new InvalidCastException($"{lobby.GetType().FullName}.Players is not enumerable.");
+            throw new InvalidCastException($"{source} is not enumerable.");
 
         var netIds = new List<ulong>();
         foreach (object player in sequence)

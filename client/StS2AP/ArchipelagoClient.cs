@@ -864,8 +864,9 @@ namespace StS2AP
                 .CallDeferred();
 
             // An already-received AP item remains authoritative. The experimental multiplayer
-            // slice may therefore claim banked gold while AP itself is offline; only a MegaCrit
-            // peer disconnect invalidates multiplayer claims.
+            // slice may therefore claim banked gold while AP itself is offline. MegaCrit restores
+            // an absent peer from the host's rejoin snapshot; permanent claim invalidation is
+            // reserved for an actual unrecoverable binding or grant failure.
             if (MultiplayerSupport.IsMultiplayerScope)
             {
                 if (showMultiplayerNotice)

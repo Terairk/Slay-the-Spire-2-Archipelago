@@ -38,6 +38,10 @@ public sealed class ApMirroredRewardSpec
 
     public int ReceivedItemIndex { get; set; }
 
+    /// <summary>
+    /// Run-scoped owner binding. MegaCrit preserves this Net ID across active-run rejoin; the
+    /// durable receipt identity remains <see cref="GrantId"/> rather than this transport identity.
+    /// </summary>
     public ulong OwnerNetId { get; set; }
 
     public ApMirroredRewardKind Kind { get; set; }

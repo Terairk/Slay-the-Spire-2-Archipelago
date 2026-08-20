@@ -194,6 +194,8 @@ public static class ApDevStateProviders
         string LocalNetId,
         string ApSlot,
         IReadOnlyList<string> Players,
+        IReadOnlyList<string> ConnectedNetIds,
+        string ParticipantConnection,
         bool Experimental,
         bool ClaimsInvalidated,
         string GrantTransport,
@@ -207,6 +209,8 @@ public static class ApDevStateProviders
         public object Capture(ApDevStateContext context)
         {
             NetGameType netType = RunManager.Instance.NetService.Type;
+            (IReadOnlyList<string> connectedNetIds, string participantConnection) =
+                CaptureParticipantConnection(context.RunState);
             return new MultiplayerSnapshot(
                 netType.ToString(),
                 RunManager.Instance.NetService.NetId.ToString(),
@@ -214,6 +218,8 @@ public static class ApDevStateProviders
                 context.RunState?.Players.Select(player =>
                     $"netId={player.NetId}, character={player.Character.Id.Entry}").ToArray()
                     ?? Array.Empty<string>(),
+                connectedNetIds,
+                participantConnection,
                 MultiplayerSupport.IsExperimentalMultiplayerRun,
                 MultiplayerSupport.ClaimsInvalidated,
                 "Ritsu Sidecar required/reliable",
@@ -230,9 +236,50 @@ public static class ApDevStateProviders
                 $"role={state.NetType} localNetId={state.LocalNetId} apSlot={state.ApSlot}",
                 $"experimental={YesNo(state.Experimental)} claimsInvalidated={YesNo(state.ClaimsInvalidated)}",
                 $"players=[{string.Join("; ", state.Players)}]",
+                $"connectedNetIds=[{string.Join(",", state.ConnectedNetIds)}] participantConnection={state.ParticipantConnection}",
                 $"grantTransport={state.GrantTransport}",
                 $"rewardSelection={state.RewardSelection}",
             });
+        }
+
+        private static (IReadOnlyList<string> ConnectedNetIds, string Status)
+            CaptureParticipantConnection(RunState? runState)
+        {
+            RunLobby? runLobby = RunManager.Instance.RunLobby;
+            if (runState == null || runLobby == null)
+                return (Array.Empty<string>(), "native-run-lobby-unavailable");
+
+            try
+            {
+                ulong[] expected = runState.Players.Select(player => player.NetId).ToArray();
+                ulong[] connected = BetaMainCompatibility
+                    .GetConnectedRunPlayerNetIds(runLobby)
+                    .Order()
+                    .ToArray();
+                var expectedSet = expected.ToHashSet();
+                var connectedSet = connected.ToHashSet();
+                string status;
+                if (expectedSet.Count != expected.Length || connectedSet.Count != connected.Length)
+                {
+                    status = "duplicate-net-id";
+                }
+                else
+                {
+                    ulong[] unexpected = connectedSet.Except(expectedSet).Order().ToArray();
+                    ulong[] missing = expectedSet.Except(connectedSet).Order().ToArray();
+                    status = unexpected.Length > 0
+                        ? $"unexpected:{string.Join(",", unexpected)}"
+                        : missing.Length > 0
+                            ? $"missing:{string.Join(",", missing)}"
+                            : "complete";
+                }
+
+                return (connected.Select(id => id.ToString()).ToArray(), status);
+            }
+            catch (Exception ex)
+            {
+                return (Array.Empty<string>(), $"unavailable:{ex.GetBaseException().Message}");
+            }
         }
     }
 

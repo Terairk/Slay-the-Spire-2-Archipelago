@@ -39,7 +39,6 @@ public static class MultiplayerSupport
 
     private static readonly Dictionary<int, IndexedItemInfo> DeferredItems = new();
 
-    private static RunLobby? _observedRunLobby;
     private static NCharacterSelectScreen? _observedStartLobbyScreen;
     private static bool _experimentalEnabledForRun;
     private static bool _claimInvalidationNoticeShown;
@@ -583,13 +582,6 @@ public static class MultiplayerSupport
         if (ApRunData.TryGetLocalPlayerState(runState, localPlayer.NetId, out var savedPlayerState))
             _activeParticipation = savedPlayerState.Participation;
 
-        _observedRunLobby = RunManager.Instance.RunLobby;
-        if (_observedRunLobby != null)
-        {
-            _observedRunLobby.RemotePlayerDisconnected += OnRemotePlayerDisconnected;
-            _observedRunLobby.LocalPlayerDisconnected += OnLocalPlayerDisconnected;
-        }
-
         CombatManager.Instance.CombatEnded += OnCombatEnded;
 
         LogUtility.Info(
@@ -602,13 +594,6 @@ public static class MultiplayerSupport
 
     public static void EndRun()
     {
-        if (_observedRunLobby != null)
-        {
-            _observedRunLobby.RemotePlayerDisconnected -= OnRemotePlayerDisconnected;
-            _observedRunLobby.LocalPlayerDisconnected -= OnLocalPlayerDisconnected;
-            _observedRunLobby = null;
-        }
-
         CombatManager.Instance.CombatEnded -= OnCombatEnded;
         IsRealMultiplayerRun = false;
         _experimentalEnabledForRun = false;
@@ -639,22 +624,19 @@ public static class MultiplayerSupport
 
         if (ClaimsInvalidated)
         {
-            reason = "A multiplayer peer disconnected. Start a fresh run to claim AP rewards.";
+            reason = "This AP multiplayer run encountered an unrecoverable binding or grant failure.";
+            return false;
+        }
+
+        if (!RunManager.Instance.NetService.IsConnected)
+        {
+            reason = "The local game is disconnected from its multiplayer session.";
             return false;
         }
 
         if (CombatManager.Instance.IsInProgress)
         {
             reason = "Multiplayer gold can only be claimed outside combat.";
-            return false;
-        }
-
-        var runState = RunManager.Instance.DebugOnlyGetState();
-        var runLobby = RunManager.Instance.RunLobby;
-        if (runState == null || runLobby == null
-            || runLobby.Players.Count != runState.Players.Count)
-        {
-            reason = "All multiplayer peers must be connected to claim AP rewards.";
             return false;
         }
 
@@ -688,7 +670,12 @@ public static class MultiplayerSupport
         }
         if (ClaimsInvalidated)
         {
-            reason = "A multiplayer peer disconnected. Start a fresh run to claim AP rewards.";
+            reason = "This AP multiplayer run encountered an unrecoverable binding or grant failure.";
+            return false;
+        }
+        if (!RunManager.Instance.NetService.IsConnected)
+        {
+            reason = "The local game is disconnected from its multiplayer session.";
             return false;
         }
         if (CombatManager.Instance.IsInProgress)
@@ -697,22 +684,8 @@ public static class MultiplayerSupport
             return false;
         }
 
-        RunState? runState = RunManager.Instance.DebugOnlyGetState();
-        RunLobby? runLobby = RunManager.Instance.RunLobby;
-        if (runState == null || runLobby == null
-            || runLobby.Players.Count != runState.Players.Count)
-        {
-            reason = "All multiplayer peers must be connected to claim AP rewards.";
-            return false;
-        }
         return true;
     }
-
-    private static void OnRemotePlayerDisconnected(ulong playerId) =>
-        InvalidateClaims($"remote player {playerId} disconnected");
-
-    private static void OnLocalPlayerDisconnected() =>
-        InvalidateClaims("the local game disconnected from its multiplayer host");
 
     private static void InvalidateClaims(string reason)
     {
@@ -727,7 +700,7 @@ public static class MultiplayerSupport
 
         _claimInvalidationNoticeShown = true;
         Callable.From(() => NotificationUtility.ShowRawText(
-            "AP multiplayer rewards are disabled after a peer disconnect. Start a fresh run."
+            "AP multiplayer rewards are disabled after an unrecoverable run error. Start a fresh run."
         )).CallDeferred();
     }
 
