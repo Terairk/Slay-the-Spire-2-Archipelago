@@ -20,16 +20,17 @@ claim that multiplayer currently works.
 - [Connection and run-data foundation plan](foundation-scaffold-plan.md) maps
   the agreed guest/login/save decisions to concrete UI, RitsuLib schema, and
   dependency-ordered implementation slices.
-- [ADR 001: At most one AP slot per STS player](adr/001-one-ap-slot-per-sts-player.md)
-  proposes the supported connection topology.
-- [ADR 002: Separate AP authority from replicated game effects](adr/002-ap-authority-and-game-effects.md)
+- [ADR 001: Give each STS player one AP reward source](adr/001-one-ap-slot-per-sts-player.md)
+  defines Own AP Slot, AP Guest, and Vanilla Guest participation, including
+  shared-slot receipt and check routing.
+- [ADR 002: Separate AP source authority from replicated game effects](adr/002-ap-authority-and-game-effects.md)
   defines the main state-ownership boundary.
 - [ADR 003: Use MegaCrit synchronizers before custom transport](adr/003-megacrit-synchronizers-first.md)
   describes when to use native synchronization and when an AP-specific message
   is justified.
-- [ADR 004: Keep owner-private AP recovery local and reconstructible](adr/004-player-owned-ap-persistence.md)
-  defines the minimal host save, local recovery journal, accepted-loss boundary,
-  and fresh-singleplayer handoff.
+- [ADR 004: Keep multiplayer AP progress in the host checkpoint](adr/004-player-owned-ap-persistence.md)
+  defines host-owned per-player progress, floor-checkpoint recovery, stable
+  assignments, and the fresh-singleplayer handoff.
 
 ## Status vocabulary
 

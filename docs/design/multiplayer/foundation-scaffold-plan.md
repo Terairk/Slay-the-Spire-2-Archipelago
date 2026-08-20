@@ -1,169 +1,180 @@
 # Multiplayer connection and run-data foundation plan
 
-- **Status:** Scaffold implemented; runtime integration incomplete
+- **Status:** Existing scaffold predates the accepted host-owned progress model;
+  target integration incomplete
 - **Depends on:** [Multiplayer synchronization RFC](multiplayer-sync-rfc.md)
 
-This document turns the guest, identity, save, and ledger decisions into an
-implementation order. It is intentionally narrower than feature conversion:
-the first goal is to make entry state and persistence ownership explicit so
-later reward work has one place to attach.
+This document turns the accepted participation, receipt relay, settings, and
+host-checkpoint decisions into an implementation order. Existing source may
+still expose the older undifferentiated Guest mode and applied-effect ledger;
+that is scaffold state, not the target contract.
 
-## Target menu and connection flow
+## Target settings and entry flow
 
-The main menu owns three independent actions:
+The normal Archipelago settings menu owns two multiplayer settings. The names
+below are conceptual until the implementation registers the final setting keys:
 
-| Action | Disconnected | Connected |
-| --- | --- | --- |
-| Connect to Archipelago | Opens the connection overlay and returns to the main menu on success or close | Disabled; the status line identifies the active server and slot name |
-| AP Singleplayer | Disabled with a defensive connect-first message | Opens the existing AP character-select flow |
-| AP Multiplayer | Opens MegaCrit Host/Join as a guest | Opens MegaCrit Host/Join as an AP-bound player after slot history is prepared |
+- `GuestRewardMode`: `VanillaGuest` or `APGuest`;
+- `SharedSlotCheckScope`: `HostCharacterOnly` or `AllAPParticipants`.
 
-Opening the connection overlay no longer implies a pending game destination.
-The normal successful-login callback hides the overlay and stays on the main
-menu. The command-line two-process harness is the only intentional automatic
-continuation.
+These are ordinary editable client settings before launch. The resolved values
+are contributed to the lobby and frozen into the host-owned run contract. A
+settings change during an active run affects only a future run.
 
-Entering AP Multiplayer captures a tentative local participation kind:
+The main menu retains independent connection and play actions:
 
-- connected and prepared: `Archipelago`;
-- disconnected: `Guest`; or
-- command-line AP harness: explicitly `Archipelago` before login.
+| Local AP state | AP Multiplayer result |
+|---|---|
+| Connected and prepared | Enter as Own AP Slot |
+| Disconnected plus `VanillaGuest` | Enter as Vanilla Guest |
+| Disconnected plus `APGuest` | Enter tentatively as AP Guest; launch requires the fixed host to have a prepared AP slot |
 
-An AP-bound lobby participant that later disconnects remains AP-bound and is
-blocked until the same room/team/slot reconnects. It must never silently turn
-into a guest.
+An AP Guest never connects to AP. It always follows the fixed STS host, never
+another client's slot. An own-slot participant that later disconnects remains
+bound to the same AP identity. No mode silently changes during a run.
 
 ## Canonical run-data shape
 
-RitsuLib slots are registered at mod initialization with stable keys:
+Register the RitsuLib run slots at mod initialization with stable keys:
 
-| Slot | Owner and purpose | Initial fields |
-| --- | --- | --- |
-| `RunSavedData<ApRunSharedState>` / `ap_run` | Host's canonical shared run record | schema, opaque `RunId`, host effective Ascensions, applied shared-effect IDs |
-| `PlayerRunSavedData<ApPlayerRunState>` / `ap_players` | Canonical per-Net-ID participant mapping inside the same host snapshot | guest/AP kind, AP room seed/team/slot, AP-history readiness |
+| Slot | Owner and purpose | Target fields |
+|---|---|---|
+| `RunSavedData<ApRunSharedState>` / `ap_run` | Fixed host's canonical launch/run record | schema, opaque `RunId`, host effective Ascensions, frozen `SharedSlotCheckScope` |
+| `PlayerRunSavedData<ApPlayerRunState>` / `ap_players` | Host-owned per-Net-ID participant and AP progress | participation mode, AP source, receipt-source readiness, `APProgressUnified` |
 
-`PlayerRunSavedData` is not an owner-private save. It is the per-player-shaped
-part of the host's canonical run record and is therefore appropriate for the
-frozen participant mapping. Private assignments, pending checks, and prepared
-or submitted transactions remain in the AP owner's durable local journal.
+`PlayerRunSavedData` is per-player-shaped data in the host-carried snapshot. It
+does not mean that each client writes a durable private save. Clients receive
+and use an in-memory copy, while the fixed host owns the canonical disk save.
 
-The host creates the `RunId` while staging a fresh lobby. The committed run
-snapshot is the boundary that makes the participant mapping durable; there are
-no separate saved freeze or validation flags. Readiness is derived from the
-live lobby contributions before launch. Singleplayer
-receives a new `RunId` when RitsuLib prepares a fresh run that has no staged ID.
-Loading an existing snapshot restores its existing ID.
+Conceptually:
 
-Host identity is also derived rather than saved. On a host,
-`INetGameService.NetId` is the host ID; on a client,
-`NetClientGameService.HostNetId` identifies that same peer. Host migration is
-unsupported, so storing another host-ID field would only duplicate native
-network state and create a value that could disagree.
+```text
+ApPlayerRunState
+|- Participation: OwnApSlot | ApGuest | VanillaGuest
+|- ApSource: room/team/slot or host-source reference
+|- ReceiptSourceReady
+`- Progress
+   |- UsedItems
+   |- GoldRedeemed
+   |- reward attempt/bank counters
+   |- stable card/relic/Ancient/potion assignments
+   |- progressive starter and pending buff state
+   `- pending location checks where required
+```
 
-The shared ledger exposes storage helpers now, but no reward may call them
-directly from an owner-local callback. A later slice must place primary effect
-application and ledger insertion inside the same host-ordered operation.
+Do not put AP credentials or `AllReceivedItems` in run data. Do not write
+multiplayer progress or pending-check journals to client-local files or AP
+DataStorage.
+
+## Host receipt relay
+
+The fixed host owns the only AP connection for the shared cooperative slot.
+Build a revisioned, in-memory catalog from the host AP SDK's
+`AllReceivedItems`:
+
+- send a complete snapshot to AP Guests during lobby preparation and rejoin;
+- broadcast small ordered deltas after the host receives new items;
+- include only the item/index/source metadata needed by item processing and UI;
+- never transmit credentials;
+- never persist the full catalog in the host save; and
+- reject AP Guest claims until both catalog revision and host progress are ready.
+
+This uses RitsuLib Sidecar's existing typed host-to-peer and request/snapshot
+transport. A guest AP socket and a second AP protocol implementation are both
+unnecessary.
 
 ## Work order
 
-### 1. Entry and identity foundation
+### 1. Participation and settings foundation
 
-- Keep connection selection independent from AP Singleplayer/AP Multiplayer.
-- Show persistent connection state on the main menu.
-- Represent disconnected multiplayer entry as `Guest`.
-- Give guests all character choices, no AP readiness gate, no AP initialization,
-  and an empty AP reward menu.
-- Retain the existing exact-session reconnect guard for AP-bound participants.
+- Replace the undifferentiated Guest concept with Own AP Slot, AP Guest, and
+  Vanilla Guest.
+- Register `GuestRewardMode` and `SharedSlotCheckScope` in the ordinary AP
+  settings menu.
+- Contribute the resolved mode during lobby staging and freeze it at launch.
+- Reject an AP Guest when the fixed host has no prepared AP slot.
+- Preserve exact-session reconnect guards for own-slot players.
 
-This repository contains the source scaffold for these items. It still needs a
-main-menu/controller test and a two-process guest/AP lobby test.
+### 2. Lobby launch contract
 
-### 2. Complete lobby launch contract
+- Require one complete contribution per active Net ID.
+- Own-slot readiness requires that player's direct AP slot data and initial
+  receipt history.
+- AP Guest readiness requires the host AP source and host receipt catalog.
+- Vanilla Guest has no AP receipt-readiness gate.
+- Freeze `RunId`, participant/AP-source mapping, host effective Ascensions, and
+  `SharedSlotCheckScope` in the committed run snapshot.
+- Treat `SyncLobbyOnChange` as client-to-host staging only, not general mid-run
+  transport.
 
-- If the host is AP-bound, derive `HostEffectiveAscensions` from the host AP
-  character configuration plus already received Ascension Downs.
-- If the host is a guest, copy the host's complete manual Ascension selection.
-- On the host, require one contribution for every active Net ID and ensure every
-  AP identity and AP-history marker is complete. Derive this result at the
-  launch boundary; do not persist a validation flag.
-- Apply the host Ascension set to the actual launch state. After import, every
-  client validates the same `RunId`, participant map, and set. Each process
-  derives the host Net ID from its live MegaCrit network service.
-- Treat lobby `SyncLobbyOnChange` as client-to-host staging only. Do not assume it
-  is a general host-to-client or mid-run broadcast.
+### 3. Shared progress model
 
-`ApHistoryComplete` reaches the host through that staging path. Each process
-writes its local `PlayerRunSavedData` entry; RitsuLib attaches a client's entry
-to MegaCrit's `LobbyPlayerChangedCharacterMessage` and flushes it again with
-`LobbyPlayerSetReadyMessage`. The host merges it under the sender's Net ID
-before handling Ready. The host's own entry is merged locally.
+- Extract `APProgressUnified` from the shared semantic fields of
+  singleplayer `SerializableAP`; keep the opaque singleplayer `SaveData` outside
+  it.
+- Put one `APProgressUnified` in every AP-participating player's host-owned
+  `PlayerRunSavedData` entry.
+- Keep per-player `UsedItems` sets. In shared-slot mode, the same received index
+  may be consumed independently for several Net IDs.
+- Key stable assignments by received index within the player's frozen AP
+  source. The full protocol identity includes `RunId`, room/team/slot, index,
+  and claiming Net ID.
 
-The host Ready button is disabled until every active player has a complete
-record. If a record becomes incomplete after the host readies, the host is
-automatically unreadied. A final host prefix on MegaCrit's all-ready launch
-method recomputes the same condition to close the race where a client is the
-last player to ready. No saved validation flag is involved.
+### 4. Assignment and grant boundary
 
-### 3. Move existing grants onto the saved identity
+- Resolve or load a concrete assignment and send it to the host before exposing
+  it as stable in UI.
+- Make the assignment usable only after the host accepts it into the claimant's
+  live progress.
+- Apply the concrete effect through the appropriate native synchronizer or
+  narrow RitsuLib action.
+- After successful application, immediately update the claimant's consumed
+  index or aggregate cursor in host memory.
+- Publish the resulting in-memory progress view to the claimant.
+- Do not wait for a floor save to block a same-floor duplicate.
 
-- Expand discrete effect identity from `(slot, received index)` to `(RunId,
-  room/team/slot, received index)`.
-- Scope aggregate-gold cursors and all stable card/relic/potion/Ancient
-  assignments by the same run and AP owner identity.
-- Replace the current process-global `multiplayer_grants`/`multiplayer_gold`
-  assumptions with an atomic owner-local journal keyed by that identity.
-- Persist consumed received-item indices (the multiplayer equivalent of
-  singleplayer `UsedItems`) and pending/submitted/confirmed grant state in that
-  same journal. Reconstructing `AllReceivedItems` alone must not make consumed
-  rewards claimable again during an exact rejoin.
-- Keep exact reconstructed card and Linked Ancient selections owner-local; only
-  their replicated committed effect IDs belong in the host ledger.
+### 5. Shared-slot checks
 
-### 4. Host-ordered effect plus ledger commit
+- In `HostCharacterOnly`, send only locations produced for the host character.
+- In `AllAPParticipants`, have the host loop over the host and AP Guests using
+  native committed character state, resolve their character-specific location
+  IDs, deduplicate them, and submit them through the host AP connection.
+- Do not add an AP Guest check-forwarding message.
+- Keep own-slot clients sending checks through their own AP connections.
+- Store outstanding run-scoped checks in host-owned progress when they must
+  survive a floor checkpoint.
 
-- Give each replicated AP effect one ordered execution path.
-- Inside that operation, reject a ledger duplicate, apply the concrete primary
-  effect, and insert its ID into `ApRunSharedState.AppliedEffectIds`.
-- Use native MegaCrit synchronizers where they already define the operation;
-  use a RitsuLib managed action where custom host ordering is required.
-- Do not treat the `RunSavedData` setter as network transport. Every live peer
-  must execute the ordered mutation so their in-memory run documents agree.
-- Reconcile owner journal states against the restored host ledger after load or
-  rejoin.
+### 6. Save, load, and rejoin
 
-### 5. Save, load, and rejoin
-
-- Enable MegaCrit multiplayer load/continue only after the host can
-  restore the canonical snapshot and all peers receive the RitsuLib run data.
-- Admit only the committed guest identities and exact AP room/team/slot identities.
-- Reprocess AP `AllReceivedItems` only for AP-bound owners. Restore the local
-  journal first, subtract consumed receipt indices, add new receipts, restore
-  stable assignments and grant states, and reconcile shared commits against the
-  host ledger before publishing rejoin readiness. Accept the documented lossy
-  salvage behavior if the journal is missing.
-- Keep the host fixed. Do not add host migration, AP DataStorage
-  mirroring, or host-side pending-check outboxes.
-- Save at normal safe MegaCrit checkpoints, with optional extra safe saves on
-  orderly quit, disconnect, or desynchronization.
+- Update host progress immediately, but use the normal STS2 multiplayer floor
+  checkpoints for durability.
+- Restore native `RunState` and all per-player AP progress from the host
+  checkpoint.
+- Own-slot players then fetch current AP received/checked history. AP Guests
+  receive a fresh host receipt snapshot. Vanilla Guests reconstruct no AP view.
+- Keep callbacks and reward UI paused until restored host progress and the
+  applicable receipt source are both ready.
+- Replace client in-memory state from the host; never merge a local journal.
+- Accept the last successful host checkpoint as truth. A pre-checkpoint effect,
+  consumption, assignment, or check may roll back or be lost.
+- Keep the host fixed. Do not add host migration or run conversion.
 
 ## Required proof before enabling save/rejoin
 
-- Connected login returns to the main menu and both AP play buttons behave as
-  specified.
-- A disconnected guest and an AP-bound peer can launch in either host
-  assignment without AP state leaking to the guest.
-- On the host, `ap state lobby` lists one contribution per active Net ID and
-  shows `apHistoryComplete=yes` for every AP participant. Guest contributions
-  have no AP-history blocker.
-- Host and client derive the same host Net ID from native networking and import
-  the same nonempty `RunId`, participant map, and Ascension set.
-- After launch, `ap state run` reports the committed mapping and
-  `ap state ledger` reports the shared applied-effect IDs on both peers.
-- An effect applied before a saved checkpoint restores with its ledger ID and
-  is not replayed; an effect after the checkpoint rolls back with its ID and is
-  replayable.
-- A same-identity rejoin succeeds and a wrong slot, guest/AP substitution, or
-  attempted host migration is rejected.
+- Mixed Own AP Slot, AP Guest, and Vanilla Guest lobbies freeze the correct
+  sources, and no AP Guest follows a non-host slot.
+- AP Guests open no AP socket and receive full/delta host receipt catalogs.
+- One host-slot receipt is independently claimable once per host/AP Guest.
+- Both shared check scopes work for different and duplicate characters, with
+  only the host writing shared-slot checks.
+- A host AP disconnect leaves cached rewards claimable but stops new shared
+  receipts/checks until the same slot reconnects.
+- Stable assignments and consumption update immediately in host memory and
+  restore after the next floor checkpoint.
+- A host crash before that checkpoint restores the preceding checkpoint and
+  makes rolled-back receipts claimable again.
+- Own-slot and AP Guest clients can rejoin with empty local storage.
+- No client-local or AP DataStorage multiplayer journal is created.
 
-Until those two-client tests exist, this work is source scaffolding rather than
-evidence that multiplayer saves or reconciliation work at runtime.
+Until these two-client tests exist, the repository contains source scaffolding
+and design intent rather than runtime proof of the corrected architecture.

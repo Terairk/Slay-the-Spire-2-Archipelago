@@ -1,7 +1,7 @@
 # ADR 003: Use MegaCrit synchronizers before custom transport
 
 - **Status:** Proposed
-- **Date:** 2026-08-17
+- **Date:** 2026-08-20
 
 ## Context
 
@@ -26,7 +26,9 @@ can represent.
 | Rest-site choice | `RestSiteSynchronizer` with identical per-owner option list |
 | Event choice | `EventSynchronizer` with identical per-owner option list |
 | Combat mutation | Host-ordered `GameAction`/`ActionQueueSynchronizer` path |
-| Private AP socket/check/progress operation | Local AP code only |
+| AP socket operation | Owning direct connection: fixed host for shared slot, own-slot process otherwise |
+| Multiplayer AP progress update | Host-owned per-player run data plus in-memory claimant view |
+| AP Guest receipt catalog | Minimal revisioned RitsuLib Sidecar snapshot/delta from host |
 | AP-derived payload needed before native structure exists | Minimal AP-specific peer message |
 
 `PlayerCmd`, `RelicCmd`, `PotionCmd`, and `PowerCmd` are mutation APIs, not
@@ -37,7 +39,8 @@ paired with the applicable synchronizer.
 
 Use `ModCustomReward` for custom reward registration, native presentation, and
 save payloads when an AP feature genuinely behaves like a reward. Do not assume
-that its JSON payload is automatically sent from the AP owner to STS peers.
+that its JSON payload is automatically sent from an own-slot player or the
+shared-slot host to STS peers.
 
 Every peer must construct the same custom reward before MegaCrit broadcasts a
 selected reward index.
@@ -50,6 +53,9 @@ replay behavior.
 ## When custom AP transport is justified
 
 - Publishing an AP-derived reward spec before remote reward-set construction.
+- Relaying the host slot's in-memory receipt snapshot/deltas to AP Guests.
+- Returning a claimant request to the host for canonical progress validation
+  and immediate consumption.
 - Publishing a per-owner AP rest-site or event transformation.
 - Carrying transaction identity for an unsupported grant kind.
 

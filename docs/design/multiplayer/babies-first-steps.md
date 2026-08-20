@@ -1,6 +1,7 @@
 # Baby's first multiplayer steps
 
-- **Status:** Source implementation updated; two-client runtime validation not run
+- **Status:** Historical source spike; predates the accepted AP Guest and
+  host-owned progress design; two-client runtime validation not run
 - **Branch:** `multiplayer-gold-spike`
 - **Scope:** Fresh disposable multiplayer runs and synchronized AP gold
 - **Depends on:** [Multiplayer synchronization RFC](multiplayer-sync-rfc.md)
@@ -19,19 +20,22 @@ does not refund previously withheld multiplayer gold in this first implementatio
 
 ## Relationship to the synchronization RFC
 
-This document describes the implemented gold transport spike and its aggregate
-dispatcher/cursor update. Discrete `ApGrantId`, assignment, managed-action,
-lobby-staging, and acknowledgment requirements remain later work. Its successful
-parts are:
+This document describes the currently implemented gold transport spike and its
+aggregate dispatcher/cursor update. Where it differs from the RFC and accepted
+ADRs, it records implementation debt rather than the target contract. Its
+reusable parts are:
 
 - gold is a standard STS result and should continue through
   `RewardSynchronizer`, not a RitsuLib managed action;
-- AP ownership remains local to the receiving process; and
+- the AP receipt source remains at the appropriate AP connection; and
 - every peer must mutate its replica of the same owning player.
 
 The original gold proof requires both test processes to bind AP slots. The
-source now also scaffolds ADR 001's guest entry and run-data shapes, but that
-does not constitute a two-client guest or save/rejoin proof.
+source still scaffolds one undifferentiated Guest entry, owner-local cursor
+persistence, and an applied-effect ledger. ADR 001 now requires separate AP
+Guest and Vanilla Guest modes, while ADR 004 makes the host checkpoint own every
+player's multiplayer progress. Those corrected paths are not implemented or
+runtime-proven by this spike.
 
 The gold path now sits behind the common AP grant dispatcher:
 
@@ -41,19 +45,25 @@ AP gold receipts update the owner's raw bank
   -> owner redemption-cursor check and concrete amount resolution
   -> native gold route
   -> synchronized local execution
-  -> owner raw redemption-cursor persistence
+  -> current spike persists the owner cursor locally
+  -> target path updates host-owned player progress immediately
 ```
 
-This milestone does not exercise RitsuLib managed actions, `StartRunLobby`
-run-data staging, the host Ascension contract, or reconstruction of the
-host-persisted applied-effect ledger. Those remain separate runtime proofs.
+This milestone does not exercise RitsuLib managed actions, the corrected
+three-mode lobby contract, host receipt relay, host-owned `APProgressUnified`,
+shared-slot checks, or floor-checkpoint restore. Those remain separate runtime
+proofs.
 
-## Agreed first-spike contract
+## Implemented first-spike contract
+
+This section describes the existing disposable spike. It is not the accepted
+final topology.
 
 - A visible RitsuLib setting, `Enable Experimental Multiplayer`, defaults off.
 - With the setting off, the mod continues hiding the Multiplayer button.
-- With it on, `AP Multiplayer` opens MegaCrit's Host/Join submenu. A disconnected
-  process enters as a guest; a connected process enters as its prepared AP slot.
+- With it on, `AP Multiplayer` opens MegaCrit's Host/Join submenu. The current
+  source treats a disconnected process as one generic guest; the target replaces
+  this with settings-selected AP Guest or Vanilla Guest.
 - `Connect to Archipelago` opens login independently. Successful login returns
   to the main menu, whose status line shows the active server and slot name.
 - `AP Singleplayer` requires a prepared AP connection.
@@ -72,30 +82,34 @@ host-persisted applied-effect ledger. Those remain separate runtime proofs.
   producers are disabled.
 - Unsupported received items are retained by received-item index, shown as
   disabled in the AP reward menu, and included in its pending badge count.
-- Leaving the disposable multiplayer run and starting a fresh singleplayer run
-  in the same AP session replays those deferred items through the existing item
-  processor. The multiplayer `RunState` is discarded, not converted or resumed.
-- A gold reward can be claimed only outside combat and while all MegaCrit peers
-  are connected. The row remains visible with an explanation while blocked.
+- Leaving the disposable multiplayer run and starting singleplayer discards the
+  multiplayer `RunState`. The target design does not copy host-owned multiplayer
+  consumption into the fresh solo run.
+- A gold reward can be claimed only outside combat. A temporarily absent
+  MegaCrit observer does not block the claim; vanilla restores the completed
+  canonical run state through its host-authored rejoin snapshot.
 - Disconnecting from the AP server does not invalidate already received items.
 - An AP disconnect in the lobby automatically unreadies the local player and
   disables Embark. The client retries after 5, 10, 20, and 30 seconds, then
   every 30 seconds; five minutes raises a warning but does not stop STS play.
-- The host cannot Ready until every lobby player has supplied a complete guest
-  or AP record. A later incomplete record automatically unreaddies the host,
-  and the same condition is checked again immediately before native launch.
+- The host cannot Ready until every lobby player has supplied a complete current
+  scaffold record. The target additionally distinguishes Own AP Slot, AP Guest,
+  and Vanilla Guest receipt-source readiness.
 - Reconnect accepts only the same AP room/seed, AP team ID, and AP slot ID.
-- Any MegaCrit peer disconnect permanently disables further AP claims for that
-  run. The underlying run is not forcibly terminated.
-- Runs are fresh and disposable. AP multiplayer saves, load, continue, and
-  rejoin are not supported in this spike.
+- A MegaCrit peer disconnect does not by itself invalidate or pause later AP
+  claims. Actual partial grant, synchronization, or persistence failures still
+  fail closed because retrying could duplicate an authoritative item.
+- Runs are fresh and disposable. Mod-managed AP multiplayer save/load/continue
+  and host-owned AP progress recovery are not supported in this spike. Where the game
+  build exposes active `RunLobby` rejoin, the mod relies on its native snapshot.
 - The implementation accepts MegaCrit's supported player counts, although the
   first runtime matrix uses two players.
 
 ## Ownership and synchronization
 
-The AP item and menu remain private to the receiving process. Only the standard
-game mutation is replicated:
+For this own-slot gold spike, the AP item and menu remain local to the receiving
+process. Only the standard game mutation is replicated. The target AP Guest
+path instead receives an in-memory host receipt view while retaining local UI:
 
 ```text
 Alice's AP slot receives EliteGold
@@ -130,7 +144,8 @@ mod does not synchronize Alice's AP item, AP menu state, or resulting total.
   Singleplayer/AP Multiplayer entry, guest selection, connection status, and
   disposable-run Load/Abandon hiding.
 - `ApRunData.cs` registers the shared and per-player canonical run-data shapes;
-  their full validation and ledger integration remain later slices.
+  their corrected participation, host-progress, and receipt-relay integration
+  remain later slices.
 
 ### Local-player binding
 
@@ -151,10 +166,12 @@ Press Start check.
 `GameUtility.GrantGold` now:
 
 1. verifies the active player is local;
-2. rejects claims during combat or after a MegaCrit disconnect;
-3. applies `PlayerCmd.GainGold` locally;
-4. calls `RewardSynchronizer.SyncLocalObtainedGold` only in real multiplayer;
-5. logs the local Net ID, amount, and before/after totals.
+2. requires the local process to remain connected to its MegaCrit session;
+3. rejects claims during combat or permanently after an unrecoverable grant or
+   binding failure;
+4. applies `PlayerCmd.GainGold` locally;
+5. calls `RewardSynchronizer.SyncLocalObtainedGold` only in real multiplayer;
+6. logs the local Net ID, amount, and before/after totals.
 
 The reward UI materializes one immutable aggregate offer while it is open. The
 dispatcher validates the expected raw cursor, invokes the command, advances the
@@ -163,6 +180,8 @@ local application fails, the offer remains unconsumed. If synchronization or
 cursor persistence unexpectedly fails after local application, later claims
 fail closed; retrying would duplicate Alice's already-applied gold. Crash
 recovery across that mutation/persistence window remains explicitly unresolved.
+This local file is not part of the accepted architecture; multiplayer gold must
+move to the claimant's host-owned progress and normal floor checkpoint.
 
 ### Gold-only safety gates
 
@@ -179,18 +198,20 @@ before moving into the allowlist.
 
 Before another received-item category builds on this spike:
 
-1. Extend the common AP grant dispatcher with `RunId`-scoped `ApGrantId`
-   handling and a host-owned applied-effect ledger for discrete receipt-backed
-   grants.
+1. Extend the common AP grant dispatcher with full receipt source, claiming Net
+   ID, and host-owned per-player `UsedItems`/cursor validation.
 2. Keep aggregate gold on `RewardSynchronizer.SyncLocalObtainedGold`; one button
    click synchronizes one wallet grant, not one action per gold receipt.
-3. Add owner-local prepared assignments where discrete grants require them.
-   Gold's cumulative raw cursor is already local and owner-owned.
-4. Stage the `RunId`, guest/AP identity mapping, AP-owner history readiness,
-   and host effective Ascension set through RitsuLib `StartRunLobby` run data.
+3. Put stable assignments and gold cursors in host-owned
+   `APProgressUnified`; no multiplayer client-local journal remains.
+4. Stage the `RunId`, three-mode participation/AP-source mapping, receipt-source
+   readiness, frozen settings, and host effective Ascension set through RitsuLib
+   `StartRunLobby` run data.
    Derive the host Net ID from MegaCrit networking rather than saving it again.
-5. Prove duplicate callback and acknowledgment boundaries in both
-   host-recipient and client-recipient directions.
+5. Add the revisioned host receipt relay and both launch-frozen shared check
+   scopes before treating AP Guest mode as supported.
+6. Prove immediate host consumption blocks same-floor duplicates and that the
+   next floor checkpoint restores native effects and AP progress together.
 
 Save/rejoin durability remains a later roadmap phase and is not a prerequisite
 for the next disposable-run capability. Until that phase succeeds, the spike's
@@ -282,8 +303,13 @@ Additional safety cases:
   claimable after combat ends.
 - Disconnect AP after receiving gold and verify the banked reward remains
   claimable.
-- Disconnect a MegaCrit peer and verify all later AP claims stay disabled even
-  if that peer reconnects.
+- Disconnect a non-owning MegaCrit peer, complete an AP claim on a remaining
+  owner, then rejoin as the same Steam account or ENet `clientId`. Verify the
+  original Net ID set returns and the rejoin snapshot already contains the
+  completed result without replaying the grant.
+- Attempt the reconnect with a different ENet `clientId` and verify vanilla
+  refuses it rather than letting the mod bind the old AP identity to a new STS
+  player.
 - Deliver an unsupported item and verify it is disabled, counted, and neither
   mutates state nor consumes RNG/pools.
 - Leave the multiplayer run, start a fresh singleplayer run in the same AP

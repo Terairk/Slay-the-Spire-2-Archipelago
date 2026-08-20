@@ -1,10 +1,19 @@
 # Temporary multiplayer lobby and run-data runtime checklist
 
-- **Purpose:** Manual verification of the connection menu, guest/AP lobby records,
-  host identity, AP-history Ready gate, launch guard, and committed run data.
+- **Purpose:** Manual verification of the existing pre-correction connection
+  menu, generic-Guest/AP lobby records, host identity, history Ready gate,
+  launch guard, and committed run-data scaffold.
 - **Status:** Temporary working document. Delete or fold into the permanent runtime
   matrix after the checks have been executed.
 - **Build under test:** Record the mod commit/SHA and RitsuLib version below.
+
+This checklist describes the currently implemented scaffold, not the accepted
+target design. Every unqualified `Guest` below means the legacy generic guest
+and should be treated as a Vanilla Guest for interpretation. It does not prove
+AP Guest receipt relay, host-owned `APProgressUnified`, shared receipt fan-out,
+`SharedSlotCheckScope`, removal of local journals, or floor-checkpoint recovery.
+Add those cases before replacing this temporary checklist with the permanent
+runtime matrix.
 
 ## Test record
 
@@ -17,8 +26,8 @@ RitsuLib version (expected 0.5.13):
 AP server/room:
 Host STS client ID:
 Client STS client ID:
-Host AP slot or Guest:
-Client AP slot or Guest:
+Host Own AP Slot or legacy/Vanilla Guest:
+Client Own AP Slot or legacy/Vanilla Guest:
 Host log:
 Client log:
 ```
@@ -46,9 +55,9 @@ Command scope and expected limitations:
 |---|---|---|
 | `ap state summary` | Lobby and active run | Correct AP connection, slot, initial history state, and reward counts |
 | `ap state lobby` | Character-select/start lobby only | Host identity, staged player records, history flags, blockers, and host validation |
-| `ap state multiplayer` | Active run | Correct local role, local Net ID, and complete native player list |
+| `ap state multiplayer` | Active run | Correct local role, frozen player list, currently connected Net IDs, participant connection status, and permanent-invalidation flag |
 | `ap state run` | Active run only | Same committed `RunId`, host Net ID, and participant mapping on both processes |
-| `ap state ledger` | Active run only | Empty initially; later contains only effect IDs actually connected to the shared ledger |
+| `ap state ledger` | Active run only | Legacy scaffold diagnostic only; not target persistence evidence |
 | `ap state grants` | Active run | Current local supported AP receipts and their claim state |
 | `ap state assignments` | Active run | Stable prepared card/relic/potion/Ancient assignments when any exist |
 
@@ -92,8 +101,8 @@ logs\multiplayer\join-1000.log
 ```
 
 The harness is AP/AP only. Use the ordinary UI on two processes or machines for
-guest cases: a guest must remain disconnected from AP and select **AP
-Multiplayer**.
+legacy guest cases. These exercise only Vanilla Guest-like behavior; AP Guest
+requires the future host receipt relay and settings selection.
 
 ## Case 1: Disconnected and connected main-menu behavior
 
@@ -187,6 +196,7 @@ Continue immediately from Case 2.
    - Both contain Alice and Bob with their correct AP room/team/slot mappings.
    - `appliedEffectCount` matches on both.
    - `ap state ledger` is empty before any ledger-integrated AP effect.
+   - `participantConnection=complete` and `claimsInvalidated=no` before any failure.
 
 Do not fail this case merely because an existing reward feature changes the
 game while the ledger remains empty. The scaffold exposes the ledger, but each
@@ -405,6 +415,23 @@ Previous RunId:
 New RunId:
 Evidence/notes:
 ```
+
+## Corrected architecture cases not covered by this scaffold
+
+Do not mark the accepted multiplayer design runtime-verified until a later
+checklist covers at least:
+
+1. settings-selected AP Guest versus Vanilla Guest launch behavior;
+2. rejection of AP Guest when the fixed host has no prepared AP slot;
+3. full and incremental host receipt relay, including rejoin and revision gates;
+4. independent per-player claims and stable assignments for one shared receipt;
+5. `HostCharacterOnly` and `AllAPParticipants` check submission, including
+   duplicate-character deduplication and no guest forwarding message;
+6. cached reward behavior while the host AP socket is disconnected;
+7. immediate live host consumption before a floor save;
+8. floor-checkpoint save/load and pre-checkpoint host-crash rollback; and
+9. own-slot and AP Guest rejoin with empty local storage and no AP DataStorage
+   journal.
 
 ## Minimum evidence bundle
 
