@@ -712,13 +712,36 @@ public static class MultiplayerSupport
             reason = "No AP receipt source is bound to the local multiplayer player.";
             return false;
         }
-        return PrepareApSession(
+
+        // Login can complete before the SDK has replayed the slot's complete received-item
+        // history. The launch boundary is later and must refresh an own-slot participant from
+        // the authoritative SDK list instead of restoring the early connection snapshot.
+        IReadOnlyList<ItemInfo> receivedItems = _preparedReceivedItems;
+        if (IsLocalOwnApSlot && ArchipelagoClient.IsConnected)
+            receivedItems = ArchipelagoClient.Session.Items.AllItemsReceived.ToArray();
+
+        if (!PrepareApSession(
             identity.RoomSeed,
             identity.ApTeamId,
             identity.ApSlotId,
-            _preparedReceivedItems,
+            receivedItems,
             out reason
-        );
+        ))
+        {
+            return false;
+        }
+
+        if (IsLocalOwnApSlot)
+        {
+            _preparedReceivedItems = receivedItems.ToArray();
+            ApReceiptRelay.ReplaceHostCatalog(
+                identity.RoomSeed,
+                identity.ApTeamId,
+                identity.ApSlotId,
+                receivedItems
+            );
+        }
+        return true;
     }
 
     public static ArchipelagoSettings? CreateEffectiveHostSettingsSnapshot()

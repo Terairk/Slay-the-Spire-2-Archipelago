@@ -107,14 +107,26 @@ namespace StS2AP.Models
             LogUtility.Info("Getting megaContext");
             var contextType = megaAssembly.GetType("MegaCrit.Sts2.Core.Saves.MegaCritSerializerContext");
             LogUtility.Info("Getting Default");
-            var fieldInfo = contextType.GetField("Default", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            var defaultProperty = contextType?.GetProperty(
+                "Default",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static
+            );
+            var defaultField = contextType?.GetField(
+                "Default",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static
+            );
             LogUtility.Info("Getting Dereferencing Default");
-            var megaResolver = (IJsonTypeInfoResolver?)fieldInfo?.GetValue(null);
+            var megaResolver = (IJsonTypeInfoResolver?)(
+                defaultProperty?.GetValue(null) ?? defaultField?.GetValue(null)
+            ) ?? throw new InvalidOperationException(
+                "Could not resolve MegaCritSerializerContext.Default."
+            );
 
             LogUtility.Info("Getting Options");
-            var optionsInfo = contextType.GetField("s_defaultOptions", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            LogUtility.Info("Dereferencing Options");
-            var megaOptions = (JsonSerializerOptions?)optionsInfo?.GetValue(null);
+            var megaOptions = (megaResolver as JsonSerializerContext)?.Options
+                ?? throw new InvalidOperationException(
+                    "MegaCritSerializerContext.Default did not expose serializer options."
+                );
 
             CombinedOptions = new JsonSerializerOptions(megaOptions)
             {

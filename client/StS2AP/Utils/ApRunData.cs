@@ -564,13 +564,34 @@ public static class ApRunData
         StartRunLobby lobby,
         ApParticipationKind hostParticipation)
     {
+        SharedSlotCheckScope sharedSlotCheckScope =
+            MultiplayerSupport.ConfiguredSharedSlotCheckScope;
+        bool shouldStageHostSettings =
+            hostParticipation == ApParticipationKind.OwnApSlot;
+
+        // Lobby writes emit RunSavedDataLobbyStagingEvent. That event asks the host UI to
+        // refresh, and the refresh stages this same contract again. Archipelago slot settings
+        // are immutable after login, so an already-staged value is authoritative and must not
+        // be rewritten; otherwise the host creates an endless write -> refresh -> write loop
+        // that starves the native lobby network update.
+        if (_sharedRun.Lobby.TryGet(lobby, out ApRunSharedState existing)
+            && existing.SchemaVersion == RunSchemaVersion
+            && existing.SharedSlotCheckScope == sharedSlotCheckScope
+            && (shouldStageHostSettings
+                ? existing.HostSettings != null
+                : existing.HostSettings == null))
+        {
+            return;
+        }
+
+        ArchipelagoSettings? hostSettings = shouldStageHostSettings
+            ? MultiplayerSupport.CreateEffectiveHostSettingsSnapshot()
+            : null;
         _sharedRun.Lobby.Modify(lobby, state =>
         {
             state.SchemaVersion = RunSchemaVersion;
-            state.SharedSlotCheckScope = MultiplayerSupport.ConfiguredSharedSlotCheckScope;
-            state.HostSettings = hostParticipation == ApParticipationKind.OwnApSlot
-                ? MultiplayerSupport.CreateEffectiveHostSettingsSnapshot()
-                : null;
+            state.SharedSlotCheckScope = sharedSlotCheckScope;
+            state.HostSettings = hostSettings;
         });
     }
 

@@ -228,6 +228,8 @@ public static class ApMirroredRewardDispatcher
                 OwnerNetId = player.NetId,
                 Kind = ApMirroredRewardKind.Unavailable,
                 ItemName = receipt.Item.ItemDisplayName,
+                SenderName = receipt.Item.Player.Name,
+                FoundLocation = receipt.Item.LocationDisplayName,
                 UnavailableReason = $"Unavailable in experimental multiplayer ({feature}).",
             });
         }
@@ -258,6 +260,8 @@ public static class ApMirroredRewardDispatcher
             OwnerNetId = player.NetId,
             Kind = kind,
             ItemName = receipt.Item.ItemDisplayName,
+            SenderName = receipt.Item.Player.Name,
+            FoundLocation = receipt.Item.LocationDisplayName,
         };
 
         switch (kind)
@@ -340,7 +344,7 @@ public static class ApMirroredRewardDispatcher
             ApMirroredRewardKind.Relic => new ApNativeRelicReward(
                 DeserializeRelic(spec.SerializedModels.Single()),
                 owner,
-                spec.ReceivedItemIndex,
+                spec,
                 ApMirroredRewardKind.Relic
             ),
             ApMirroredRewardKind.Potion => new ApNativePotionReward(
@@ -348,14 +352,14 @@ public static class ApMirroredRewardDispatcher
                     Deserialize<SerializablePotion>(spec.SerializedModels.Single())
                 ),
                 owner,
-                spec.ReceivedItemIndex
+                spec
             ),
             ApMirroredRewardKind.Ancient => BuildAncientReward(spec, owner),
             ApMirroredRewardKind.Unavailable => new ApUnavailableReward(
                 spec.ItemName,
                 spec.UnavailableReason,
                 owner,
-                spec.ReceivedItemIndex
+                spec
             ),
             _ => throw new ArgumentOutOfRangeException(nameof(spec.Kind)),
         };
@@ -374,7 +378,7 @@ public static class ApMirroredRewardDispatcher
             cards,
             player,
             options,
-            spec.ReceivedItemIndex,
+            spec,
             spec.CardCanReroll
         );
     }
@@ -388,7 +392,7 @@ public static class ApMirroredRewardDispatcher
             .Select(serialized => (Reward)new ApNativeRelicReward(
                 DeserializeRelic(serialized),
                 player,
-                spec.ReceivedItemIndex,
+                spec,
                 ApMirroredRewardKind.Ancient
             ))
             .ToList();
@@ -693,9 +697,29 @@ public static class ApMirroredRewardDispatcher
         JsonSerializer.Deserialize<T>(json, SerializationUtility.CombinedOptions)
         ?? throw new InvalidOperationException($"Could not deserialize AP model {typeof(T).Name}.");
 
+    private static int _descriptionSequence;
+
+    private static LocString CreateApDescription(LocString primary, ApMirroredRewardSpec spec) =>
+        CreateApDescription(primary.GetFormattedText(), spec);
+
+    private static LocString CreateApDescription(string primary, ApMirroredRewardSpec spec)
+    {
+        string location = string.IsNullOrWhiteSpace(spec.FoundLocation)
+            ? string.Empty
+            : $" ({spec.FoundLocation})";
+        string origin = string.IsNullOrWhiteSpace(spec.SenderName)
+            ? string.Empty
+            : $"\n[blue]from {spec.SenderName}{location}[/blue]";
+        string key = $"AP_NATIVE_REWARD_{System.Threading.Interlocked.Increment(ref _descriptionSequence)}";
+        TextUtility.RegisterLocString(key, primary + origin, "ap");
+        return new LocString("ap", key);
+    }
+
     internal interface IApNativeReward
     {
         bool CanClaim(out string reason);
+        bool HasOriginText { get; }
+        bool UseAncientStyle { get; }
     }
 
     private sealed class ApNativeGoldReward : GoldReward, IApNativeReward
@@ -706,6 +730,8 @@ public static class ApMirroredRewardDispatcher
             : base(claim.GrantedAmount, player) => _claim = claim;
 
         public bool CanClaim(out string reason) => MultiplayerSupport.CanClaimGold(out reason);
+        public bool HasOriginText => false;
+        public bool UseAncientStyle => false;
 
         protected override async Task<bool> OnSelect()
         {
@@ -720,20 +746,26 @@ public static class ApMirroredRewardDispatcher
     {
         private readonly int _itemIndex;
         private readonly ApMirroredRewardKind _kind;
+        private readonly LocString _description;
+
+        public override LocString Description => _description;
 
         public ApNativeRelicReward(
             RelicModel relic,
             Player player,
-            int itemIndex,
+            ApMirroredRewardSpec spec,
             ApMirroredRewardKind kind)
             : base(relic, player)
         {
-            _itemIndex = itemIndex;
+            _itemIndex = spec.ReceivedItemIndex;
             _kind = kind;
+            _description = CreateApDescription(relic.Title, spec);
         }
 
         public bool CanClaim(out string reason) =>
             MultiplayerSupport.CanClaimReceivedReward(_kind, out reason);
+        public bool HasOriginText => true;
+        public bool UseAncientStyle => _kind == ApMirroredRewardKind.Ancient;
 
         protected override async Task<bool> OnSelect()
         {
@@ -749,12 +781,24 @@ public static class ApMirroredRewardDispatcher
     private sealed class ApNativePotionReward : PotionReward, IApNativeReward
     {
         private readonly int _itemIndex;
+        private readonly LocString _description;
 
-        public ApNativePotionReward(PotionModel potion, Player player, int itemIndex)
-            : base(potion, player) => _itemIndex = itemIndex;
+        public override LocString Description => _description;
+
+        public ApNativePotionReward(
+            PotionModel potion,
+            Player player,
+            ApMirroredRewardSpec spec)
+            : base(potion, player)
+        {
+            _itemIndex = spec.ReceivedItemIndex;
+            _description = CreateApDescription(potion.Title, spec);
+        }
 
         public bool CanClaim(out string reason) =>
             MultiplayerSupport.CanClaimReceivedReward(ApMirroredRewardKind.Potion, out reason);
+        public bool HasOriginText => true;
+        public bool UseAncientStyle => false;
 
         protected override async Task<bool> OnSelect()
         {
@@ -770,21 +814,30 @@ public static class ApMirroredRewardDispatcher
     private sealed class ApNativeCardReward : CardReward, IApNativeReward
     {
         private readonly int _itemIndex;
+        private readonly LocString _description;
+
+        public override LocString Description => _description;
 
         public ApNativeCardReward(
             IEnumerable<CardModel> cards,
             Player player,
             CardCreationOptions rerollOptions,
-            int itemIndex,
+            ApMirroredRewardSpec spec,
             bool canReroll)
             : base(cards, CardCreationSource.Encounter, player, rerollOptions)
         {
-            _itemIndex = itemIndex;
+            _itemIndex = spec.ReceivedItemIndex;
+            _description = CreateApDescription(
+                new LocString("gameplay_ui", "COMBAT_REWARD_ADD_CARD"),
+                spec
+            );
             CanReroll = canReroll;
         }
 
         public bool CanClaim(out string reason) =>
             MultiplayerSupport.CanClaimReceivedReward(ApMirroredRewardKind.Card, out reason);
+        public bool HasOriginText => true;
+        public bool UseAncientStyle => false;
 
         protected override async Task<bool> OnSelect()
         {
@@ -817,12 +870,14 @@ public static class ApMirroredRewardDispatcher
         public override LocString Description => _description;
         public override bool IsPopulated => true;
 
-        public ApUnavailableReward(string itemName, string reason, Player player, int itemIndex)
+        public ApUnavailableReward(
+            string itemName,
+            string reason,
+            Player player,
+            ApMirroredRewardSpec spec)
             : base(player)
         {
-            string key = $"AP_UNAVAILABLE_REWARD_{player.NetId}_{itemIndex}";
-            TextUtility.RegisterLocString(key, itemName, "ap");
-            _description = new LocString("ap", key);
+            _description = CreateApDescription(itemName, spec);
             _reason = reason;
         }
 
@@ -831,6 +886,9 @@ public static class ApMirroredRewardDispatcher
             reason = _reason;
             return false;
         }
+
+        public bool HasOriginText => true;
+        public bool UseAncientStyle => false;
 
         public override void Populate() { }
         protected override Task<bool> OnSelect() => Task.FromResult(false);

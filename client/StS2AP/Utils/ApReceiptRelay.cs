@@ -2,6 +2,7 @@ using Archipelago.MultiClient.Net.DataPackage;
 using Archipelago.MultiClient.Net.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
+using System.Reflection;
 using StS2AP.Models;
 using STS2RitsuLib.Networking.Sidecar;
 
@@ -95,19 +96,23 @@ public static class ApReceiptRelay
 
     public static void PublishCurrentRunSnapshot()
     {
-        INetGameService netService = RunManager.Instance.NetService;
-        if (netService.Type == NetGameType.Host && netService.IsConnected)
+        // AP login is deliberately completed before the native multiplayer lobby exists.
+        // RunManager therefore has no NetService yet, and there is nobody to receive a
+        // snapshot until the native host/client connection has been established.
+        INetGameService? netService = RunManager.Instance.NetService;
+        if (netService != null
+            && netService.Type == NetGameType.Host
+            && netService.IsConnected)
+        {
             PublishSnapshot(netService, targetNetId: null);
+        }
     }
 
     /// <summary>Sends one new/changed receipt without resending the full host history.</summary>
     public static void PublishLiveReceipt(IndexedItemInfo receipt)
     {
-        INetGameService netService = RunManager.Instance.NetService;
-        if (netService.Type != NetGameType.Host || !netService.IsConnected)
-            return;
-
-        ApReceiptCatalogMessage message;
+        INetGameService? netService = RunManager.Instance.NetService;
+        ApReceiptCatalogMessage? message = null;
         lock (CatalogLock)
         {
             if (_hostRevision == 0 || string.IsNullOrEmpty(_hostRoomSeed))
@@ -121,13 +126,23 @@ public static class ApReceiptRelay
             int baseRevision = _hostRevision;
             HostItems[receipt.Index] = receipt.Item;
             _hostRevision++;
-            message = CreateCatalogMessage(
-                isFullSnapshot: false,
-                baseRevision,
-                new[] { ToWireItem(receipt.Index, receipt.Item) }
-            );
+
+            // Initial AP history is replayed before the native lobby exists. Always advance the
+            // local catalog so a later full-snapshot request sees that history; only the network
+            // delta itself depends on an active fixed-host transport.
+            if (netService != null
+                && netService.Type == NetGameType.Host
+                && netService.IsConnected)
+            {
+                message = CreateCatalogMessage(
+                    isFullSnapshot: false,
+                    baseRevision,
+                    new[] { ToWireItem(receipt.Index, receipt.Item) }
+                );
+            }
         }
-        RitsuLibSidecarTypedMessageRegistry.Broadcast(netService, CatalogDescriptor, message);
+        if (message != null && netService != null)
+            RitsuLibSidecarTypedMessageRegistry.Broadcast(netService, CatalogDescriptor, message);
     }
 
     /// <summary>Sends one targeted full-snapshot request to the fixed STS host.</summary>
@@ -451,9 +466,17 @@ public static class ApReceiptRelay
             networkItem,
             saved.ItemGame,
             saved.LocationGame,
-            new WireItemInfoResolver(saved),
+            CreateWireItemInfoResolver(saved),
             saved.Player
         );
+    }
+
+    private static IItemInfoResolver CreateWireItemInfoResolver(SerializableItemInfo item)
+    {
+        IItemInfoResolver resolver =
+            DispatchProxy.Create<IItemInfoResolver, WireItemInfoResolverProxy>();
+        ((WireItemInfoResolverProxy)(object)resolver).Item = item;
+        return resolver;
     }
 
     private static bool HasSameIdentity(ItemInfo left, ItemInfo right) =>
@@ -462,10 +485,28 @@ public static class ApReceiptRelay
         && left.Player.Slot == right.Player.Slot
         && left.Flags == right.Flags;
 
-    private sealed class WireItemInfoResolver(SerializableItemInfo item) : IItemInfoResolver
+    /// <summary>
+    /// Implements the AP resolver dynamically after mod initialization. Keeping
+    /// <see cref="IItemInfoResolver"/> out of this assembly's declared base-type list lets the
+    /// beta mod loader enumerate our types before <see cref="ModEntry.Initialize"/> installs the
+    /// dependency resolver.
+    /// </summary>
+    public class WireItemInfoResolverProxy : DispatchProxy
     {
-        public string GetItemName(long itemId, string game) => item.ItemName;
-        public string GetLocationName(long locationId, string game) => item.LocationName;
-        public long GetLocationId(string locationName, string game) => item.LocationId;
+        public object Item { get; set; } = null!;
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            var item = (SerializableItemInfo)Item;
+            return targetMethod?.Name switch
+            {
+                nameof(IItemInfoResolver.GetItemName) => item.ItemName,
+                nameof(IItemInfoResolver.GetLocationName) => item.LocationName,
+                nameof(IItemInfoResolver.GetLocationId) => item.LocationId,
+                _ => throw new MissingMethodException(
+                    $"Unsupported item-info resolver method: {targetMethod?.Name ?? "<null>"}"
+                ),
+            };
+        }
     }
 }

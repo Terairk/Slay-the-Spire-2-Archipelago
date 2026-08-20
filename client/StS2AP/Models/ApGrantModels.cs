@@ -51,6 +51,10 @@ public sealed class ApMirroredRewardSpec
     /// <summary>Display text used only when no concrete native reward type exists.</summary>
     public string ItemName { get; set; } = string.Empty;
 
+    /// <summary>AP sender and location retained as presentation metadata on native rewards.</summary>
+    public string SenderName { get; set; } = string.Empty;
+    public string FoundLocation { get; set; } = string.Empty;
+
     /// <summary>Owner-facing reason that this receipt cannot currently be claimed.</summary>
     public string UnavailableReason { get; set; } = string.Empty;
 

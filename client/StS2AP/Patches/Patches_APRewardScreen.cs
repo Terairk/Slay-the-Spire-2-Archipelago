@@ -1,12 +1,61 @@
+using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Rewards;
 using StS2AP.UI;
+using StS2AP.Utils;
 
 namespace StS2AP.Patches
 {
+    /// <summary>
+    /// Keeps MegaCrit's native reward controls while restoring the compact AP row spacing,
+    /// two-line origin label, and Ancient tint used by the previous reward catalog.
+    /// </summary>
+    [HarmonyPatch(typeof(NRewardButton), nameof(NRewardButton._Ready))]
+    public static class StyleNativeApRewardButton
+    {
+        // SelfModulate remains in effect while MegaCrit's native HSV material supplies the
+        // focus/press brightness animation, keeping Ancient rows dark and visibly distinct.
+        private static readonly Color AncientBackgroundTint = new(0.52f, 0.27f, 0.66f);
+
+        [HarmonyPostfix]
+        public static void Postfix(NRewardButton __instance)
+        {
+            if (__instance.Reward is not ApMirroredRewardDispatcher.IApNativeReward reward)
+                return;
+
+            if (reward.HasOriginText)
+            {
+                __instance.CustomMinimumSize = new Vector2(
+                    __instance.CustomMinimumSize.X,
+                    Mathf.Max(__instance.CustomMinimumSize.Y, 74f)
+                );
+            }
+
+            if (reward.UseAncientStyle
+                && __instance.GetNodeOrNull<TextureRect>("%Background") is { } background)
+            {
+                background.SelfModulate = AncientBackgroundTint;
+            }
+        }
+    }
+
+    /// <summary>Uses the previous AP catalog's compact gap on the native reward container.</summary>
+    [HarmonyPatch(typeof(NRewardsScreen), nameof(NRewardsScreen._Ready))]
+    public static class SpaceNativeApRewardRows
+    {
+        [HarmonyPostfix]
+        public static void Postfix(NRewardsScreen __instance, RewardsSet ____rewardsSet)
+        {
+            if (!ArchipelagoRewardUI.IsApRewardSet(____rewardsSet))
+                return;
+            if (__instance.GetNodeOrNull<BoxContainer>("%RewardsContainer") is { } container)
+                container.AddThemeConstantOverride("separation", 10);
+        }
+    }
+
     /// <summary>
     /// Rejects an AP-owned native row before MegaCrit emits RewardSelectedMessage. This keeps
     /// multiplayer combat and other expected claim gates as true non-selections.

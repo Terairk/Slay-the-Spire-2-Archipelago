@@ -107,7 +107,24 @@ namespace StS2AP
         /// <summary>Installs the fixed host's frozen settings on an AP Guest process.</summary>
         internal static void UseMultiplayerHostSettings(ArchipelagoSettings settings)
         {
-            Settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            ArgumentNullException.ThrowIfNull(settings);
+
+            // RitsuLib's JSON round-trip does not preserve the comparer from the initialized
+            // ConcurrentDictionary. Native character IDs are upper-case while AP slot-data keys
+            // use title case, so normalize both maps again whenever frozen settings are installed.
+            settings.Characters = new System.Collections.Concurrent.ConcurrentDictionary<
+                string,
+                CharacterConfig
+            >(
+                settings.Characters,
+                StringComparer.InvariantCultureIgnoreCase
+            );
+            settings.UnrecognizedCharacters =
+                new System.Collections.Concurrent.ConcurrentDictionary<string, CharacterConfig>(
+                    settings.UnrecognizedCharacters,
+                    StringComparer.InvariantCultureIgnoreCase
+                );
+            Settings = settings;
         }
 
         internal static void RebuildUnlockedCharactersFromSettings()

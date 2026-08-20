@@ -80,7 +80,10 @@ public static class ArchipelagoRewardUI
             return;
 
         _opening = true;
-        Callable.From(() => TaskHelper.RunSafely(OpenOnMainThread())).CallDeferred();
+        Callable.From(() =>
+        {
+            TaskHelper.RunSafely(OpenOnMainThread());
+        }).CallDeferred();
     }
 
     private static async Task OpenOnMainThread()
