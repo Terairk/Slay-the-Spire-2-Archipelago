@@ -808,6 +808,7 @@ public static class MultiplayerSupport
         _activeParticipation = null;
         ClaimsInvalidated = false;
         _claimInvalidationNoticeShown = false;
+        ApRunData.EndRun();
         ApGrantDispatcher.EndRun();
         ApMirroredRewardDispatcher.EndRun();
     }

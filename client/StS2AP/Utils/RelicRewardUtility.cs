@@ -35,7 +35,7 @@ namespace StS2AP.Utils
         /// Records one eligible natural relic source. Every attempt is counted, but only the first
         /// ten create an AP check and a bank that can be paired with a Relic receipt.
         /// </summary>
-        public static bool RecordEligibleReward(out int rewardNumber)
+        public static bool RecordEligibleReward(Player player, out int rewardNumber)
         {
             var progress = ArchipelagoClient.Progress;
             progress.RelicRewardsAttempted++;
@@ -43,13 +43,13 @@ namespace StS2AP.Utils
 
             if (rewardNumber > ArchipelagoProgress._maxRelicRewards)
             {
-                ApRunData.PublishCurrentProgress();
+                ApRunData.PublishLocalProgress(player);
                 return false;
             }
 
             progress.BankedRelicRewards++;
             RelicCoupons.RefreshCounter();
-            ApRunData.PublishCurrentProgress();
+            ApRunData.PublishLocalProgress(player);
             return true;
         }
 
@@ -183,14 +183,14 @@ namespace StS2AP.Utils
         /// Completes a relic claimed through the AP reward menu and releases its persisted choice.
         /// The bank, when one was required, was already spent when this assignment was created.
         /// </summary>
-        public static void CompleteMenuClaim(int itemIndex)
+        public static void CompleteMenuClaim(Player player, int itemIndex)
         {
             var progress = ArchipelagoClient.Progress;
             if (!progress.UsedItems.Contains(itemIndex))
                 progress.UsedItems.Add(itemIndex);
 
             progress.RelicChoiceAssignments.Remove(itemIndex);
-            ApRunData.PublishCurrentProgress();
+            ApRunData.PublishLocalProgress(player);
         }
 
         private static IndexedItemInfo? FindWaitingReceiptForNaturalReward(Player player)

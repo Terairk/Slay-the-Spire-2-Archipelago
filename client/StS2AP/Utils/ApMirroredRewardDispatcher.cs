@@ -380,7 +380,9 @@ public static class ApMirroredRewardDispatcher
                 .WithCustomRewards(new List<Reward> { runtime.Root });
             Task completion = RunManager.Instance.RewardsSetSynchronizer.BeginRewardsSet(rewardsSet);
 
-            // EXPLAIN: this if statement and the insides of it
+            // Stabilize the concrete choice in host-owned AP progress before the owner can use
+            // it. This publication is separate from gameplay replication: failure closes the
+            // local RewardsSet without selecting anything, leaving the receipt unconsumed.
             if (!PersistRuntimeAssignment(spec, runtime, lastAttempt: null))
             {
                 RunManager.Instance.RewardsSetSynchronizer.SkipLocalRewardsSet();
@@ -396,7 +398,9 @@ public static class ApMirroredRewardDispatcher
             selectionStarted = true;
             bool consumed = await RunManager.Instance.RewardsSetSynchronizer
                 .SelectLocalReward(selectedReward);
-            // EXPLAIN: what is SkipLocalRewardsSet and what does it do and what is the above of SelectLocalReward
+            // SelectLocalReward enters MegaCrit's synchronized reward lifecycle for this exact
+            // child. A skipped card or full potion belt returns false, so explicitly close the
+            // local set and retain the assignment for a later attempt.
             if (!consumed)
             {
                 RunManager.Instance.RewardsSetSynchronizer.SkipLocalRewardsSet();
@@ -410,6 +414,8 @@ public static class ApMirroredRewardDispatcher
             }
 
             await completion;
+            // The native reward lifecycle has completed before this separate AP progress delta
+            // marks the received-item index as consumed for the owner.
             if (!MarkApplied(spec))
             {
                 MultiplayerSupport.InvalidateRunClaims(

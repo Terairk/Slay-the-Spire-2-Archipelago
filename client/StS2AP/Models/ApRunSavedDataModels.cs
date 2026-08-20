@@ -54,15 +54,29 @@ public sealed class ApPlayerRunState
     public long ProgressRevision { get; set; }
 }
 
-// CONFIRM: what's this used for? disconnects mid run, client side check?
-// CONFIRM: what are all these schema versions used for and do we care?
-public sealed class ApProgressUpdateMessage
+/// <summary>
+/// Establishes the owner's complete progress view when no prior local publication exists. Normal
+/// mutations use <see cref="ApProgressDeltaMessage"/> so large saved assignments are not resent.
+/// </summary>
+public sealed class ApProgressSnapshotMessage
 {
-    public int SchemaVersion { get; set; } = 1;
     public Guid RunId { get; set; }
     public ulong OwnerNetId { get; set; }
     public long Revision { get; set; }
     public APProgressUnified Progress { get; set; } = new();
+}
+
+/// <summary>
+/// Carries one ordered change to the host-owned per-player progress. The base revision makes a
+/// missing/out-of-order mutation detectable instead of applying a patch to the wrong snapshot.
+/// </summary>
+public sealed class ApProgressDeltaMessage
+{
+    public Guid RunId { get; set; }
+    public ulong OwnerNetId { get; set; }
+    public long BaseRevision { get; set; }
+    public long Revision { get; set; }
+    public ApProgressDelta Delta { get; set; } = new();
 }
 
 // CONFIRM: what's this used for? Do we not need a slot asw or something

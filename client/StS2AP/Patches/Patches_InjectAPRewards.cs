@@ -35,7 +35,7 @@ namespace StS2AP.Patches
             Player player
         )
         {
-            if (!RelicRewardUtility.RecordEligibleReward(out var rewardNumber))
+            if (!RelicRewardUtility.RecordEligibleReward(player, out var rewardNumber))
                 return;
 
             rewards.Add(new ArchipelagoReward($"{player.APName()} Relic {rewardNumber}"));
@@ -204,7 +204,7 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                if (!RelicRewardUtility.RecordEligibleReward(out var rewardNumber))
+                if (!RelicRewardUtility.RecordEligibleReward(player, out var rewardNumber))
                     return;
 
                 // Opening the chest is the interaction that earns this check. Sending it here

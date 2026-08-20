@@ -488,7 +488,10 @@ namespace StS2AP.UI
                     {
                         data.ItemName = "Choose a Relic";
                         data.LinkedRelicChoices = choices;
-                        data.OnClaimed = () => RelicRewardUtility.CompleteMenuClaim(i.Index);
+                        data.OnClaimed = () => RelicRewardUtility.CompleteMenuClaim(
+                            currentPlayer,
+                            i.Index
+                        );
                     }
                     else
                     {
@@ -620,7 +623,7 @@ namespace StS2AP.UI
                 // Mark the item as used in the Multiworld so it doesn't show up again if we reopen the screen
                 if (!ArchipelagoClient.Progress.UsedItems.Contains(item.Index))
                     ArchipelagoClient.Progress.UsedItems.Add(item.Index);
-                ApRunData.PublishCurrentProgress();
+                ApRunData.PublishLocalProgress(currentPlayer);
             });
 
             // Show the UI with these rewards
