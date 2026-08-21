@@ -158,6 +158,8 @@ namespace StS2AP.Patches
                 if (localPlayer == null)
                     return;
 
+                RestSiteMultiplayer.BindRun(__result);
+
                 ArchipelagoCharTrackerUI.RemoveUI();
                 ArchipelagoGoalTrackerUI.RemoveUI();
                 GameUtility.CurrentPlayer = localPlayer;
@@ -219,6 +221,8 @@ namespace StS2AP.Patches
                     MultiplayerSupport.InvalidateRunClaims(bindError);
                     return;
                 }
+                RestSiteMultiplayer.PublishRelevantStates();
+                RestSiteMultiplayer.QueueRelevantStateRefresh();
 
                 if (MultiplayerSupport.IsLocalOwnApSlot)
                     PendingCheckUtility.ReconcileAndSend();

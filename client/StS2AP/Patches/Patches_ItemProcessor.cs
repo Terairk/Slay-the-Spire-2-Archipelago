@@ -158,9 +158,11 @@ namespace StS2AP.Patches
                 // Progressive threshold items
                 case APItem.ProgressiveSmith:
                     HandleThreshholdItem(item, Progress.ProgressiveSmiths, "Progressive Smiths");
+                    RestSiteMultiplayer.QueueRelevantStateRefresh();
                     break;
                 case APItem.ProgressiveRest:
                     HandleThreshholdItem(item, Progress.ProgressiveRests, "Progressive Rests");
+                    RestSiteMultiplayer.QueueRelevantStateRefresh();
                     break;
                 case APItem.ProgressiveAncient:
                 {

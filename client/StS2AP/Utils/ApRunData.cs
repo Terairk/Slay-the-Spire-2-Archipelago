@@ -19,7 +19,7 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ApRunData
 {
-    private const int RunSchemaVersion = 3;
+    private const int RunSchemaVersion = 4;
     private const string ProgressSnapshotMessageKey = "player_ap_progress_snapshot_v1";
     private const string ProgressDeltaMessageKey = "player_ap_progress_delta_v1";
     private static RunSavedData<ApRunSharedState> _sharedRun = null!;
@@ -124,6 +124,7 @@ public static class ApRunData
             },
             Progress = existing?.Progress ?? new ApRunProgressState(),
             ProgressRevision = existing?.ProgressRevision ?? 0,
+            RestSiteState = existing?.RestSiteState,
         };
         // SyncLobbyOnChange makes this a contribution to the authoritative host staging
         // session. On a client RitsuLib pushes the local PlayerRunSavedData payload with a
@@ -176,6 +177,27 @@ public static class ApRunData
             return _players.TryGet(runState, netId, out state);
         state = null!;
         return false;
+    }
+
+    /// <summary>
+    /// Installs one host-confirmed rest-site state into the canonical per-player run record.
+    /// Every replica keeps the same in-memory copy; only the fixed host persists it.
+    /// </summary>
+    public static bool TrySetRestSiteState(
+        RunState runState,
+        ulong ownerNetId,
+        ApRestSiteState restSiteState)
+    {
+        if (!_initialized
+            || !_players.TryGet(runState, ownerNetId, out ApPlayerRunState state)
+            || state.Participation == ApParticipationKind.VanillaGuest)
+        {
+            return false;
+        }
+
+        state.RestSiteState = restSiteState;
+        _players.Set(runState, ownerNetId, state);
+        return true;
     }
 
     public static bool TryGetLobbySharedState(

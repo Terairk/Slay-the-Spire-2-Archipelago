@@ -54,6 +54,7 @@ namespace StS2AP
 
             // Initialize Utilities
             ApMirroredRewardDispatcher.Initialize();
+            RestSiteMultiplayer.Initialize();
             DeathLinkUtility.Initialize();
             BuffUtility.Initialize();
 

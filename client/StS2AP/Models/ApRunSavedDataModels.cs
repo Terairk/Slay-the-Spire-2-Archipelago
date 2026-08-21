@@ -7,7 +7,7 @@ namespace StS2AP.Models;
 public sealed class ApRunSharedState
 {
     /// <summary>Serialized payload schema only; this is not a multiplayer protocol version.</summary>
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
 
     /// <summary>Separates two AP/STSes runs even when their seeds and slot identities match.</summary>
     public Guid RunId { get; set; }
@@ -27,7 +27,7 @@ public sealed class ApRunSharedState
 public sealed class ApPlayerRunState
 {
     /// <summary>Serialized payload schema only; this is not a multiplayer protocol version.</summary>
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
 
     // An unstaged/missing contribution must be harmless; AP Guest is always an explicit choice.
     public ApParticipationKind Participation { get; set; } = ApParticipationKind.VanillaGuest;
@@ -65,6 +65,12 @@ public sealed class ApPlayerRunState
 
     /// <summary>Monotonic live-update revision used to reject stale client snapshots.</summary>
     public long ProgressRevision { get; set; }
+
+    /// <summary>
+    /// Last host-confirmed AP campfire inputs for this Net ID. This lives beside general AP
+    /// progress because the host also authors it for AP Guests, which have no AP SDK session.
+    /// </summary>
+    public ApRestSiteState? RestSiteState { get; set; }
 }
 
 /// <summary>

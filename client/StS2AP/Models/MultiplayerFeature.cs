@@ -25,8 +25,9 @@ public enum MultiplayerFeature
     // Local inventory capabilities plus owner-only AP checks and native purchase effects.
     Shops,
 
-    // AP_MP: Keep these disabled until their owner-only checks and replicated results agree.
+    // Host-confirmed AP inputs plus native dense-list manifest validation.
     RestSites,
+    // AP_MP: Keep these disabled until their owner-only checks and replicated results agree.
     // AP_MP: This broader switch still owns natural Ancient events/start-of-act patches.
     Ancients,
     VictoryChecks,
