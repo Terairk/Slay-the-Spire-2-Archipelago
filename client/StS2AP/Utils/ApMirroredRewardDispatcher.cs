@@ -313,7 +313,16 @@ public static class ApMirroredRewardDispatcher
                         choiceKey
                     );
                 if (choices.Count != AncientRelicPool.ChoiceCount)
-                    throw new InvalidOperationException($"Could not assign Ancient reward {itemIndex}.");
+                {
+                    // The old AP menu represented a surplus Progressive Ancient, or a choice
+                    // whose pool could not be built, as an empty disabled chest. Preserve that
+                    // fail-closed row without preventing every other native reward from opening.
+                    spec.Kind = ApMirroredRewardKind.Unavailable;
+                    spec.ItemName = "Ancient Relic Choice Unavailable";
+                    spec.UnavailableReason =
+                        "No valid Act 2/3 Ancient relic choice is available for this receipt.";
+                    break;
+                }
                 spec.SerializedModels = choices.Select(SerializeRelic).ToList();
                 break;
             }

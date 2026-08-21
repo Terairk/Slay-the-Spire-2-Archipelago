@@ -1,4 +1,17 @@
+using System.Text.Json.Serialization;
+
 namespace StS2AP.Models;
+
+/// <summary>
+/// The complete run-scoped state for one progressive starter. Sending the related fields as one
+/// unit prevents a peer from observing an ID/tier combination that never existed on the owner.
+/// </summary>
+public sealed class ApProgressiveStarterState
+{
+    public string? BaseId { get; set; }
+    public string? UpgradedId { get; set; }
+    public ProgressiveStarterTier Tier { get; set; }
+}
 
 /// <summary>
 /// Ordered field-level mutation for <see cref="ApRunProgressState"/>. Assignment dictionaries
@@ -6,26 +19,29 @@ namespace StS2AP.Models;
 /// </summary>
 public sealed class ApProgressDelta
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? CardRewardsAttempted { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? RareCardRewardsAttempted { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? RelicRewardsAttempted { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? BankedRelicRewards { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? RelicRewardsAvailableAnytimeForRun { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? GoldRewardsAttempted { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? PotionRewardsAttempted { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? BossRewardsDistributed { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? GoldRedeemed { get; set; }
 
-    public bool ProgressiveStarterCardBaseIdChanged { get; set; }
-    public string? ProgressiveStarterCardBaseId { get; set; }
-    public bool ProgressiveStarterCardUpgradedIdChanged { get; set; }
-    public string? ProgressiveStarterCardUpgradedId { get; set; }
-    public ProgressiveStarterTier? ProgressiveStarterCardTier { get; set; }
-    public bool ProgressiveStarterRelicBaseIdChanged { get; set; }
-    public string? ProgressiveStarterRelicBaseId { get; set; }
-    public bool ProgressiveStarterRelicUpgradedIdChanged { get; set; }
-    public string? ProgressiveStarterRelicUpgradedId { get; set; }
-    public ProgressiveStarterTier? ProgressiveStarterRelicTier { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ApProgressiveStarterState? StarterCard { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ApProgressiveStarterState? StarterRelic { get; set; }
 
     public Dictionary<int, List<string>> RelicChoiceAssignmentUpserts { get; set; } = new();
     public List<int> RelicChoiceAssignmentRemovals { get; set; } = new();
@@ -39,8 +55,10 @@ public sealed class ApProgressDelta
     public List<int> UsedItemsRemoved { get; set; } = new();
     public HashSet<long> PendingLocationChecksAdded { get; set; } = new();
     public HashSet<long> PendingLocationChecksRemoved { get; set; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<int>? Ascensions { get; set; }
 
+    [JsonIgnore]
     public bool HasChanges =>
         CardRewardsAttempted.HasValue
         || RareCardRewardsAttempted.HasValue
@@ -51,12 +69,8 @@ public sealed class ApProgressDelta
         || PotionRewardsAttempted.HasValue
         || BossRewardsDistributed.HasValue
         || GoldRedeemed.HasValue
-        || ProgressiveStarterCardBaseIdChanged
-        || ProgressiveStarterCardUpgradedIdChanged
-        || ProgressiveStarterCardTier.HasValue
-        || ProgressiveStarterRelicBaseIdChanged
-        || ProgressiveStarterRelicUpgradedIdChanged
-        || ProgressiveStarterRelicTier.HasValue
+        || StarterCard != null
+        || StarterRelic != null
         || RelicChoiceAssignmentUpserts.Count > 0
         || RelicChoiceAssignmentRemovals.Count > 0
         || AncientRelicChoiceAssignmentUpserts.Count > 0
@@ -87,24 +101,20 @@ public sealed class ApProgressDelta
             PotionRewardsAttempted = Changed(before.PotionRewardsAttempted, after.PotionRewardsAttempted),
             BossRewardsDistributed = Changed(before.BossRewardsDistributed, after.BossRewardsDistributed),
             GoldRedeemed = Changed(before.GoldRedeemed, after.GoldRedeemed),
-            ProgressiveStarterCardBaseIdChanged =
-                before.ProgressiveStarterCardBaseId != after.ProgressiveStarterCardBaseId,
-            ProgressiveStarterCardBaseId = after.ProgressiveStarterCardBaseId,
-            ProgressiveStarterCardUpgradedIdChanged =
-                before.ProgressiveStarterCardUpgradedId != after.ProgressiveStarterCardUpgradedId,
-            ProgressiveStarterCardUpgradedId = after.ProgressiveStarterCardUpgradedId,
-            ProgressiveStarterCardTier = Changed(
+            StarterCard = StarterChanged(
+                before.ProgressiveStarterCardBaseId,
+                before.ProgressiveStarterCardUpgradedId,
                 before.ProgressiveStarterCardTier,
+                after.ProgressiveStarterCardBaseId,
+                after.ProgressiveStarterCardUpgradedId,
                 after.ProgressiveStarterCardTier
             ),
-            ProgressiveStarterRelicBaseIdChanged =
-                before.ProgressiveStarterRelicBaseId != after.ProgressiveStarterRelicBaseId,
-            ProgressiveStarterRelicBaseId = after.ProgressiveStarterRelicBaseId,
-            ProgressiveStarterRelicUpgradedIdChanged =
-                before.ProgressiveStarterRelicUpgradedId != after.ProgressiveStarterRelicUpgradedId,
-            ProgressiveStarterRelicUpgradedId = after.ProgressiveStarterRelicUpgradedId,
-            ProgressiveStarterRelicTier = Changed(
+            StarterRelic = StarterChanged(
+                before.ProgressiveStarterRelicBaseId,
+                before.ProgressiveStarterRelicUpgradedId,
                 before.ProgressiveStarterRelicTier,
+                after.ProgressiveStarterRelicBaseId,
+                after.ProgressiveStarterRelicUpgradedId,
                 after.ProgressiveStarterRelicTier
             ),
         };
@@ -148,8 +158,8 @@ public sealed class ApProgressDelta
             .Except(before.PendingLocationChecks).ToHashSet();
         delta.PendingLocationChecksRemoved = before.PendingLocationChecks
             .Except(after.PendingLocationChecks).ToHashSet();
-        if (!before.Ascensions.SequenceEqual(after.Ascensions))
-            delta.Ascensions = after.Ascensions.ToList();
+        if (!before.Ascensions.ToHashSet().SetEquals(after.Ascensions))
+            delta.Ascensions = after.Ascensions.Distinct().OrderBy(level => level).ToList();
         return delta;
     }
 
@@ -165,16 +175,18 @@ public sealed class ApProgressDelta
         Apply(PotionRewardsAttempted, value => result.PotionRewardsAttempted = value);
         Apply(BossRewardsDistributed, value => result.BossRewardsDistributed = value);
         Apply(GoldRedeemed, value => result.GoldRedeemed = value);
-        if (ProgressiveStarterCardBaseIdChanged)
-            result.ProgressiveStarterCardBaseId = ProgressiveStarterCardBaseId;
-        if (ProgressiveStarterCardUpgradedIdChanged)
-            result.ProgressiveStarterCardUpgradedId = ProgressiveStarterCardUpgradedId;
-        Apply(ProgressiveStarterCardTier, value => result.ProgressiveStarterCardTier = value);
-        if (ProgressiveStarterRelicBaseIdChanged)
-            result.ProgressiveStarterRelicBaseId = ProgressiveStarterRelicBaseId;
-        if (ProgressiveStarterRelicUpgradedIdChanged)
-            result.ProgressiveStarterRelicUpgradedId = ProgressiveStarterRelicUpgradedId;
-        Apply(ProgressiveStarterRelicTier, value => result.ProgressiveStarterRelicTier = value);
+        if (StarterCard != null)
+        {
+            result.ProgressiveStarterCardBaseId = StarterCard.BaseId;
+            result.ProgressiveStarterCardUpgradedId = StarterCard.UpgradedId;
+            result.ProgressiveStarterCardTier = StarterCard.Tier;
+        }
+        if (StarterRelic != null)
+        {
+            result.ProgressiveStarterRelicBaseId = StarterRelic.BaseId;
+            result.ProgressiveStarterRelicUpgradedId = StarterRelic.UpgradedId;
+            result.ProgressiveStarterRelicTier = StarterRelic.Tier;
+        }
 
         ApplyDictionary(result.RelicChoiceAssignments, RelicChoiceAssignmentUpserts, RelicChoiceAssignmentRemovals);
         ApplyDictionary(result.AncientRelicChoiceAssignments, AncientRelicChoiceAssignmentUpserts, AncientRelicChoiceAssignmentRemovals);
@@ -187,7 +199,7 @@ public sealed class ApProgressDelta
         result.PendingLocationChecks.ExceptWith(PendingLocationChecksRemoved);
         result.PendingLocationChecks.UnionWith(PendingLocationChecksAdded);
         if (Ascensions != null)
-            result.Ascensions = Ascensions.ToList();
+            result.Ascensions = Ascensions.Distinct().OrderBy(level => level).ToList();
         return result;
     }
 
@@ -228,8 +240,30 @@ public sealed class ApProgressDelta
     };
 
     private static int? Changed(int before, int after) => before == after ? null : after;
-    private static T? Changed<T>(T before, T after) where T : struct =>
-        EqualityComparer<T>.Default.Equals(before, after) ? null : after;
+
+    private static ApProgressiveStarterState? StarterChanged(
+        string? beforeBaseId,
+        string? beforeUpgradedId,
+        ProgressiveStarterTier beforeTier,
+        string? afterBaseId,
+        string? afterUpgradedId,
+        ProgressiveStarterTier afterTier)
+    {
+        if (string.Equals(beforeBaseId, afterBaseId, StringComparison.Ordinal)
+            && string.Equals(beforeUpgradedId, afterUpgradedId, StringComparison.Ordinal)
+            && beforeTier == afterTier)
+        {
+            return null;
+        }
+
+        return new ApProgressiveStarterState
+        {
+            BaseId = afterBaseId,
+            UpgradedId = afterUpgradedId,
+            Tier = afterTier,
+        };
+    }
+
     private static bool CardAssignmentEquals(
         ApCardAssignmentState left,
         ApCardAssignmentState right) =>

@@ -43,6 +43,7 @@ public static class ApReceiptRelay
     private static readonly SortedDictionary<int, ItemInfo> GuestItems = new();
     private static IDisposable? _catalogSubscription;
     private static IDisposable? _requestSubscription;
+    private static IDisposable? _handshakeSubscription;
     private static string _hostRoomSeed = string.Empty;
     private static int _hostTeamId;
     private static int _hostSlotId;
@@ -71,6 +72,18 @@ public static class ApReceiptRelay
             RequestDescriptor,
             OnSnapshotRequested
         );
+        _handshakeSubscription = RitsuLibSidecarEvents.OnHandshakeCompleted(evt =>
+        {
+            INetGameService? netService = RunManager.Instance.NetService;
+            if (netService != null
+                && netService.Type == NetGameType.Host
+                && netService.IsConnected)
+            {
+                // This is only a proactive delivery of the host-owned catalogue. A guest can
+                // request the same snapshot later if this handshake-time send is missed.
+                PublishSnapshot(netService, evt.PeerNetId);
+            }
+        });
     }
 
     public static void ReplaceHostCatalog(

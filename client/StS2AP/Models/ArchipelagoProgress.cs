@@ -231,9 +231,20 @@ namespace StS2AP.Models
 
             // This is the item's zero-based position in the ordered list above, not its AP item index.
             var rewardOrdinal = orderedAncientItemIndices.IndexOf(index);
-            if (rewardOrdinal is < 0 or > 1)
+            if (rewardOrdinal < 0)
             {
                 LogUtility.Error($"Could not map Ancient reward item index {index} to its Act 2/3 progression");
+                return Array.Empty<RelicModel>();
+            }
+            if (rewardOrdinal > 1)
+            {
+                // Only two Anytime rewards exist: the first maps to Act 2 and the second to
+                // Act 3. Preserve any surplus receipt as an unavailable menu row rather than
+                // treating an expected non-claimable item as a catalogue failure.
+                LogUtility.Info(
+                    $"Progressive Ancient item index {index} has no Act 2/3 reward; "
+                        + $"claimableOrdinal={rewardOrdinal}"
+                );
                 return Array.Empty<RelicModel>();
             }
 
@@ -683,7 +694,11 @@ namespace StS2AP.Models
                     kv => SerializeAssignment(kv.Value.ToMutable().ToSerializable(-1))
                 ),
                 PendingLocationChecks = new HashSet<long>(PendingLocationChecks),
-                Ascensions = Ascensions.CurrentAscension.Select(level => (int)level).ToList(),
+                Ascensions = Ascensions.CurrentAscension
+                    .Select(level => (int)level)
+                    .Distinct()
+                    .OrderBy(level => level)
+                    .ToList(),
             };
         }
 
