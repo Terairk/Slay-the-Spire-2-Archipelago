@@ -140,105 +140,10 @@ namespace StS2AP.Utils
         }
 
         /// <summary>
-        /// Grants a random relic to the current player.
-        /// This was previously used for granting a relic on the reward screen, but that was before we added `GrantRelic(RelicModel relicModel)`, 
-        /// which should be used instead since the relic should've been pulled from the RelicFactory.
-        /// </summary>
-        [Obsolete("GrantRelic() without parameters is likely deprecated, but we'll keep it for now as the code is changing often. Use GrantRelic(RelicModel relicModel) instead to grant a specific pre-assigned relic.")]
-        public static async Task GrantRelic()
-        {
-            if (CurrentPlayer == null)
-            {
-                LogUtility.Warn("Cannot grant relic: no active player (not in a run)");
-                return;
-            }
-
-            try
-            {
-                var relic = RelicFactory.PullNextRelicFromFront(CurrentPlayer).ToMutable();
-                await RelicCmd.Obtain(relic, CurrentPlayer);
-                LogUtility.Success($"Granted relic '{relic.Id}' to player");
-            }
-            catch (Exception ex)
-            {
-                LogUtility.Error($"Failed to grant relic: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Grants a specific pre-assigned relic to the current player.
-        /// Used when the relic was already pulled from the RelicFactory during reward screen creation.
-        /// </summary>
-        /// <param name="relicModel">The pre-assigned relic model to grant.</param>
-        public static async Task GrantRelic(RelicModel relicModel)
-        {
-            await TryGrantRelic(relicModel);
-        }
-
-        /// <summary>
-        /// Attempts to grant a specific pre-assigned relic and reports whether it was actually obtained.
-        /// Reward UIs must only consume their AP item when this returns true.
-        /// </summary>
-        /// <param name="relicModel">The pre-assigned relic model to grant.</param>
-        public static async Task<bool> TryGrantRelic(RelicModel relicModel)
-        {
-            if (CurrentPlayer == null)
-            {
-                LogUtility.Warn("Cannot grant relic: no active player (not in a run)");
-                return false;
-            }
-
-            try
-            {
-                // some hacky weird mutable changing stuff to make relics with setup for players work
-                var relic = relicModel.IsMutable
-                    ? RelicModel.FromSerializable(relicModel.ToSerializable())
-                    : relicModel.ToMutable();
-                await RelicCmd.Obtain(relic, CurrentPlayer);
-                LogUtility.Success($"Granted pre-assigned relic '{relic.Id}' to player");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogUtility.Error($"Failed to grant relic: {ex.Message}");
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Grants a random potion to the current player.
-        /// Will fail silently if the player's potion slots are full so it matches the behaviour of the game's own PotionReward.
-        /// </summary>
-        public static async Task<bool> GrantPotion(PotionModel potion)
-        {
-            if (CurrentPlayer == null)
-            {
-                LogUtility.Warn("Cannot grant potion: no active player (not in a run)");
-                return false;
-            }
-
-            try
-            {
-                //var potion = PotionFactory.CreateRandomPotionOutOfCombat(CurrentPlayer, CurrentPlayer.PlayerRng.Rewards).ToMutable();
-                var result = await PotionCmd.TryToProcure(potion.ToMutable(), CurrentPlayer);
-                if (result.success)
-                    LogUtility.Success($"Granted potion '{potion.Id}' to player");
-                else
-                    LogUtility.Warn($"Could not grant potion '{potion.Id}': potion slots may be full");
-                return result.success;
-            }
-            catch (Exception ex)
-            {
-                LogUtility.Error($"Failed to grant potion: {ex.Message}");
-            }
-            return false;
-        }
-
-        /// <summary>
         /// Returns the CardReward assigned to the given item index, creating and populating one if it hasn't been assigned yet.
         /// This ensures that even if the player skips a Card Reward, the same three cards are shown next time.
         /// </summary>
-        private static CardReward? GetOrAssignCardReward(int index, Player player, bool rare)
+        internal static CardReward? GetOrAssignCardReward(int index, Player player, bool rare)
         {
             if (ArchipelagoClient.Progress.CardAssignments.TryGetValue(index, out var existing))
             {
@@ -292,7 +197,7 @@ namespace StS2AP.Utils
         /// card-upgrade odds it should use. AP item indices are stable even when the player
         /// waits until a later act to claim the reward.
         /// </summary>
-        private static int? GetCardRewardActIndex(int index, Player player)
+        internal static int? GetCardRewardActIndex(int index, Player player)
         {
             if (index < 0)
                 return null;
@@ -334,7 +239,7 @@ namespace StS2AP.Utils
         /// Adds a combat-local copy of a selected AP reward card to the draw pile.
         /// Does nothing when the player is not currently in combat.
         /// </summary>
-        private static async Task AddCardRewardToCombatDrawPile(CardModel selectedCard, Player player)
+        internal static async Task AddCardRewardToCombatDrawPile(CardModel selectedCard, Player player)
         {
             if (!CombatManager.Instance.IsInProgress || CombatManager.Instance.IsEnding)
             {
@@ -385,75 +290,6 @@ namespace StS2AP.Utils
                 LogUtility.Warn(
                     $"Failed to add selected AP reward card '{selectedCard.Id}' to the combat draw pile: {ex.Message}"
                 );
-            }
-        }
-
-        /// <summary>
-        /// Opens the game's standard card selection screen so the player can pick a card
-        /// from a pre-assigned (or freshly generated) card reward pool.
-        /// </summary>
-        /// <param name="index">The Archipelago item index, used to look up / cache the CardReward in CardAssignments.</param>
-        /// <param name="rare">If true, uses boss-encounter rarity odds (higher chance of rares).</param>
-        /// <returns>
-        /// True if the reward was consumed by selecting a card or a card-reward alternative;
-        /// false if the reward was skipped.
-        /// </returns>
-        public static async Task<bool> GrantCardReward(int index, bool rare = false)
-        {
-            var player = CurrentPlayer;
-            if (player == null)
-            {
-                LogUtility.Warn("Cannot grant card reward: no active player (not in a run)");
-                return false;
-            }
-
-            try
-            {
-                // Get or create the cached CardReward for this item index
-                var reward = GetOrAssignCardReward(index, player, rare);
-                if (reward == null)
-                {
-                    LogUtility.Error($"Failed to get or assign card reward for index {index}");
-                    return false;
-                }
-
-                // CardReward.OnSelect may replace the selected card while adding it to the deck
-                // (for example through an Egg relic), so identify the actual resulting deck card.
-                var deckCardsBeforeSelection = player.Deck.Cards.ToHashSet();
-
-                // well the decompiled code say we should probably not use this but it seems to work well for our
-                // use case. this replaces the manual card counting we were doing for relics such as pael's wing
-                // but this may impact how easy it is to port to multiplayer
-                bool rewardConsumed = await reward.SelectUnsynchronized();
-                var selectedCards = player.Deck.Cards
-                    .Where(card => !deckCardsBeforeSelection.Contains(card))
-                    .ToList();
-
-                if (rewardConsumed)
-                {
-                    ArchipelagoClient.Progress.CardAssignments.Remove(index);
-
-                    foreach (var selectedCard in selectedCards)
-                    {
-                        await AddCardRewardToCombatDrawPile(selectedCard, player);
-                    }
-
-                    LogUtility.Success(selectedCards.Count > 0
-                        ? "Card reward selection completed — card added to deck"
-                        : "Card reward selection completed — non-card option selected");
-                }
-                else
-                {
-                    LogUtility.Info("Card reward selection completed — reward was skipped");
-                }
-
-                return rewardConsumed;
-
-            }
-            catch (Exception ex)
-            {
-                LogUtility.Error($"Failed to grant card reward: {ex.Message}");
-                return false;
             }
         }
 
