@@ -25,12 +25,15 @@ namespace StS2AP.Utils
         /// Returns whether an Ancient relic is reserved for AP's progressive starter tiers and
         /// therefore must not be offered by either the natural Ancient or an AP-built pool.
         /// </summary>
-        internal static bool ShouldExcludeAncientRelic(RelicModel? relic)
+        internal static bool ShouldExcludeAncientRelic(
+            RelicModel? relic,
+            ArchipelagoSettings? settings = null)
         {
+            settings ??= ArchipelagoClient.Settings;
             return relic switch
             {
-                ArchaicTooth => ArchipelagoClient.Settings?.ProgressiveStarterCard == true,
-                TouchOfOrobas => ArchipelagoClient.Settings?.ProgressiveStarterRelic == true,
+                ArchaicTooth => settings?.ProgressiveStarterCard == true,
+                TouchOfOrobas => settings?.ProgressiveStarterRelic == true,
                 _ => false,
             };
         }

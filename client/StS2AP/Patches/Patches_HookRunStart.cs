@@ -159,6 +159,7 @@ namespace StS2AP.Patches
                     return;
 
                 RestSiteMultiplayer.BindRun(__result);
+                AncientMultiplayer.BindRun(__result);
 
                 ArchipelagoCharTrackerUI.RemoveUI();
                 ArchipelagoGoalTrackerUI.RemoveUI();

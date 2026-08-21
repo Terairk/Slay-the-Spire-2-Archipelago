@@ -51,6 +51,13 @@ namespace StS2AP.Models
         public Dictionary<int, List<string>> RelicChoiceAssignments { get; set; } = new();
         [JsonPropertyName("ancient_relic_choice_assignments")]
         public Dictionary<int, List<string>> AncientRelicChoiceAssignments { get; set; } = new();
+        /// <summary>
+        /// Received Progressive Ancient counts by AP character offset. Natural Ancient events
+        /// are constructed once per player on every multiplayer replica, so this threshold state
+        /// must travel with the same per-Net-ID progress as reward assignments and consumption.
+        /// </summary>
+        [JsonPropertyName("progressive_ancients")]
+        public Dictionary<long, int> ProgressiveAncients { get; set; } = new();
         [JsonPropertyName("card_assignments")]
         public Dictionary<int, ApCardAssignmentState> CardAssignments { get; set; } = new();
         [JsonPropertyName("potion_assignments")]

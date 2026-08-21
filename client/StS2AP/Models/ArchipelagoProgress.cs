@@ -674,6 +674,7 @@ namespace StS2AP.Models
                         )).ToList()
                     )
                 ).ToDictionary(),
+                ProgressiveAncients = new Dictionary<long, int>(ProgressiveAncients),
                 ProgressiveStarterCardBaseId = ProgressiveStarterCardBaseId,
                 ProgressiveStarterCardUpgradedId = ProgressiveStarterCardUpgradedId,
                 ProgressiveStarterCardTier = ProgressiveStarterCardTier,
@@ -760,6 +761,7 @@ namespace StS2AP.Models
                         )).ToList()
                     )
                 ).ToDictionary(),
+                ProgressiveAncients = new Dictionary<long, int>(saveData.ProgressiveAncients),
                 ProgressiveStarterCardBaseId = saveData.ProgressiveStarterCardBaseId,
                 ProgressiveStarterCardUpgradedId = saveData.ProgressiveStarterCardUpgradedId,
                 ProgressiveStarterCardTier = saveData.ProgressiveStarterCardTier,

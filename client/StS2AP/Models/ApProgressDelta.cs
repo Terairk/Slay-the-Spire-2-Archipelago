@@ -49,6 +49,8 @@ public sealed class ApProgressDelta
     public List<int> RelicChoiceAssignmentRemovals { get; set; } = new();
     public Dictionary<int, List<string>> AncientRelicChoiceAssignmentUpserts { get; set; } = new();
     public List<int> AncientRelicChoiceAssignmentRemovals { get; set; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<long, int>? ProgressiveAncients { get; set; }
     public Dictionary<int, ApCardAssignmentState> CardAssignmentUpserts { get; set; } = new();
     public List<int> CardAssignmentRemovals { get; set; } = new();
     public Dictionary<int, string> PotionAssignmentUpserts { get; set; } = new();
@@ -78,6 +80,7 @@ public sealed class ApProgressDelta
         || RelicChoiceAssignmentRemovals.Count > 0
         || AncientRelicChoiceAssignmentUpserts.Count > 0
         || AncientRelicChoiceAssignmentRemovals.Count > 0
+        || ProgressiveAncients != null
         || CardAssignmentUpserts.Count > 0
         || CardAssignmentRemovals.Count > 0
         || PotionAssignmentUpserts.Count > 0
@@ -110,6 +113,12 @@ public sealed class ApProgressDelta
             PotionRewardsAttempted = Changed(before.PotionRewardsAttempted, after.PotionRewardsAttempted),
             BossRewardsDistributed = Changed(before.BossRewardsDistributed, after.BossRewardsDistributed),
             GoldRedeemed = Changed(before.GoldRedeemed, after.GoldRedeemed),
+            ProgressiveAncients = CountMapsEqual(
+                before.ProgressiveAncients,
+                after.ProgressiveAncients
+            )
+                ? null
+                : new Dictionary<long, int>(after.ProgressiveAncients),
             StarterCard = StarterChanged(
                 before.ProgressiveStarterCardBaseId,
                 before.ProgressiveStarterCardUpgradedId,
@@ -201,6 +210,8 @@ public sealed class ApProgressDelta
 
         ApplyDictionary(result.RelicChoiceAssignments, RelicChoiceAssignmentUpserts, RelicChoiceAssignmentRemovals);
         ApplyDictionary(result.AncientRelicChoiceAssignments, AncientRelicChoiceAssignmentUpserts, AncientRelicChoiceAssignmentRemovals);
+        if (ProgressiveAncients != null)
+            result.ProgressiveAncients = new Dictionary<long, int>(ProgressiveAncients);
         ApplyDictionary(result.CardAssignments, CardAssignmentUpserts, CardAssignmentRemovals);
         ApplyDictionary(result.PotionAssignments, PotionAssignmentUpserts, PotionAssignmentRemovals);
         result.UsedItems.RemoveAll(UsedItemsRemoved.Contains);
@@ -234,6 +245,7 @@ public sealed class ApProgressDelta
             pair => pair.Key,
             pair => pair.Value.ToList()
         ),
+        ProgressiveAncients = new Dictionary<long, int>(source.ProgressiveAncients),
         CardAssignments = source.CardAssignments.ToDictionary(
             pair => pair.Key,
             pair => CloneCardAssignment(pair.Value)
@@ -260,6 +272,12 @@ public sealed class ApProgressDelta
         && left.All(pair =>
             right.TryGetValue(pair.Key, out List<int>? values)
             && pair.Value.SequenceEqual(values));
+
+    private static bool CountMapsEqual(
+        IReadOnlyDictionary<long, int> left,
+        IReadOnlyDictionary<long, int> right) =>
+        left.Count == right.Count
+        && left.All(pair => right.TryGetValue(pair.Key, out int value) && value == pair.Value);
 
     private static Dictionary<long, List<int>> CloneRelicReceiptMap(
         IReadOnlyDictionary<long, List<int>> source) =>

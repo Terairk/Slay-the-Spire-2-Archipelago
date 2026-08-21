@@ -27,9 +27,9 @@ public enum MultiplayerFeature
 
     // Host-confirmed AP inputs plus native dense-list manifest validation.
     RestSites,
-    // AP_MP: Keep these disabled until their owner-only checks and replicated results agree.
-    // AP_MP: This broader switch still owns natural Ancient events/start-of-act patches.
+    // Host-confirmed per-owner thresholds plus MegaCrit's native event option synchronizer.
     Ancients,
+    // AP_MP: Keep this disabled until its owner-only checks and replicated results agree.
     VictoryChecks,
 
     // AP_MP: Keep these disabled until their managed/native synchronization is implemented.

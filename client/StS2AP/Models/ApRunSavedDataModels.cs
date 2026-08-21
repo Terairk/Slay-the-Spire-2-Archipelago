@@ -7,7 +7,7 @@ namespace StS2AP.Models;
 public sealed class ApRunSharedState
 {
     /// <summary>Serialized payload schema only; this is not a multiplayer protocol version.</summary>
-    public int SchemaVersion { get; set; } = 4;
+    public int SchemaVersion { get; set; } = 5;
 
     /// <summary>Separates two AP/STSes runs even when their seeds and slot identities match.</summary>
     public Guid RunId { get; set; }
@@ -27,7 +27,7 @@ public sealed class ApRunSharedState
 public sealed class ApPlayerRunState
 {
     /// <summary>Serialized payload schema only; this is not a multiplayer protocol version.</summary>
-    public int SchemaVersion { get; set; } = 4;
+    public int SchemaVersion { get; set; } = 5;
 
     // An unstaged/missing contribution must be harmless; AP Guest is always an explicit choice.
     public ApParticipationKind Participation { get; set; } = ApParticipationKind.VanillaGuest;
@@ -51,6 +51,13 @@ public sealed class ApPlayerRunState
     public Dictionary<long, List<int>> InitialRelicReceiptIndexesByCharacter { get; set; } = new();
 
     /// <summary>
+    /// Lobby-staged Progressive Ancient counts. Unlike active-run progress messages, the native
+    /// launch snapshot reaches every replica before Neow can construct its per-player options.
+    /// Later host-confirmed progress revisions supersede this initial view.
+    /// </summary>
+    public Dictionary<long, int> InitialProgressiveAncientsByCharacter { get; set; } = new();
+
+    /// <summary>
     /// Lobby readiness evidence contributed by this player. This means either the independent
     /// slot's SDK history or the fixed host's AP Guest receipt catalog has been reconstructed.
     /// Durable consumption and assignments live in <see cref="Progress"/> instead.
@@ -59,7 +66,8 @@ public sealed class ApPlayerRunState
 
     /// <summary>
     /// Canonical run-scoped AP progress for this Net ID. Only the fixed host persists it;
-    /// clients receive an in-memory copy in the native run/rejoin snapshot.
+    /// clients receive an in-memory copy in the native run/rejoin snapshot and host-confirmed
+    /// live revisions for deterministic replicated construction.
     /// </summary>
     public ApRunProgressState Progress { get; set; } = new();
 

@@ -1,6 +1,7 @@
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Relics;
+using StS2AP.Extensions;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -27,8 +28,9 @@ namespace StS2AP.Utils
         private static bool IsBlacklisted(RelicModel relic) =>
             BlacklistedRelicTypes.Any(type => type.IsInstanceOfType(relic));
 
-        private static bool IsExcluded(RelicModel relic) =>
-            IsBlacklisted(relic) || ProgressiveStarterUtility.ShouldExcludeAncientRelic(relic);
+        private static bool IsExcluded(RelicModel relic, ArchipelagoSettings? settings) =>
+            IsBlacklisted(relic)
+            || ProgressiveStarterUtility.ShouldExcludeAncientRelic(relic, settings);
 
         /// <summary>
         /// Selects a stable set of three relics for a reward key without consuming the game's RNG.
@@ -38,13 +40,21 @@ namespace StS2AP.Utils
             string choiceKey,
             IReadOnlyCollection<ModelId>? reservedRelicIds = null,
             int? ancientActIndex = null,
-            AncientEventModel? specificAncient = null)
+            AncientEventModel? specificAncient = null,
+            ArchipelagoSettings? settings = null,
+            long? characterOffset = null)
         {
+            characterOffset ??= player.Character.GetCharacterOffset();
             var ownedOrReservedRelicIds = player.Relics.Select(relic => relic.Id).ToHashSet();
             if (reservedRelicIds != null)
                 ownedOrReservedRelicIds.UnionWith(reservedRelicIds);
             var eligibleAncients = GetEligibleAncients(ancientActIndex, specificAncient);
-            var candidatesById = CollectCandidateRelics(eligibleAncients, ownedOrReservedRelicIds, logFailures: true);
+            var candidatesById = CollectCandidateRelics(
+                eligibleAncients,
+                ownedOrReservedRelicIds,
+                logFailures: true,
+                settings: settings
+            );
 
             if (candidatesById.Count < ChoiceCount)
             {
@@ -55,9 +65,19 @@ namespace StS2AP.Utils
             var runSeed = ResolveRunSeed(player);
             var choices = new List<RelicModel>(ChoiceCount);
             foreach (var candidate in candidatesById.Values
-                                                    .OrderBy(relic => StableChoiceKey(runSeed, choiceKey, relic.Id)))
+                                                    .OrderBy(relic => StableChoiceKey(
+                                                        runSeed,
+                                                        characterOffset,
+                                                        choiceKey,
+                                                        relic.Id
+                                                    )))
             {
-                var preparedRelic = PrepareForPlayer(candidate, player, choiceKey);
+                var preparedRelic = PrepareForPlayer(
+                    candidate,
+                    player,
+                    choiceKey,
+                    characterOffset
+                );
                 if (preparedRelic != null)
                     choices.Add(preparedRelic);
 
@@ -88,7 +108,11 @@ namespace StS2AP.Utils
         /// these setup calls while generating the natural Ancient's options; AP choices are built
         /// from AllPossibleOptions instead, so they must mirror that setup explicitly.
         /// </summary>
-        private static RelicModel? PrepareForPlayer(RelicModel relicModel, Player player, string choiceKey)
+        private static RelicModel? PrepareForPlayer(
+            RelicModel relicModel,
+            Player player,
+            string choiceKey,
+            long? characterOffset)
         {
             try
             {
@@ -103,6 +127,7 @@ namespace StS2AP.Utils
                             .Where(character => character.Id != player.Character.Id)
                             .OrderBy(character => StableChoiceKey(
                                 ResolveRunSeed(player),
+                                characterOffset,
                                 $"{choiceKey}|sea-glass",
                                 character.Id
                             ))
@@ -135,15 +160,23 @@ namespace StS2AP.Utils
             Player player,
             int ancientActIndex,
             string choiceKey,
-            IReadOnlyCollection<ModelId>? reservedRelicIds = null)
+            IReadOnlyCollection<ModelId>? reservedRelicIds = null,
+            ArchipelagoSettings? settings = null,
+            long? characterOffset = null)
         {
+            characterOffset ??= player.Character.GetCharacterOffset();
             var ownedOrReservedRelicIds = player.Relics.Select(relic => relic.Id).ToHashSet();
             if (reservedRelicIds != null)
                 ownedOrReservedRelicIds.UnionWith(reservedRelicIds);
 
             var rolledAncient = TryGetRolledAncient(player, ancientActIndex);
             if (rolledAncient != null &&
-                CollectCandidateRelics(new[] { rolledAncient }, ownedOrReservedRelicIds, logFailures: false).Count >= ChoiceCount)
+                CollectCandidateRelics(
+                    new[] { rolledAncient },
+                    ownedOrReservedRelicIds,
+                    logFailures: false,
+                    settings: settings
+                ).Count >= ChoiceCount)
             {
                 LogUtility.Info($"Using rolled Act {ancientActIndex + 1} Ancient '{rolledAncient.Id}' for '{choiceKey}'");
                 return rolledAncient;
@@ -159,8 +192,18 @@ namespace StS2AP.Utils
 
             var runSeed = ResolveRunSeed(player);
             var fallback = GetFallbackAncients(player, ancientActIndex)
-                .Where(ancient => CollectCandidateRelics(new[] { ancient }, ownedOrReservedRelicIds, logFailures: false).Count >= ChoiceCount)
-                .OrderBy(ancient => StableChoiceKey(runSeed, $"{choiceKey}|ancient", ancient.Id))
+                .Where(ancient => CollectCandidateRelics(
+                    new[] { ancient },
+                    ownedOrReservedRelicIds,
+                    logFailures: false,
+                    settings: settings
+                ).Count >= ChoiceCount)
+                .OrderBy(ancient => StableChoiceKey(
+                    runSeed,
+                    characterOffset,
+                    $"{choiceKey}|ancient",
+                    ancient.Id
+                ))
                 .FirstOrDefault();
 
             if (fallback == null)
@@ -235,7 +278,8 @@ namespace StS2AP.Utils
         private static Dictionary<ModelId, RelicModel> CollectCandidateRelics(
             IEnumerable<AncientEventModel> ancients,
             IReadOnlySet<ModelId> ownedOrReservedRelicIds,
-            bool logFailures)
+            bool logFailures,
+            ArchipelagoSettings? settings)
         {
             var candidatesById = new Dictionary<ModelId, RelicModel>();
             foreach (var ancient in ancients)
@@ -251,7 +295,7 @@ namespace StS2AP.Utils
                         // TODO: do model selection in a better way than this
                         if (relic.Id == ModelId.none ||
                             ownedOrReservedRelicIds.Contains(relic.Id) ||
-                            IsExcluded(relic))
+                            IsExcluded(relic, settings))
                         {
                             continue;
                         }
@@ -287,9 +331,13 @@ namespace StS2AP.Utils
         }
 
         /// <summary>Hashes run, character, reward, and model identity into a stable sort key.</summary>
-        private static string StableChoiceKey(string runSeed, string choiceKey, ModelId modelId)
+        private static string StableChoiceKey(
+            string runSeed,
+            long? characterOffset,
+            string choiceKey,
+            ModelId modelId)
         {
-            var material = $"{ChoiceSeedDomain}|{runSeed}|{GameUtility.CurrentCharacterID}|{choiceKey}|{modelId}";
+            var material = $"{ChoiceSeedDomain}|{runSeed}|{characterOffset}|{choiceKey}|{modelId}";
             return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
         }
     }

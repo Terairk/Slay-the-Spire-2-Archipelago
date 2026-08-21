@@ -6,7 +6,9 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Models.Relics;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
@@ -17,6 +19,22 @@ using System.Linq;
 
 namespace StS2AP.Patches
 {
+    [HarmonyPatch(typeof(EventSynchronizer), nameof(EventSynchronizer.BeginEvent))]
+    public static class Patches_AncientEventSynchronization
+    {
+        [HarmonyPrefix]
+        public static void FreezeConfirmedProgress(EventModel __0)
+        {
+            if (RunManager.Instance.DebugOnlyGetState() is RunState runState)
+            {
+                AncientMultiplayer.BeginEncounter(
+                    runState,
+                    __0 is AncientEventModel
+                );
+            }
+        }
+    }
+
     /// <summary>
     /// Removes the vanilla Orobas upgrade relics that would bypass progressive starter tiers.
     /// Orobas normally takes one option from each of three pools. If its pool-three upgrade relics
@@ -171,27 +189,68 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         public static void ReplaceAncientOptions(AncientEventModel __instance, ref IReadOnlyList<EventOption> __result)
         {
-            // AP_MP: Ancient options need a replicated native-event spec before construction.
-            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
                 return;
 
-            var player = GameUtility.CurrentPlayer;
+            var player = __instance.Owner;
             if (player == null)
                 return;
-            if(ArchipelagoClient.Settings.APWorldVersion <= Constants.VERSION_0_5_3)
+
+            ArchipelagoSettings settings;
+            int receivedCount;
+            long characterOffset;
+            if (MultiplayerSupport.IsRealMultiplayerRun)
+            {
+                if (AncientMultiplayer.IsVanillaGuest(player))
+                    return;
+                if (!AncientMultiplayer.TryGetFrozenContext(
+                        player,
+                        out settings,
+                        out receivedCount,
+                        out characterOffset,
+                        out string reason
+                    ))
+                {
+                    LogUtility.Error(
+                        $"Could not construct AP Ancient options for player {player.NetId}: "
+                            + reason
+                    );
+                    __result = new List<EventOption> { CreateFakeOption(__instance) };
+                    return;
+                }
+            }
+            else
+            {
+                settings = ArchipelagoClient.Settings;
+                characterOffset = player.Character.GetCharacterOffset() ?? -1;
+                ArchipelagoClient.Progress.ProgressiveAncients.TryGetValue(
+                    characterOffset,
+                    out receivedCount
+                );
+            }
+
+            if (settings.APWorldVersion <= Constants.VERSION_0_5_3)
             {
                 // Version is before Ancient Relics could be replaced, so we get out.
                 return;
             }
 
             var currentAct = player.RunState.CurrentActIndex + 1;
-            var maxAct = ArchipelagoClient.Progress.MaxProgressiveAncientLevel(
-                player.Character.GetCharacterOffset() ?? -1
-            );
+            var maxAct = receivedCount + (settings.NeowSanity ? 0 : 1);
+            if (MultiplayerSupport.IsRealMultiplayerRun)
+            {
+                LogUtility.Info(
+                    $"Constructing Ancient options for player {player.NetId}: "
+                        + $"received={receivedCount}, maxAct={maxAct}, currentAct={currentAct}, "
+                        + $"location={settings.AncientRelicLocation}, "
+                        + $"pool={settings.AncientRelicPool}"
+                );
+            }
             
-            // use Anytime and balanced as our defaults
-            var location = ArchipelagoClient.Settings?.AncientRelicLocation ?? AncientRelicLocation.Anytime;
-            var poolMode = ArchipelagoClient.Settings?.AncientRelicPool ?? AncientRelicPoolMode.Balanced;
+            var location = settings.AncientRelicLocation;
+            var poolMode = settings.AncientRelicPool;
             var useProceedOnly = maxAct < currentAct ||
                                  (location == AncientRelicLocation.Anytime && currentAct is 2 or 3);
             if (useProceedOnly)
@@ -212,14 +271,18 @@ namespace StS2AP.Patches
             // Act 2 and Act 3 pool for both Progressive Ancient rewards.
             int? poolActIndex = (poolMode == AncientRelicPoolMode.TrueChaos) ? null : currentAct - 1;
 
-            // This key is part of the stable SHA-256 ordering, not user-facing text. It gives
-            // each start-of-act reward a repeatable choice set without consuming game RNG.
-            // TODO: don't we need to do a proper choice key for multiplayer or not
-            var choiceKey = $"start-act-{currentAct}";
+            // MegaCrit executes a chosen option index against this owner's event clone on every
+            // replica. Include the run-stable Net ID so same-character players keep independent,
+            // deterministic lists while every replica still constructs the same owner list.
+            var choiceKey = MultiplayerSupport.IsRealMultiplayerRun
+                ? $"start-act-{currentAct}|owner-{player.NetId}"
+                : $"start-act-{currentAct}";
             var choices = AncientRelicPool.CreateChoices(
                 player,
                 choiceKey,
-                ancientActIndex: poolActIndex
+                ancientActIndex: poolActIndex,
+                settings: settings,
+                characterOffset: characterOffset
             );
             if (choices.Count != AncientRelicPool.ChoiceCount)
             {
@@ -246,22 +309,51 @@ namespace StS2AP.Patches
         }
 
         [HarmonyPrefix]
-        public static void SendAncientCheck()
+        public static void SendAncientCheck(AncientEventModel __instance)
         {
-            // AP_MP: Ancient checks remain owner-only and disabled until option sync exists.
-            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
                 return;
 
-            var player = GameUtility.CurrentPlayer;
-            if(player != null)
+            var player = __instance.Owner;
+            if (player == null || AncientMultiplayer.IsVanillaGuest(player))
+                return;
+            if (!AncientMultiplayer.TryGetSettings(player, out ArchipelagoSettings settings))
             {
-                var currentAct = player.RunState.CurrentActIndex + 1;
-                if(currentAct == 1 && !ArchipelagoClient.Settings.NeowSanity)
-                {
-                    return;
-                }
-                GameUtility.SendCheck($"{player.Character.APName()} Ancient Act {currentAct}");
+                LogUtility.Warn(
+                    $"Could not resolve AP Ancient settings for player {player.NetId}; "
+                        + "the encounter check was not sent"
+                );
+                return;
             }
+
+            var currentAct = player.RunState.CurrentActIndex + 1;
+            if(currentAct == 1 && !settings.NeowSanity)
+                return;
+
+            if (!MultiplayerSupport.IsRealMultiplayerRun)
+            {
+                GameUtility.SendCheck(
+                    $"{player.Character.APName()} Ancient Act {currentAct}"
+                );
+                return;
+            }
+
+            if (!AncientMultiplayer.TryGetLocationName(
+                    player,
+                    settings,
+                    currentAct,
+                    out string locationName
+                ))
+            {
+                LogUtility.Warn(
+                    $"Could not map Ancient check owner {player.Character.Id.Entry} "
+                        + $"for player {player.NetId}"
+                );
+                return;
+            }
+            MultiplayerLocationChecks.QueueCheck(player, locationName);
         }
 
         private static EventOption CreateFakeOption(AncientEventModel ancient)

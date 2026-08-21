@@ -39,6 +39,7 @@ public static class MultiplayerSupport
         MultiplayerFeature.FloorChecks,
         MultiplayerFeature.Shops,
         MultiplayerFeature.RestSites,
+        MultiplayerFeature.Ancients,
         MultiplayerFeature.SaveAndReconnect,
     };
 
@@ -908,6 +909,7 @@ public static class MultiplayerSupport
         ApGrantDispatcher.EndRun();
         ApMirroredRewardDispatcher.EndRun();
         RestSiteMultiplayer.EndRun();
+        AncientMultiplayer.EndRun();
     }
 
     public static bool CanClaimGold(out string reason)

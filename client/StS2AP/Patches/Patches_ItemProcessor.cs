@@ -2,6 +2,7 @@
 using Archipelago.MultiClient.Net.Models;
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Data;
@@ -176,6 +177,16 @@ namespace StS2AP.Patches
                         Progress.ProgressiveAncients.TryGetValue(characterOffset, out var unlockCount);
                         if (!Settings.NeowSanity || unlockCount > 1)
                             Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
+                    }
+
+                    if (liveDelivery
+                        && MultiplayerSupport.IsRealMultiplayerRun
+                        && GameUtility.CurrentPlayer is Player currentPlayer
+                        && !ApRunData.PublishLocalProgress(currentPlayer))
+                    {
+                        MultiplayerSupport.InvalidateRunClaims(
+                            "Progressive Ancient progress could not be published to the host"
+                        );
                     }
 
                     break;

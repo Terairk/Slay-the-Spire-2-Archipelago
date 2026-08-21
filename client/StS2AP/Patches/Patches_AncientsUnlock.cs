@@ -28,8 +28,11 @@ namespace StS2AP.Patches
         [HarmonyPrefix]
         static bool AlwaysStartWithNeow(RunManager __instance)
         {
-            // AP_MP: Ancient run routing is disabled until the event spec is synchronized.
-            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Ancients))
+            // Run routing is shared, so every replica applies the same AP decision even when
+            // this process's local player is a Vanilla Guest.
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
                 return true;
 
             var stateProperty = typeof(RunManager).GetProperty("State",
@@ -50,6 +53,10 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Overgrowth __instance)
         {
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
+                return;
             __result = __instance.AllAncients;
         }
     }
@@ -60,6 +67,10 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Hive __instance)
         {
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
+                return;
             __result = __instance.AllAncients;
         }
     }
@@ -70,6 +81,10 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Glory __instance)
         {
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
+                return;
             __result = __instance.AllAncients;
         }
     }
@@ -80,6 +95,10 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Underdocks __instance)
         {
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
+                return;
             __result = __instance.AllAncients;
         }
     }
