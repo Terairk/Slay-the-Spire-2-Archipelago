@@ -197,6 +197,8 @@ namespace StS2AP.Patches
                         return;
                     }
 
+                    RelicCoupons.RefreshCounter(player);
+
                     // A receipt arriving after its Elite/chest reward belongs in the AP menu.
                     // Reconcile all pairs so checkpoint loads do not depend on callback order.
                     RelicRewardUtility.ReconcileBankedRewards(player);
