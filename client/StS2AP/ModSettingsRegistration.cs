@@ -1,4 +1,5 @@
-﻿using MegaCrit.Sts2.Core.Models;
+﻿using Godot;
+using MegaCrit.Sts2.Core.Models;
 using StS2AP.Models;
 using StS2AP.UI;
 using StS2AP.Utils;
@@ -42,6 +43,16 @@ public static class ModSettingsRegistration
     private static IRuntimeHotkeyHandle? ApLootHotkeyHandle;
 
     /// <summary>
+    /// Keeps the R3 input bridge attached once the game root is ready.
+    /// </summary>
+    private static IDisposable? ApLootControllerShortcutSubscription;
+
+    /// <summary>
+    /// Prevents a Steam Input action and its underlying R3 event from toggling the menu twice.
+    /// </summary>
+    private static ulong LastApLootToggleFrame = ulong.MaxValue;
+
+    /// <summary>
     /// Registers runtime hotkeys after the game is ready.
     /// Currently we don't have more than one hotkey, but if we ever end up with a lot more
     /// we probably want to refactor this into a separate hotkey registration system.
@@ -63,24 +74,57 @@ public static class ModSettingsRegistration
         // And register it
         ApLootHotkeyHandle?.Dispose();
         ApLootHotkeyHandle = RuntimeHotkeyService.Register(
-            normalizedBinding,
-            () =>
-            {
-                // Ignore if we're not in a run
-                if (!GameUtility.IsInRun)
-                    return;
-
-                ArchipelagoRewardUI.Toggle();
-            },
+            GetApLootBindings(normalizedBinding),
+            ToggleApLootMenu,
             new RuntimeHotkeyOptions
             {
                 Id = $"{ModEntry.ModId}.{KeyBinds_APMenuId}",
                 DisplayName = RuntimeHotkeyText.Literal("Open AP Loot Menu"),
-                Description = RuntimeHotkeyText.Literal("Opens the Archipelago Loot menu."),
+                Description = RuntimeHotkeyText.Literal(
+                    "Opens the Archipelago Loot menu with the configured keyboard shortcut or R3."
+                ),
                 Category = RuntimeHotkeyText.Literal("Archipelago"),
+                ExposeToSteamInput = true,
                 MarkInputHandled = true,
             }
         );
+
+        ApLootControllerShortcutSubscription ??=
+            RitsuLibFramework.SubscribeLifecycle<GameReadyEvent>(evt =>
+            {
+                if (evt.Game.HasNode(ArchipelagoControllerShortcut.NodeName))
+                    return;
+
+                evt.Game.AddChild(
+                    new ArchipelagoControllerShortcut
+                    {
+                        Name = ArchipelagoControllerShortcut.NodeName,
+                    }
+                );
+            });
+    }
+
+    private static string[] GetApLootBindings(string keyboardBinding)
+    {
+        return
+        [
+            keyboardBinding,
+            RuntimeHotkeyService.ActionBinding(ArchipelagoControllerShortcut.ActionName),
+        ];
+    }
+
+    private static void ToggleApLootMenu()
+    {
+        // Ignore if we're not in a run.
+        if (!GameUtility.IsInRun)
+            return;
+
+        var currentFrame = Engine.GetProcessFrames();
+        if (LastApLootToggleFrame == currentFrame)
+            return;
+
+        LastApLootToggleFrame = currentFrame;
+        ArchipelagoRewardUI.Toggle();
     }
 
     #endregion
@@ -147,9 +191,11 @@ public static class ModSettingsRegistration
     private static void ConfigureKeybindsSection(ModSettingsSectionBuilder section)
     {
         section
-            .WithTitle(ModSettingsText.Literal("Keyboard Controls"))
+            .WithTitle(ModSettingsText.Literal("Controls"))
             .WithDescription(
-                ModSettingsText.Literal("Configure keybinds for Archipelago functionality.")
+                ModSettingsText.Literal(
+                    "Configure Archipelago controls. The AP Loot Menu also opens with R3."
+                )
             )
             .AddKeyBinding(
                 KeyBinds_APMenuId,
@@ -165,12 +211,13 @@ public static class ModSettingsRegistration
                         // Attempt to rebind it (it should have been initially bound during startup)
                         if (ApLootHotkeyHandle is not null)
                         {
-                            ApLootHotkeyHandle.TryRebind(normalizedBinding, out var error);
-
-                            if (error is not null)
+                            if (!ApLootHotkeyHandle.TryRebind(
+                                    GetApLootBindings(normalizedBinding),
+                                    out _
+                                ))
                             {
                                 RitsuLibFramework.Logger.Warn(
-                                    $"Unable to rebind AP menu hotkey: {error}"
+                                    $"Unable to rebind AP menu keyboard hotkey to '{normalizedBinding}'."
                                 );
                             }
                         }
