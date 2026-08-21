@@ -7,7 +7,7 @@ namespace StS2AP.Models;
 public sealed class ApRunSharedState
 {
     /// <summary>Serialized payload schema only; this is not a multiplayer protocol version.</summary>
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
 
     /// <summary>Separates two AP/STSes runs even when their seeds and slot identities match.</summary>
     public Guid RunId { get; set; }
@@ -27,7 +27,7 @@ public sealed class ApRunSharedState
 public sealed class ApPlayerRunState
 {
     /// <summary>Serialized payload schema only; this is not a multiplayer protocol version.</summary>
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
 
     // An unstaged/missing contribution must be harmless; AP Guest is always an explicit choice.
     public ApParticipationKind Participation { get; set; } = ApParticipationKind.VanillaGuest;
@@ -37,6 +37,18 @@ public sealed class ApPlayerRunState
     public string? ApRoomSeed { get; set; }
     public int? ApTeamId { get; set; }
     public int? ApSlotId { get; set; }
+
+    /// <summary>
+    /// The own-slot player's resolved gameplay settings, frozen at run start. Every replica
+    /// uses this copy when constructing that player's native reward list.
+    /// </summary>
+    public ArchipelagoSettings? SlotSettings { get; set; }
+
+    /// <summary>
+    /// Lobby-staged receipt evidence, available before the first live progress publication.
+    /// Later receipt deliveries are carried by <see cref="Progress"/>.
+    /// </summary>
+    public Dictionary<long, List<int>> InitialRelicReceiptIndexesByCharacter { get; set; } = new();
 
     /// <summary>
     /// Lobby readiness evidence contributed by this player. This means either the independent

@@ -35,6 +35,12 @@ namespace StS2AP.Models
         /// <summary>The anytime value captured when this run started.</summary>
         [JsonPropertyName("relic_rewards_available_anytime_for_run")]
         public int RelicRewardsAvailableAnytimeForRun { get; set; }
+        /// <summary>
+        /// Compact receipt evidence used by every multiplayer replica to make the same decision
+        /// about retaining or banking a natural relic reward.
+        /// </summary>
+        [JsonPropertyName("relic_receipt_indexes_by_character")]
+        public Dictionary<long, List<int>> RelicReceiptIndexesByCharacter { get; set; } = new();
         [JsonPropertyName("gold_rewards_attempted")]
         public int GoldRewardsAttempted { get; set; }
         [JsonPropertyName("potion_rewards_attempted")]

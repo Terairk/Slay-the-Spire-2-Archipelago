@@ -3,11 +3,9 @@ using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
 using StS2AP.Models;
-using StS2AP.UI;
 using StS2AP.Utils;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 
 namespace StS2AP.Patches
@@ -63,15 +61,11 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(IRunState? runState, bool isRestoringRoomStackBase)
             {
-                // AP_MP: Floor checks need explicit local-owner attribution before enabling.
-                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.FloorChecks))
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.FloorChecks))
                     return;
 
-                // Attempt to send a check for the current room we're on
-                if(ArchipelagoClient.Settings.Floorsanity)
-                {
-                    TrySendFloorCheck(runState);
-                }
+                TrySendFloorChecks(runState);
             }
         }
 
@@ -79,12 +73,11 @@ namespace StS2AP.Patches
         /// The logic to determine if we need to send a location check
         /// </summary>
         /// <param name="runState">The current state of the run</param>
-        static void TrySendFloorCheck(IRunState? runState)
+        static void TrySendFloorChecks(IRunState? runState)
         {
-            // Null checks to shut compiler up
-            if (GameUtility.CurrentPlayer == null || runState == null)
+            if (runState == null)
             {
-                LogUtility.Error("CurrentPlayer or runState is null, skipping Archipelago check");
+                LogUtility.Error("Run state is null, skipping Archipelago floor checks");
                 return;
             }
 
@@ -97,33 +90,27 @@ namespace StS2AP.Patches
                 return;
             }
 
-            // Create the Location/Check name to send
             var floorValue = floorProperty.GetValue(runState);
-            var name = GameUtility.CurrentPlayer.APName();
-            var locationName = $"{name} Reached Floor {floorValue}";
-
-            LogUtility.Debug($"Attempting to send Archipelago location check: {locationName}");
-
-            // Get the location ID from the name
-            if (ArchipelagoClient.Session?.Locations.GetLocationIdFromName("Slay the Spire II", locationName) is long locationId && locationId != -1)
+            IEnumerable<MegaCrit.Sts2.Core.Entities.Players.Player> players =
+                runState is RunState concreteRun
+                    ? concreteRun.Players
+                    : GameUtility.CurrentPlayer is { } currentPlayer
+                        ? new[] { currentPlayer }
+                        : Array.Empty<MegaCrit.Sts2.Core.Entities.Players.Player>();
+            foreach (var player in players)
             {
-                // Make sure this is the first time we've hit this location, otherwise we might be sending duplicates
-                if (!ArchipelagoClient.CheckedLocations.Contains(locationId))
+                if (!MultiplayerLocationChecks.TryGetSettings(
+                        player,
+                        out ArchipelagoSettings settings)
+                    || !settings.Floorsanity
+                    || !MultiplayerLocationChecks.IsCheckWriter(player))
                 {
-                    // Check the location off and let the server know
-                    GameUtility.SendCheck(locationId);
+                    continue;
+                }
 
-                    // Log it and notify the user (uses pre-scouted data)
-                    LogUtility.Success($"Sent location check: {locationName}");
-                }
-                else
-                {
-                    LogUtility.Warn($"Location '{locationName}' already checked, skipping Archipelago check");
-                }
-            }
-            else
-            {
-                LogUtility.Warn($"Location '{locationName}' not found in Archipelago");
+                string locationName = $"{player.APName()} Reached Floor {floorValue}";
+                LogUtility.Debug($"Attempting to record floor check: {locationName}");
+                MultiplayerLocationChecks.QueueCheck(player, locationName);
             }
         }
     }

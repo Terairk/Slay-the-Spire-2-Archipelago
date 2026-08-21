@@ -46,6 +46,7 @@ namespace StS2AP
                     defaultFactory: () => new ClientSettings(),
                     autoCreateIfMissing: true
                 );
+                ArchipelagoReward.Initialize();
                 ApRunData.Initialize();
                 ApReceiptRelay.Initialize();
             }

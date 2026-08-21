@@ -18,9 +18,11 @@ public enum MultiplayerFeature
     PotionRewards,
     AncientRewardChoices,
 
-    // AP_MP: Keep these disabled until their owner-only checks and replicated results agree.
+    // Native reward construction/check ownership is deterministic across replicas.
     CombatRewardLocations,
     FloorChecks,
+
+    // AP_MP: Keep these disabled until their owner-only checks and replicated results agree.
     Shops,
     RestSites,
     // AP_MP: This broader switch still owns natural Ancient events/start-of-act patches.

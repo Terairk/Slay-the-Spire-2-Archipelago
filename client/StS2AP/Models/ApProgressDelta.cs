@@ -30,6 +30,8 @@ public sealed class ApProgressDelta
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? RelicRewardsAvailableAnytimeForRun { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<long, List<int>>? RelicReceiptIndexesByCharacter { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? GoldRewardsAttempted { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? PotionRewardsAttempted { get; set; }
@@ -65,6 +67,7 @@ public sealed class ApProgressDelta
         || RelicRewardsAttempted.HasValue
         || BankedRelicRewards.HasValue
         || RelicRewardsAvailableAnytimeForRun.HasValue
+        || RelicReceiptIndexesByCharacter != null
         || GoldRewardsAttempted.HasValue
         || PotionRewardsAttempted.HasValue
         || BossRewardsDistributed.HasValue
@@ -97,6 +100,12 @@ public sealed class ApProgressDelta
                 before.RelicRewardsAvailableAnytimeForRun,
                 after.RelicRewardsAvailableAnytimeForRun
             ),
+            RelicReceiptIndexesByCharacter = RelicReceiptMapsEqual(
+                before.RelicReceiptIndexesByCharacter,
+                after.RelicReceiptIndexesByCharacter
+            )
+                ? null
+                : CloneRelicReceiptMap(after.RelicReceiptIndexesByCharacter),
             GoldRewardsAttempted = Changed(before.GoldRewardsAttempted, after.GoldRewardsAttempted),
             PotionRewardsAttempted = Changed(before.PotionRewardsAttempted, after.PotionRewardsAttempted),
             BossRewardsDistributed = Changed(before.BossRewardsDistributed, after.BossRewardsDistributed),
@@ -171,6 +180,8 @@ public sealed class ApProgressDelta
         Apply(RelicRewardsAttempted, value => result.RelicRewardsAttempted = value);
         Apply(BankedRelicRewards, value => result.BankedRelicRewards = value);
         Apply(RelicRewardsAvailableAnytimeForRun, value => result.RelicRewardsAvailableAnytimeForRun = value);
+        if (RelicReceiptIndexesByCharacter != null)
+            result.RelicReceiptIndexesByCharacter = CloneRelicReceiptMap(RelicReceiptIndexesByCharacter);
         Apply(GoldRewardsAttempted, value => result.GoldRewardsAttempted = value);
         Apply(PotionRewardsAttempted, value => result.PotionRewardsAttempted = value);
         Apply(BossRewardsDistributed, value => result.BossRewardsDistributed = value);
@@ -211,6 +222,7 @@ public sealed class ApProgressDelta
         RelicRewardsAttempted = source.RelicRewardsAttempted,
         BankedRelicRewards = source.BankedRelicRewards,
         RelicRewardsAvailableAnytimeForRun = source.RelicRewardsAvailableAnytimeForRun,
+        RelicReceiptIndexesByCharacter = CloneRelicReceiptMap(source.RelicReceiptIndexesByCharacter),
         GoldRewardsAttempted = source.GoldRewardsAttempted,
         PotionRewardsAttempted = source.PotionRewardsAttempted,
         BossRewardsDistributed = source.BossRewardsDistributed,
@@ -240,6 +252,18 @@ public sealed class ApProgressDelta
     };
 
     private static int? Changed(int before, int after) => before == after ? null : after;
+
+    private static bool RelicReceiptMapsEqual(
+        IReadOnlyDictionary<long, List<int>> left,
+        IReadOnlyDictionary<long, List<int>> right) =>
+        left.Count == right.Count
+        && left.All(pair =>
+            right.TryGetValue(pair.Key, out List<int>? values)
+            && pair.Value.SequenceEqual(values));
+
+    private static Dictionary<long, List<int>> CloneRelicReceiptMap(
+        IReadOnlyDictionary<long, List<int>> source) =>
+        source.ToDictionary(pair => pair.Key, pair => pair.Value.ToList());
 
     private static ApProgressiveStarterState? StarterChanged(
         string? beforeBaseId,

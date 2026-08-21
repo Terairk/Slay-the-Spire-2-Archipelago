@@ -38,7 +38,10 @@ namespace StS2AP.Patches
             if (!RelicRewardUtility.RecordEligibleReward(player, out var rewardNumber))
                 return;
 
-            rewards.Add(new ArchipelagoReward($"{player.APName()} Relic {rewardNumber}"));
+            rewards.Add(new ArchipelagoReward(
+                player,
+                $"{player.APName()} Relic {rewardNumber}"
+            ));
 
             // The native reward already exists. A receipt decides whether it survives beside the check.
             if (!RelicRewardUtility.TryConsumeWaitingReceiptForNaturalReward(player))
@@ -68,10 +71,17 @@ namespace StS2AP.Patches
             static void Postfix(ref List<Reward> __result, Player player, AbstractRoom room)
             {
                 // AP_MP: AP reward specs must reach all peers before reward-set creation.
-                if (!MultiplayerSupport.IsFeatureEnabled(
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
                     MultiplayerFeature.CombatRewardLocations
                 ))
                     return;
+
+                if (!MultiplayerLocationChecks.TryGetSettings(
+                        player,
+                        out ArchipelagoSettings settings))
+                {
+                    return;
+                }
 
                 // We only want to inject for post-combat rewards
                 if (room is CombatRoom)
@@ -91,69 +101,88 @@ namespace StS2AP.Patches
                         if (isRare)
                         {
                             // Replace this reward with an AP Location reward
-                            ArchipelagoClient.Progress.RareCardRewardsAttempted++;
+                            int rewardNumber =
+                                MultiplayerLocationChecks.IncrementRareCardRewards(player);
                             __result.Remove(cardReward);
-                            __result.Add(new ArchipelagoReward($"{name} Rare Card Reward {ArchipelagoClient.Progress.RareCardRewardsAttempted}"));
+                            __result.Add(new ArchipelagoReward(
+                                player,
+                                $"{name} Rare Card Reward {rewardNumber}"
+                            ));
                         }
                         // Otherwise, we have more checks to do
                         else
                         {
                             // Have we already given out enough card rewards (or are we skipping this one because we are doing every-other-card?
-                            ArchipelagoClient.Progress.CardRewardsAttempted++;
-                            var shouldSkipCardReward = ArchipelagoClient.Settings.ShouldShuffleAllCards
+                            int attempt = MultiplayerLocationChecks.IncrementCardRewards(player);
+                            var shouldSkipCardReward = settings.ShouldShuffleAllCards
                                 ? false
-                                : (ArchipelagoClient.Progress.CardRewardsAttempted % 2 == 0);
-                            if (ArchipelagoClient.Progress.CardRewardsAttempted <= ArchipelagoProgress._maxCardRewards && !shouldSkipCardReward)
+                                : (attempt % 2 == 0);
+                            if (attempt <= ArchipelagoProgress._maxCardRewards && !shouldSkipCardReward)
                             {
                                 // Replace this reward with an AP Location reward
-                                var rewardNumber = ArchipelagoClient.Settings.ShouldShuffleAllCards
-                                    ? ArchipelagoClient.Progress.CardRewardsAttempted
-                                    : (ArchipelagoClient.Progress.CardRewardsAttempted + 1) / 2;
+                                var rewardNumber = settings.ShouldShuffleAllCards
+                                    ? attempt
+                                    : (attempt + 1) / 2;
                                 __result.Remove(cardReward);
-                                __result.Add(new ArchipelagoReward($"{name} Card Reward {rewardNumber}"));
+                                __result.Add(new ArchipelagoReward(
+                                    player,
+                                    $"{name} Card Reward {rewardNumber}"
+                                ));
                             }
                         }
                     }
 
                     // If we're in GoldSanity, we want to replace the Gold Reward with an AP Location reward (so long as it's not returned gold)
                     var goldReward = __result.FirstOrDefault(r => r is GoldReward && s_wasGoldStolenBackField?.GetValue(r) is false);
-                    if (goldReward != null && ArchipelagoClient.Settings.GoldSanity)
+                    if (goldReward != null && settings.GoldSanity)
                     {
                         // Is this a boss gold reward? (It's a different location/check)
                         if (room.RoomType == RoomType.Boss)
                         {
                             // Grab the act number
-                            int actNumber = GameUtility.CurrentPlayer?.RunState?.CurrentActIndex + 1 ?? 0;
+                            int actNumber = player.RunState.CurrentActIndex + 1;
 
                             // Replace this reward with an AP Location reward
                             __result.Remove(goldReward);
-                            __result.Add(new ArchipelagoReward($"{name} Boss Gold {actNumber}"));
+                            __result.Add(new ArchipelagoReward(
+                                player,
+                                $"{name} Boss Gold {actNumber}"
+                            ));
                         }
                         // Otherwise, see if it's one of the first twenty gold rewards, and if so then replace it with an AP item
                         else
                         {
-                            ArchipelagoClient.Progress.GoldRewardsAttempted++;
+                            int rewardNumber =
+                                MultiplayerLocationChecks.IncrementGoldRewards(player);
                             // Have we already given out enough gold rewards?
-                            if (ArchipelagoClient.Progress.GoldRewardsAttempted <= ArchipelagoProgress._maxGoldRewards)
+                            if (rewardNumber <= ArchipelagoProgress._maxGoldRewards)
                             {
                                 // Replace this reward with an AP Location reward
                                 __result.Remove(goldReward);
-                                __result.Add(new ArchipelagoReward($"{name} Combat Gold {ArchipelagoClient.Progress.GoldRewardsAttempted}"));
+                                __result.Add(new ArchipelagoReward(
+                                    player,
+                                    $"{name} Combat Gold {rewardNumber}"
+                                ));
                             }
                         }
                     }
                     var potionReward = __result.FirstOrDefault(r => r is PotionReward);
-                    if (potionReward != null && ArchipelagoClient.Settings.PotionSanity)
+                    if (potionReward != null && settings.PotionSanity)
                     {
-                        ArchipelagoClient.Progress.PotionRewardsAttempted++;
+                        int rewardNumber =
+                            MultiplayerLocationChecks.IncrementPotionRewards(player);
                         // Have we already given out enough potion rewards?
-                        if (ArchipelagoClient.Progress.PotionRewardsAttempted <= ArchipelagoProgress._maxPotionRewards)
+                        if (rewardNumber <= ArchipelagoProgress._maxPotionRewards)
                         {
                             // Replace this reward with an AP Location reward
                             __result.Remove(potionReward);
-                            __result.Add(new ArchipelagoReward($"{name} Potion Drop {ArchipelagoClient.Progress.PotionRewardsAttempted}"));
+                            __result.Add(new ArchipelagoReward(
+                                player,
+                                $"{name} Potion Drop {rewardNumber}"
+                            ));
                         }
                     }
+                    MultiplayerLocationChecks.PublishLocalProgress(player);
                 }
             }
         }
@@ -171,13 +200,13 @@ namespace StS2AP.Patches
             public static void Postfix(RewardsSet __instance, AbstractRoom room)
             {
                 // AP_MP: Reward replacement needs matching owner and reward-set IDs.
-                if (!MultiplayerSupport.IsFeatureEnabled(
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
                     MultiplayerFeature.CombatRewardLocations
                 ))
                     return;
 
                 var player = __instance.Player;
-                if (player != GameUtility.CurrentPlayer)
+                if (!MultiplayerLocationChecks.TryGetSettings(player, out _))
                     return;
 
                 if (room.RoomType == RoomType.Elite)
@@ -204,6 +233,9 @@ namespace StS2AP.Patches
                     return;
                 }
 
+                bool hadWaitingReceipt = MultiplayerSupport.IsRealMultiplayerRun
+                    ? GateTreasureRelicPicker.HasNativeCandidate(player)
+                    : RelicRewardUtility.HasWaitingReceiptForNaturalReward(player);
                 if (!RelicRewardUtility.RecordEligibleReward(player, out var rewardNumber))
                     return;
 
@@ -213,7 +245,23 @@ namespace StS2AP.Patches
                 // The alternative was the chest opening 2 times or having to manually generate a relic
                 // I opted to use the native game default way. My rationale was that floor checks automatically send
                 // things out so what's 3 more.
-                GameUtility.SendCheck($"{player.APName()} Relic {rewardNumber}");
+                MultiplayerLocationChecks.QueueCheck(
+                    player,
+                    $"{player.APName()} Relic {rewardNumber}"
+                );
+
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                {
+                    if (hadWaitingReceipt)
+                    {
+                        RelicRewardUtility.TryConsumeWaitingReceiptForNaturalReward(player);
+                    }
+                    else if (MultiplayerLocationChecks.IsLocalProgressOwner(player))
+                    {
+                        RelicRewardUtility.ReconcileBankedRewards(player);
+                    }
+                    return;
+                }
 
                 var relicPicker = RunManager.Instance.TreasureRoomRelicSynchronizer;
                 var nativeRelicExists = relicPicker.CurrentRelics?.Count > 0;
@@ -231,7 +279,7 @@ namespace StS2AP.Patches
                     {
                         // Fail open if the game changes this collection type. Do not leave a bank
                         // behind as well as the native relic, which would duplicate the reward.
-                        ArchipelagoClient.Progress.BankedRelicRewards--;
+                        RelicRewardUtility.DiscardLastBankedReward(player);
                         RelicCoupons.RefreshCounter(player);
                         LogUtility.Error(
                             """
@@ -261,6 +309,11 @@ namespace StS2AP.Patches
         )]
         public static class GateTreasureRelicPicker
         {
+            private static readonly HashSet<ulong> PlayersWithNativeCandidate = new();
+
+            public static bool HasNativeCandidate(Player player) =>
+                PlayersWithNativeCandidate.Contains(player.NetId);
+
             [HarmonyPrefix]
             public static bool Prefix(
                 ref List<RelicModel> ____currentRelics,
@@ -268,10 +321,19 @@ namespace StS2AP.Patches
             )
             {
                 // AP_MP: Boss relic selection waits for synchronized reward choices.
-                if (!MultiplayerSupport.IsFeatureEnabled(
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
                     MultiplayerFeature.CombatRewardLocations
                 ))
                     return true;
+
+                // Multiplayer's picker is shared. Let the base game build its deterministic
+                // player-ordered candidates, then remove only the candidates whose AP source
+                // has no waiting receipt in the postfix below.
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                {
+                    PlayersWithNativeCandidate.Clear();
+                    return true;
+                }
 
                 if (____currentRelics != null)
                 {
@@ -282,6 +344,7 @@ namespace StS2AP.Patches
 
                 var player = GameUtility.CurrentPlayer;
                 if (player == null
+                    || !MultiplayerLocationChecks.TryGetSettings(player, out _)
                     || ArchipelagoClient.Progress.RelicRewardsAttempted
                         >= ArchipelagoProgress._maxRelicRewards
                     || RelicRewardUtility.HasWaitingReceiptForNaturalReward(player))
@@ -296,6 +359,53 @@ namespace StS2AP.Patches
                     index = 0,
                 };
                 return false;
+            }
+
+            [HarmonyPostfix]
+            public static void Postfix(ref List<RelicModel> ____currentRelics)
+            {
+                if (!MultiplayerSupport.IsRealMultiplayerRun
+                    || !MultiplayerSupport.ShouldRunReplicatedConstruction(
+                        MultiplayerFeature.CombatRewardLocations)
+                    || ____currentRelics == null
+                    || RunManager.Instance.DebugOnlyGetState() is not RunState runState)
+                {
+                    return;
+                }
+
+                int relicIndex = 0;
+                foreach (Player player in runState.Players)
+                {
+                    if (!Hook.ShouldGenerateTreasure(runState, player))
+                        continue;
+
+                    bool apOwnedCandidate =
+                        MultiplayerLocationChecks.TryGetSettings(player, out _)
+                        && MultiplayerLocationChecks.GetRelicRewardsAttempted(player)
+                            < ArchipelagoProgress._maxRelicRewards;
+                    if (apOwnedCandidate
+                        && !RelicRewardUtility.HasWaitingReceiptForNaturalReward(player))
+                    {
+                        if (relicIndex >= ____currentRelics.Count)
+                        {
+                            LogUtility.Error(
+                                "Treasure relic candidates no longer match the beta player order; "
+                                    + "preserving the remaining native picker"
+                            );
+                            return;
+                        }
+                        ____currentRelics.RemoveAt(relicIndex);
+                    }
+                    else
+                    {
+                        if (apOwnedCandidate)
+                            PlayersWithNativeCandidate.Add(player.NetId);
+                        relicIndex++;
+                    }
+                }
+
+                if (____currentRelics.Count == 0)
+                    RunManager.Instance.TreasureRoomRelicSynchronizer.CompleteWithNoRelics();
             }
         }
 
@@ -322,13 +432,13 @@ namespace StS2AP.Patches
             )
             {
                 // AP_MP: Location completion must be attributed to the local AP owner only.
-                if (!MultiplayerSupport.IsFeatureEnabled(
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
                     MultiplayerFeature.CombatRewardLocations
                 ))
                     return;
 
                 if (!__result
-                    || player != GameUtility.CurrentPlayer
+                    || !MultiplayerLocationChecks.TryGetSettings(player, out _)
                     || room?.RoomType != RoomType.Elite)
                 {
                     return;
@@ -353,7 +463,7 @@ namespace StS2AP.Patches
             static void Postfix(NRewardsScreen __result)
             {
                 // AP_MP: Reward-screen presentation follows the replicated reward-set gate.
-                if (!MultiplayerSupport.IsFeatureEnabled(
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
                     MultiplayerFeature.CombatRewardLocations
                 ))
                     return;

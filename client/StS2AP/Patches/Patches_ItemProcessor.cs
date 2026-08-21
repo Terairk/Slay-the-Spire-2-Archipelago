@@ -211,6 +211,9 @@ namespace StS2AP.Patches
                     // A receipt arriving after its Elite/chest reward belongs in the AP menu.
                     // Reconcile all pairs so checkpoint loads do not depend on callback order.
                     RelicRewardUtility.ReconcileBankedRewards(player);
+                    // Even when there is no bank to reconcile, every replica needs the compact
+                    // receipt index before it constructs the next natural relic reward.
+                    ApRunData.PublishLocalProgress(player);
                     return;
                 }
                 // Gold is condensed into a single reward pool

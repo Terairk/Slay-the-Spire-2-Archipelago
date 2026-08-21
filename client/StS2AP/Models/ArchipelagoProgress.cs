@@ -652,6 +652,7 @@ namespace StS2AP.Models
                 RelicRewardsAttempted = RelicRewardsAttempted,
                 BankedRelicRewards = BankedRelicRewards,
                 RelicRewardsAvailableAnytimeForRun = RelicRewardsAvailableAnytimeForRun,
+                RelicReceiptIndexesByCharacter = GetRelicReceiptIndexSnapshot(),
                 GoldRewardsAttempted = GoldRewardsAttempted,
                 PotionRewardsAttempted = PotionRewardsAttempted,
                 BossRewardsDistributed = BossRewardsDistributed,
@@ -701,6 +702,17 @@ namespace StS2AP.Models
                     .ToList(),
             };
         }
+
+        public Dictionary<long, List<int>> GetRelicReceiptIndexSnapshot() =>
+            AllReceivedItems
+                .Where(receipt =>
+                    receipt.Item.GetCharacterSpecificItemID() == APItem.Relic
+                    && receipt.Item.GetCharacterOffset().HasValue)
+                .GroupBy(receipt => receipt.Item.GetCharacterOffset()!.Value)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(receipt => receipt.Index).Distinct().Order().ToList()
+                );
 
         public SerializableAP ToSerializable(SerializableRun run)
         {

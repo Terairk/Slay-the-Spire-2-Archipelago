@@ -24,8 +24,8 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class MultiplayerSupport
 {
-    // AP_MP: This is the master feature switchboard. Add a capability only after every
-    // AP_MP gate for it has a synchronized implementation and two-client runtime evidence.
+    // AP_MP: This is the master feature switchboard. Each enabled capability must have an
+    // explicit replicated construction path and a single AP-side owner for external effects.
     private static readonly HashSet<MultiplayerFeature> EnabledExperimentalFeatures = new()
     {
         MultiplayerFeature.CharacterUnlocks,
@@ -35,6 +35,8 @@ public static class MultiplayerSupport
         MultiplayerFeature.RelicRewards,
         MultiplayerFeature.PotionRewards,
         MultiplayerFeature.AncientRewardChoices,
+        MultiplayerFeature.CombatRewardLocations,
+        MultiplayerFeature.FloorChecks,
         MultiplayerFeature.SaveAndReconnect,
     };
 
@@ -217,6 +219,20 @@ public static class MultiplayerSupport
         if (IsLocalGuest)
             return false;
 
+        bool profileEnabled = IsRealMultiplayerRun
+            ? _experimentalEnabledForRun
+            : ExperimentalSettingEnabled;
+        return profileEnabled && EnabledExperimentalFeatures.Contains(feature);
+    }
+
+    /// <summary>
+    /// Feature gate for native callbacks that construct state for every player on every replica.
+    /// Participant ownership is evaluated separately for the callback's concrete player.
+    /// </summary>
+    public static bool ShouldRunReplicatedConstruction(MultiplayerFeature feature)
+    {
+        if (!IsMultiplayerScope)
+            return true;
         bool profileEnabled = IsRealMultiplayerRun
             ? _experimentalEnabledForRun
             : ExperimentalSettingEnabled;

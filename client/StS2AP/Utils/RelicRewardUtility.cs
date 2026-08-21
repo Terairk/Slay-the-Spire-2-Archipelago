@@ -37,19 +37,33 @@ namespace StS2AP.Utils
         /// </summary>
         public static bool RecordEligibleReward(Player player, out int rewardNumber)
         {
-            var progress = ArchipelagoClient.Progress;
-            progress.RelicRewardsAttempted++;
-            rewardNumber = progress.RelicRewardsAttempted;
-
-            if (rewardNumber > ArchipelagoProgress._maxRelicRewards)
+            bool localOwner = MultiplayerLocationChecks.IsLocalProgressOwner(player);
+            ApRunProgressState? replicated = null;
+            if (MultiplayerSupport.IsRealMultiplayerRun
+                && !localOwner
+                && !MultiplayerLocationChecks.TryGetRemoteProgress(player, out replicated))
             {
-                ApRunData.PublishLocalProgress(player);
+                rewardNumber = int.MaxValue;
                 return false;
             }
 
-            progress.BankedRelicRewards++;
-            RelicCoupons.RefreshCounter();
-            ApRunData.PublishLocalProgress(player);
+            rewardNumber = localOwner || !MultiplayerSupport.IsRealMultiplayerRun
+                ? ++ArchipelagoClient.Progress.RelicRewardsAttempted
+                : ++replicated!.RelicRewardsAttempted;
+
+            if (rewardNumber > ArchipelagoProgress._maxRelicRewards)
+            {
+                MultiplayerLocationChecks.PublishLocalProgress(player);
+                return false;
+            }
+
+            if (localOwner || !MultiplayerSupport.IsRealMultiplayerRun)
+                ArchipelagoClient.Progress.BankedRelicRewards++;
+            else
+                replicated!.BankedRelicRewards++;
+            if (localOwner)
+                RelicCoupons.RefreshCounter(player);
+            MultiplayerLocationChecks.PublishLocalProgress(player);
             return true;
         }
 
@@ -58,7 +72,7 @@ namespace StS2AP.Utils
         /// </summary>
         public static bool HasWaitingReceiptForNaturalReward(Player player)
         {
-            return FindWaitingReceiptForNaturalReward(player) != null;
+            return FindWaitingReceiptIndexForNaturalReward(player).HasValue;
         }
 
         /// <summary>
@@ -92,29 +106,74 @@ namespace StS2AP.Utils
         /// </summary>
         public static bool TryConsumeWaitingReceiptForNaturalReward(Player player)
         {
-            var progress = ArchipelagoClient.Progress;
-            var receipt = FindWaitingReceiptForNaturalReward(player);
-            if (receipt == null)
+            bool localOwner = MultiplayerLocationChecks.IsLocalProgressOwner(player);
+            ApRunProgressState? replicated = null;
+            if (MultiplayerSupport.IsRealMultiplayerRun
+                && !localOwner
+                && !MultiplayerLocationChecks.TryGetRemoteProgress(player, out replicated))
+            {
+                return false;
+            }
+
+            int? receiptIndex = FindWaitingReceiptIndexForNaturalReward(player);
+            if (!receiptIndex.HasValue)
                 return false;
 
-            if (progress.BankedRelicRewards <= 0)
+            int bankedRewards = localOwner || !MultiplayerSupport.IsRealMultiplayerRun
+                ? ArchipelagoClient.Progress.BankedRelicRewards
+                : replicated!.BankedRelicRewards;
+
+            if (bankedRewards <= 0)
             {
                 LogUtility.Error(
-                    $"Cannot pair Relic item w/ index {receipt.Index} for {player.APName()}: " +
+                    $"Cannot pair Relic item w/ index {receiptIndex.Value} for {player.APName()}: " +
                     "no banked relic reward exists"
                 );
                 return false;
             }
 
-            progress.UsedItems.Add(receipt.Index);
-            progress.BankedRelicRewards--;
-            RelicCoupons.Activate(player);
+            if (localOwner || !MultiplayerSupport.IsRealMultiplayerRun)
+            {
+                ArchipelagoClient.Progress.UsedItems.Add(receiptIndex.Value);
+                ArchipelagoClient.Progress.BankedRelicRewards--;
+            }
+            else
+            {
+                replicated!.UsedItems.Add(receiptIndex.Value);
+                replicated.BankedRelicRewards--;
+            }
+            if (localOwner)
+                RelicCoupons.Activate(player);
             LogUtility.Info(
-                $"Paired Relic item w/ index {receipt.Index} with a natural relic reward; " +
-                $"{progress.BankedRelicRewards} banked reward(s) remain"
+                $"Paired Relic item w/ index {receiptIndex.Value} with a natural relic reward; " +
+                $"{bankedRewards - 1} banked reward(s) remain"
             );
-            ApRunData.PublishLocalProgress(player);
+            MultiplayerLocationChecks.PublishLocalProgress(player);
             return true;
+        }
+
+        /// <summary>
+        /// Removes the bank created for the current natural reward when compatibility changes
+        /// prevent suppressing the corresponding native relic.
+        /// </summary>
+        public static void DiscardLastBankedReward(Player player)
+        {
+            bool localOwner = MultiplayerLocationChecks.IsLocalProgressOwner(player);
+            if (!MultiplayerSupport.IsRealMultiplayerRun || localOwner)
+            {
+                if (ArchipelagoClient.Progress.BankedRelicRewards > 0)
+                    ArchipelagoClient.Progress.BankedRelicRewards--;
+                if (localOwner)
+                    RelicCoupons.RefreshCounter(player);
+            }
+            else if (MultiplayerLocationChecks.TryGetRemoteProgress(
+                player,
+                out ApRunProgressState progress)
+                && progress.BankedRelicRewards > 0)
+            {
+                progress.BankedRelicRewards--;
+            }
+            MultiplayerLocationChecks.PublishLocalProgress(player);
         }
 
         /// <summary>
@@ -202,6 +261,32 @@ namespace StS2AP.Utils
                     !progress.UsedItems.Contains(receipt.Index)
                     && !progress.RelicChoiceAssignments.ContainsKey(receipt.Index)
                 );
+        }
+
+        private static int? FindWaitingReceiptIndexForNaturalReward(Player player)
+        {
+            if (!MultiplayerSupport.IsRealMultiplayerRun
+                || MultiplayerLocationChecks.IsLocalProgressOwner(player))
+            {
+                return FindWaitingReceiptForNaturalReward(player)?.Index;
+            }
+
+            if (!MultiplayerLocationChecks.TryGetRemoteProgress(
+                player,
+                out ApRunProgressState progress))
+                return null;
+
+            return MultiplayerLocationChecks.GetReplicatedRelicReceiptIndexes(player, progress)
+                .Skip(Math.Clamp(
+                    progress.RelicRewardsAvailableAnytimeForRun,
+                    0,
+                    ArchipelagoProgress._maxRelicRewards
+                ))
+                .Where(index =>
+                    !progress.UsedItems.Contains(index)
+                    && !progress.RelicChoiceAssignments.ContainsKey(index))
+                .Select(index => (int?)index)
+                .FirstOrDefault();
         }
 
         private static bool IsAnytimeReceipt(IndexedItemInfo receipt, Player player)

@@ -19,7 +19,7 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ApRunData
 {
-    private const int RunSchemaVersion = 2;
+    private const int RunSchemaVersion = 3;
     private const string ProgressSnapshotMessageKey = "player_ap_progress_snapshot_v1";
     private const string ProgressDeltaMessageKey = "player_ap_progress_delta_v1";
     private static RunSavedData<ApRunSharedState> _sharedRun = null!;
@@ -109,6 +109,13 @@ public static class ApRunData
             ApSlotId = participation == ApParticipationKind.OwnApSlot
                 ? MultiplayerSupport.PreparedApSlotId
                 : null,
+            SlotSettings = participation == ApParticipationKind.OwnApSlot
+                ? existing?.SlotSettings ?? MultiplayerSupport.CreateEffectiveHostSettingsSnapshot()
+                : null,
+            InitialRelicReceiptIndexesByCharacter = participation ==
+                    ApParticipationKind.VanillaGuest
+                ? new Dictionary<long, List<int>>()
+                : ArchipelagoClient.Progress.GetRelicReceiptIndexSnapshot(),
             ReceiptSourceReady = participation switch
             {
                 ApParticipationKind.OwnApSlot => MultiplayerSupport.InitialItemsLoaded,
@@ -257,6 +264,8 @@ public static class ApRunData
             return state.ReceiptSourceReady ? null : "host-receipt-catalog-incomplete";
         if (state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null)
             return "incomplete-ap-identity";
+        if (state.SlotSettings == null)
+            return "ap-settings-incomplete";
         return state.ReceiptSourceReady ? null : "ap-history-incomplete";
     }
 
@@ -603,7 +612,19 @@ public static class ApRunData
         && string.Equals(left.ApRoomSeed, right.ApRoomSeed, StringComparison.Ordinal)
         && left.ApTeamId == right.ApTeamId
         && left.ApSlotId == right.ApSlotId
+        && (left.SlotSettings == null) == (right.SlotSettings == null)
+        && RelicReceiptMapsEqual(
+            left.InitialRelicReceiptIndexesByCharacter,
+            right.InitialRelicReceiptIndexesByCharacter)
         && left.ReceiptSourceReady == right.ReceiptSourceReady;
+
+    private static bool RelicReceiptMapsEqual(
+        IReadOnlyDictionary<long, List<int>> left,
+        IReadOnlyDictionary<long, List<int>> right) =>
+        left.Count == right.Count
+        && left.All(pair =>
+            right.TryGetValue(pair.Key, out List<int>? values)
+            && pair.Value.SequenceEqual(values));
 
     private static void OnLobbyStagingChanged(RunSavedDataLobbyStagingEvent evt)
     {
