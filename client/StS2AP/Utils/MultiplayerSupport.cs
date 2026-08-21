@@ -37,6 +37,7 @@ public static class MultiplayerSupport
         MultiplayerFeature.AncientRewardChoices,
         MultiplayerFeature.CombatRewardLocations,
         MultiplayerFeature.FloorChecks,
+        MultiplayerFeature.Shops,
         MultiplayerFeature.SaveAndReconnect,
     };
 
@@ -226,6 +227,23 @@ public static class MultiplayerSupport
     }
 
     /// <summary>
+    /// Shop inventories are local presentation state. Own-slot players and AP Guests apply
+    /// their AP source's slot unlocks only to the locally displayed inventory; Vanilla Guests
+    /// and remote inventory replicas remain native.
+    /// </summary>
+    public static bool ShouldApplyLocalShopUnlocks(Player player) =>
+        IsFeatureEnabled(MultiplayerFeature.Shops)
+        && MultiplayerLocationChecks.IsLocalProgressOwner(player);
+
+    /// <summary>
+    /// An AP-check page is shown only to the process that can write checks for its local player.
+    /// AP Guests use the host slot's unlocks but never receive a competing shared-slot page.
+    /// </summary>
+    public static bool ShouldShowLocalShopChecks(Player player) =>
+        ShouldApplyLocalShopUnlocks(player)
+        && MultiplayerLocationChecks.IsCheckWriter(player);
+
+    /// <summary>
     /// Feature gate for native callbacks that construct state for every player on every replica.
     /// Participant ownership is evaluated separately for the callback's concrete player.
     /// </summary>
@@ -354,6 +372,11 @@ public static class MultiplayerSupport
         DeferredItems.Clear();
         ArchipelagoClient.Progress.AllReceivedItems.Clear();
         ArchipelagoClient.Progress.ProgressiveAncients.Clear();
+        ArchipelagoClient.Progress.ShopCardSlotsReceived.Clear();
+        ArchipelagoClient.Progress.ShopNeutralSlotsReceived.Clear();
+        ArchipelagoClient.Progress.ShopRelicSlotsReceived.Clear();
+        ArchipelagoClient.Progress.ShopPotionSlotsReceived.Clear();
+        ArchipelagoClient.Progress.ShopRemovesReceived.Clear();
         var ancientCounts = new Dictionary<long, int>();
         for (int index = 0; index < receivedItems.Count; index++)
         {
@@ -386,6 +409,27 @@ public static class MultiplayerSupport
                 {
                     ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
                 }
+            }
+            else if (feature == MultiplayerFeature.Shops && item.ItemId >= 10000)
+            {
+                Dictionary<long, int>? counts = item.GetCharacterSpecificItemID() switch
+                {
+                    APItem.ShopCardSlot => ArchipelagoClient.Progress.ShopCardSlotsReceived,
+                    APItem.NeutralShopCardSlot =>
+                        ArchipelagoClient.Progress.ShopNeutralSlotsReceived,
+                    APItem.ShopRelicSlot => ArchipelagoClient.Progress.ShopRelicSlotsReceived,
+                    APItem.ShopPotionSlot => ArchipelagoClient.Progress.ShopPotionSlotsReceived,
+                    APItem.ProgressiveShopRemove =>
+                        ArchipelagoClient.Progress.ShopRemovesReceived,
+                    _ => null,
+                };
+                if (counts != null)
+                {
+                    long characterOffset = item.GetCharacterOffset();
+                    counts.TryGetValue(characterOffset, out int count);
+                    counts[characterOffset] = count + 1;
+                }
+                ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
             }
             else
             {
