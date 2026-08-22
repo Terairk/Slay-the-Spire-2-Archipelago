@@ -22,7 +22,7 @@ Date:
 Tester:
 Mod commit/SHA:
 Game version:
-RitsuLib version (expected 0.5.13):
+RitsuLib version (expected 0.5.14):
 AP server/room:
 Host STS client ID:
 Client STS client ID:
@@ -55,7 +55,7 @@ Command scope and expected limitations:
 |---|---|---|
 | `ap state summary` | Lobby and active run | Correct AP connection, slot, initial history state, and reward counts |
 | `ap state lobby` | Character-select/start lobby only | Host identity, staged player records, history flags, blockers, and host validation |
-| `ap state multiplayer` | Active run | Correct local role, frozen player list, currently connected Net IDs, participant connection status, and permanent-invalidation flag |
+| `ap state multiplayer` | Active run | Correct local role, frozen player list, currently connected Net IDs, participant connection status, permanent-invalidation flag, bounded Sidecar queue/drop counters, and full receipt-snapshot payload size |
 | `ap state run` | Active run only | Same committed `RunId`, host Net ID, and participant mapping on both processes |
 | `ap state ledger` | Active run only | Legacy scaffold diagnostic only; not target persistence evidence |
 | `ap state grants` | Active run | Current local supported AP receipts and their claim state |
@@ -71,7 +71,7 @@ Command scope and expected limitations:
 
 ## Environment setup
 
-1. Build/install the current mod and RitsuLib 0.5.13 in both game processes.
+1. Build/install the current mod and RitsuLib 0.5.14 in both game processes.
 2. Use two distinct STS client/account IDs.
 3. Enable **Experimental Multiplayer** for both IDs.
 4. For AP/AP cases, create two distinct slots in the same AP room, for example

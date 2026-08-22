@@ -707,9 +707,9 @@ namespace StS2AP.Models
         public Dictionary<long, List<int>> GetRelicReceiptIndexSnapshot() =>
             AllReceivedItems
                 .Where(receipt =>
-                    receipt.Item.GetCharacterSpecificItemID() == APItem.Relic
-                    && receipt.Item.GetCharacterOffset().HasValue)
-                .GroupBy(receipt => receipt.Item.GetCharacterOffset()!.Value)
+                    receipt.Item.ItemId >= 10000
+                    && receipt.Item.GetCharacterSpecificItemID() == APItem.Relic)
+                .GroupBy(receipt => receipt.Item.GetCharacterOffset())
                 .ToDictionary(
                     group => group.Key,
                     group => group.Select(receipt => receipt.Index).Distinct().Order().ToList()

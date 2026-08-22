@@ -15,6 +15,13 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ApReceiptRelay
 {
+    public readonly record struct FullSnapshotDiagnostics(
+        int Revision,
+        int ItemCount,
+        int PayloadBytes,
+        int LargestPayloadBytes
+    );
+
     private const string CatalogMessageKey = "host_ap_receipt_catalog_v2";
     private const string RequestMessageKey = "host_ap_receipt_catalog_request_v1";
     private static readonly object CatalogLock = new();
@@ -24,7 +31,7 @@ public static class ApReceiptRelay
         CatalogDescriptor = new(
             ModEntry.ModId,
             CatalogMessageKey,
-            CatalogSerializer.Serialize,
+            SerializeCatalog,
             CatalogSerializer.Deserialize,
             Required: true
         );
@@ -56,9 +63,31 @@ public static class ApReceiptRelay
     private static bool _snapshotRequestOutstanding;
     private static bool _guestHasCompleteCatalog;
     private static volatile bool _guestCatalogReady;
+    private static int _lastFullSnapshotRevision;
+    private static int _lastFullSnapshotItemCount;
+    private static int _lastFullSnapshotPayloadBytes;
+    private static int _largestFullSnapshotPayloadBytes;
 
     /// <summary>True only after the current catalog has been installed into the local AP view.</summary>
     public static bool GuestCatalogReady => _guestCatalogReady;
+
+    /// <summary>
+    /// Captures process-local measurements for full host receipt snapshots. Payload bytes are
+    /// the exact UTF-8 JSON bytes supplied to the Sidecar descriptor before envelope overhead,
+    /// compression, or transport framing.
+    /// </summary>
+    public static FullSnapshotDiagnostics CaptureFullSnapshotDiagnostics()
+    {
+        lock (CatalogLock)
+        {
+            return new FullSnapshotDiagnostics(
+                _lastFullSnapshotRevision,
+                _lastFullSnapshotItemCount,
+                _lastFullSnapshotPayloadBytes,
+                _largestFullSnapshotPayloadBytes
+            );
+        }
+    }
 
     public static void Initialize()
     {
@@ -97,6 +126,13 @@ public static class ApReceiptRelay
             bool sameIdentity = string.Equals(_hostRoomSeed, roomSeed, StringComparison.Ordinal)
                 && _hostTeamId == apTeamId
                 && _hostSlotId == apSlotId;
+            if (!sameIdentity)
+            {
+                _lastFullSnapshotRevision = 0;
+                _lastFullSnapshotItemCount = 0;
+                _lastFullSnapshotPayloadBytes = 0;
+                _largestFullSnapshotPayloadBytes = 0;
+            }
             _hostRoomSeed = roomSeed;
             _hostTeamId = apTeamId;
             _hostSlotId = apSlotId;
@@ -251,6 +287,29 @@ public static class ApReceiptRelay
                 message
             );
         }
+    }
+
+    private static byte[] SerializeCatalog(ApReceiptCatalogMessage message)
+    {
+        byte[] payload = CatalogSerializer.Serialize(message);
+        if (!message.IsFullSnapshot)
+            return payload;
+
+        lock (CatalogLock)
+        {
+            _lastFullSnapshotRevision = message.Revision;
+            _lastFullSnapshotItemCount = message.Items.Count;
+            _lastFullSnapshotPayloadBytes = payload.Length;
+            _largestFullSnapshotPayloadBytes = Math.Max(
+                _largestFullSnapshotPayloadBytes,
+                payload.Length
+            );
+        }
+        LogUtility.Debug(
+            $"Serialized AP receipt catalog snapshot revision {message.Revision}: "
+                + $"receipts={message.Items.Count}, payloadBytes={payload.Length}"
+        );
+        return payload;
     }
 
     private static ApReceiptCatalogMessage CreateCatalogMessage(

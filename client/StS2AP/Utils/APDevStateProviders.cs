@@ -3,6 +3,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Models;
+using STS2RitsuLib.Networking.Sidecar;
 
 namespace StS2AP.Utils;
 
@@ -199,7 +200,28 @@ public static class ApDevStateProviders
         bool Experimental,
         bool ClaimsInvalidated,
         string GrantTransport,
-        string RewardSelection
+        string RewardSelection,
+        long IncomingPackets,
+        long IncomingWireBytes,
+        long IncomingLogicalPayloadBytes,
+        long OutgoingSendOperations,
+        long OutgoingWireBytes,
+        int RoutedQueuedFrames,
+        int RoutedQueuedWireBytes,
+        long RoutedQueueRejectedFrames,
+        long RoutedRealtimeEvictedFrames,
+        long RoutedExpiredFrames,
+        long RoutedStaleSessionFrames,
+        long RoutedDisposedFrames,
+        long RoutedTransportFailedFrames,
+        int BulkActiveInboundStreams,
+        int BulkActiveOutboundStreams,
+        long BulkCompletedTransfers,
+        long BulkNonCompletedTransfers,
+        long BulkRetransmittedFrames,
+        long BulkAcknowledgedOutboundBytes,
+        long BulkCommittedInboundBytes,
+        ApReceiptRelay.FullSnapshotDiagnostics ReceiptSnapshot
     );
 
     private sealed class MultiplayerProvider : IApDevStateProvider
@@ -223,7 +245,28 @@ public static class ApDevStateProviders
                 MultiplayerSupport.IsExperimentalMultiplayerRun,
                 MultiplayerSupport.ClaimsInvalidated,
                 "Ritsu Sidecar required/reliable",
-                "MegaCrit native; Ancient=Ritsu LinkedRewardSet"
+                "MegaCrit native; Ancient=Ritsu LinkedRewardSet",
+                RitsuLibSidecarTrafficCounters.IncomingPackets,
+                RitsuLibSidecarTrafficCounters.IncomingWireBytes,
+                RitsuLibSidecarTrafficCounters.IncomingLogicalPayloadBytes,
+                RitsuLibSidecarTrafficCounters.OutgoingSendOperations,
+                RitsuLibSidecarTrafficCounters.OutgoingWireBytes,
+                RitsuLibSidecarTrafficCounters.RoutedEndpointQueuedFrames,
+                RitsuLibSidecarTrafficCounters.RoutedEndpointQueuedWireBytes,
+                RitsuLibSidecarTrafficCounters.RoutedEndpointQueueRejectedFrames,
+                RitsuLibSidecarTrafficCounters.RoutedEndpointRealtimeEvictedFrames,
+                RitsuLibSidecarTrafficCounters.RoutedEndpointExpiredFrames,
+                RitsuLibSidecarTrafficCounters.RoutedEndpointStaleSessionFrames,
+                RitsuLibSidecarTrafficCounters.RoutedEndpointDisposedFrames,
+                RitsuLibSidecarTrafficCounters.RoutedEndpointTransportFailedFrames,
+                RitsuLibSidecarTrafficCounters.BulkActiveInboundStreams,
+                RitsuLibSidecarTrafficCounters.BulkActiveOutboundStreams,
+                RitsuLibSidecarTrafficCounters.BulkCompletedTransfers,
+                RitsuLibSidecarTrafficCounters.BulkNonCompletedTransfers,
+                RitsuLibSidecarTrafficCounters.BulkRetransmittedFrames,
+                RitsuLibSidecarTrafficCounters.BulkAcknowledgedOutboundBytes,
+                RitsuLibSidecarTrafficCounters.BulkCommittedInboundBytes,
+                ApReceiptRelay.CaptureFullSnapshotDiagnostics()
             );
         }
 
@@ -239,6 +282,11 @@ public static class ApDevStateProviders
                 $"connectedNetIds=[{string.Join(",", state.ConnectedNetIds)}] participantConnection={state.ParticipantConnection}",
                 $"grantTransport={state.GrantTransport}",
                 $"rewardSelection={state.RewardSelection}",
+                $"sidecarTraffic incomingPackets={state.IncomingPackets} incomingWireBytes={state.IncomingWireBytes} incomingLogicalBytes={state.IncomingLogicalPayloadBytes} outgoingOperations={state.OutgoingSendOperations} outgoingWireBytes={state.OutgoingWireBytes}",
+                $"routedQueue frames={state.RoutedQueuedFrames} wireBytes={state.RoutedQueuedWireBytes}",
+                $"routedDrops rejected={state.RoutedQueueRejectedFrames} realtimeEvicted={state.RoutedRealtimeEvictedFrames} expired={state.RoutedExpiredFrames} staleSession={state.RoutedStaleSessionFrames} disposed={state.RoutedDisposedFrames} transportFailed={state.RoutedTransportFailedFrames}",
+                $"bulk activeInbound={state.BulkActiveInboundStreams} activeOutbound={state.BulkActiveOutboundStreams} completed={state.BulkCompletedTransfers} nonCompleted={state.BulkNonCompletedTransfers} retransmittedFrames={state.BulkRetransmittedFrames} acknowledgedOutboundBytes={state.BulkAcknowledgedOutboundBytes} committedInboundBytes={state.BulkCommittedInboundBytes}",
+                $"receiptSnapshot revision={state.ReceiptSnapshot.Revision} items={state.ReceiptSnapshot.ItemCount} payloadBytes={state.ReceiptSnapshot.PayloadBytes} largestPayloadBytes={state.ReceiptSnapshot.LargestPayloadBytes}",
             });
         }
 

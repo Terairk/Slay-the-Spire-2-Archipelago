@@ -118,7 +118,7 @@ Initial provider names are:
 | `assignments` | Grant ID to concrete cached assignment and domain |
 | `rng` | Registered RitsuLib stream names and assignment-domain versions, never mutable RNG internals unless safe |
 | `connection` | AP connectivity and history-processing readiness without credentials |
-| `multiplayer` | Frozen and currently connected Net IDs, host/client role, permanent-invalidation state, managed-action registration and last execution status |
+| `multiplayer` | Frozen and currently connected Net IDs, host/client role, permanent-invalidation state, managed-action registration and last execution status, routed Sidecar queue/drop counters, bulk-transfer counters, and latest/largest full receipt-snapshot payload size |
 
 `lobby`, `run`, and legacy `ledger` are implemented read-only probes. The lobby output
 states its visibility explicitly: host output contains the merged peer

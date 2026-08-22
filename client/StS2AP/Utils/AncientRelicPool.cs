@@ -2,6 +2,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Relics;
 using StS2AP.Extensions;
+using StS2AP.Models;
 using System.Security.Cryptography;
 using System.Text;
 
