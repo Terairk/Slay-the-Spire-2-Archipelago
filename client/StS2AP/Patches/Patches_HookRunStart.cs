@@ -136,6 +136,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix()
             {
+                ArchipelagoRewardUI.RemoveUI();
                 GameUtility.CurrentPlayer = null;
                 GameUtility.CurrentConfig = null;
                 LogUtility.Info("CurrentPlayer cleared (returned to main menu)");
