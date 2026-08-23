@@ -176,8 +176,7 @@ public static class ApMirroredRewardDispatcher
             OwnerNetId = player.NetId,
         };
 
-        if (!MultiplayerSupport.IsRealMultiplayerRun)
-            RelicRewardUtility.ReconcileBankedRewards(player);
+        RelicRewardUtility.ReconcileBankedRewards(player);
 
         ApGoldClaim? gold = ApGrantDispatcher.MaterializeGoldClaim();
         if (gold != null)
@@ -350,12 +349,7 @@ public static class ApMirroredRewardDispatcher
         return spec.Kind switch
         {
             ApMirroredRewardKind.Card => BuildCardReward(spec, owner),
-            ApMirroredRewardKind.Relic => new ApNativeRelicReward(
-                DeserializeRelic(spec.SerializedModels.Single()),
-                owner,
-                spec,
-                ApMirroredRewardKind.Relic
-            ),
+            ApMirroredRewardKind.Relic => BuildStandardRelicReward(spec, owner),
             ApMirroredRewardKind.Potion => new ApNativePotionReward(
                 PotionModel.FromSerializable(
                     Deserialize<SerializablePotion>(spec.SerializedModels.Single())
@@ -406,6 +400,20 @@ public static class ApMirroredRewardDispatcher
             ))
             .ToList();
         return LinkedRewardSets.Create(children, player, LinkedRewardSelectionMode.ChooseOne);
+    }
+
+    private static Reward BuildStandardRelicReward(
+        ApMirroredRewardSpec spec,
+        Player player)
+    {
+        RelicModel relic = DeserializeRelic(spec.SerializedModels.Single());
+        StandardRelicPool.ReserveChoice(player, relic);
+        return new ApNativeRelicReward(
+            relic,
+            player,
+            spec,
+            ApMirroredRewardKind.Relic
+        );
     }
 
     private static CardCreationOptions CreateCardOptions(Player player, bool rare)

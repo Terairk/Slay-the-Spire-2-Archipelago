@@ -383,6 +383,7 @@ public static class ApRunData
         _players.Set(runState, player.NetId, state);
         _localProgressRevision = revision;
         _lastPublishedLocalProgress = snapshot;
+        StandardRelicPool.ReserveAssignedChoices(player, snapshot);
         if (RunManager.Instance.NetService.Type == NetGameType.Host)
         {
             if (!BroadcastHostConfirmedProgress(snapshotMessage, deltaMessage))
@@ -504,6 +505,8 @@ public static class ApRunData
             {
                 if (!isHost && context.Message.Revision == state.ProgressRevision)
                 {
+                    if (runState.GetPlayer(context.Message.OwnerNetId) is Player existingOwner)
+                        StandardRelicPool.ReserveAssignedChoices(existingOwner, state.Progress);
                     AncientMultiplayer.ConfirmProgress(
                         runState,
                         context.Message.OwnerNetId,
@@ -517,6 +520,8 @@ public static class ApRunData
             state.Progress = context.Message.Progress;
             state.ProgressRevision = context.Message.Revision;
             _players.Set(runState, context.Message.OwnerNetId, state);
+            if (runState.GetPlayer(context.Message.OwnerNetId) is Player confirmedOwner)
+                StandardRelicPool.ReserveAssignedChoices(confirmedOwner, state.Progress);
             if (isHost)
             {
                 if (!BroadcastHostConfirmedProgress(context.Message, deltaMessage: null))
@@ -567,6 +572,8 @@ public static class ApRunData
             {
                 if (!isHost && context.Message.Revision == state.ProgressRevision)
                 {
+                    if (runState.GetPlayer(context.Message.OwnerNetId) is Player existingOwner)
+                        StandardRelicPool.ReserveAssignedChoices(existingOwner, state.Progress);
                     AncientMultiplayer.ConfirmProgress(
                         runState,
                         context.Message.OwnerNetId,
@@ -593,6 +600,8 @@ public static class ApRunData
             state.Progress = context.Message.Delta.ApplyToCopy(state.Progress);
             state.ProgressRevision = context.Message.Revision;
             _players.Set(runState, context.Message.OwnerNetId, state);
+            if (runState.GetPlayer(context.Message.OwnerNetId) is Player confirmedOwner)
+                StandardRelicPool.ReserveAssignedChoices(confirmedOwner, state.Progress);
             if (isHost)
             {
                 if (!BroadcastHostConfirmedProgress(

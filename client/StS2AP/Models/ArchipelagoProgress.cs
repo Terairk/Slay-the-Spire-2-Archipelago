@@ -167,8 +167,9 @@ namespace StS2AP.Models
         public AscensionManager Ascensions = new AscensionManager();
 
         /// <summary>
-        /// Returns the relic choices assigned to the given AP item, pulling them from the RelicFactory
-        /// if they have not been assigned yet. The complete choice is persisted by item index.
+        /// Returns the relic choices assigned to the given AP item. Singleplayer preserves the
+        /// native RelicFactory behavior. Multiplayer uses AP's stable selector so building a
+        /// mirrored reward recipe cannot advance only one replica's reward RNG or grab bags.
         /// </summary>
         /// <param name="index">The index of the specific item sent from the Multiworld.</param>
         /// <param name="player">The current player, needed by RelicFactory.</param>
@@ -187,9 +188,26 @@ namespace StS2AP.Models
 
             try
             {
-                var choices = Enumerable.Range(0, choiceCount)
-                    .Select(_ => RelicFactory.PullNextRelicFromFront(player))
-                    .ToList();
+                List<RelicModel> choices;
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                {
+                    var reservedRelicIds = RelicChoiceAssignments.Values
+                        .SelectMany(assignment => assignment)
+                        .Select(relic => relic.Id)
+                        .ToHashSet();
+                    choices = StandardRelicPool.CreateChoices(
+                        player,
+                        $"{player.NetId}:{index}",
+                        choiceCount,
+                        reservedRelicIds
+                    ).ToList();
+                }
+                else
+                {
+                    choices = Enumerable.Range(0, choiceCount)
+                        .Select(_ => RelicFactory.PullNextRelicFromFront(player))
+                        .ToList();
+                }
                 RelicChoiceAssignments[index] = choices;
                 LogUtility.Info(
                     $"Pre-assigned relic choices for item w/ index {index}: " +
