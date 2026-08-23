@@ -1,9 +1,11 @@
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Rewards;
+using System.Runtime.CompilerServices;
 using StS2AP.UI;
 using StS2AP.Utils;
 
@@ -73,6 +75,301 @@ namespace StS2AP.Patches
         [HarmonyPrefix]
         public static bool Prefix(RewardsSet ____rewardsSet) =>
             !ArchipelagoRewardUI.ShouldKeepEmptyScreenOpen(____rewardsSet);
+
+        [HarmonyPostfix]
+        public static void Postfix(NRewardsScreen __instance, RewardsSet ____rewardsSet)
+        {
+            if (ArchipelagoRewardUI.IsApRewardSet(____rewardsSet))
+                ApLinkedRewardControllerFocus.RebuildFocusGraph(__instance);
+        }
+    }
+
+    /// <summary>
+    /// NLinkedRewardSet connects the one-argument NRewardButton.RewardClaimed signal to a
+    /// zero-argument callback. Godot rejects that invocation after the reward has already been
+    /// granted, leaving the linked row visible and disabled. Replace that callback only for
+    /// AP-owned linked rewards with an argument-compatible equivalent.
+    /// </summary>
+    [HarmonyPatch(typeof(NLinkedRewardSet), nameof(NLinkedRewardSet._Ready))]
+    public static class FixApLinkedRewardClaimCallback
+    {
+        [HarmonyPostfix]
+        public static void Postfix(NLinkedRewardSet __instance) =>
+            ApLinkedRewardControllerFocus.ReplaceClaimCallback(__instance);
+    }
+
+    /// <summary>
+    /// MegaCrit puts an NLinkedRewardSet container in the reward screen's focus list even though
+    /// its selectable controls are nested NRewardButtons. Return a real child button whenever the
+    /// native default would otherwise point at that non-focusable container.
+    /// </summary>
+    [HarmonyPatch(
+        typeof(NRewardsScreen),
+        nameof(NRewardsScreen.DefaultFocusedControl),
+        MethodType.Getter
+    )]
+    public static class FocusApLinkedRewardChildByDefault
+    {
+        [HarmonyPostfix]
+        public static void Postfix(
+            NRewardsScreen __instance,
+            RewardsSet ____rewardsSet,
+            ref Control __result)
+        {
+            if (ArchipelagoRewardUI.IsApRewardSet(____rewardsSet))
+                __result = ApLinkedRewardControllerFocus.ResolvePreferredFocus(__instance, __result);
+        }
+    }
+
+    /// <summary>Restores the last Ancient choice when controller focus returns from the top bar.</summary>
+    [HarmonyPatch(
+        typeof(NRewardsScreen),
+        nameof(NRewardsScreen.FocusedControlFromTopBar),
+        MethodType.Getter
+    )]
+    public static class FocusApLinkedRewardChildFromTopBar
+    {
+        [HarmonyPostfix]
+        public static void Postfix(
+            NRewardsScreen __instance,
+            RewardsSet ____rewardsSet,
+            ref Control __result)
+        {
+            if (ArchipelagoRewardUI.IsApRewardSet(____rewardsSet))
+                __result = ApLinkedRewardControllerFocus.ResolvePreferredFocus(__instance, __result);
+        }
+    }
+
+    /// <summary>
+    /// Native scrolling only recognizes controls stored directly in NRewardsScreen._rewardButtons.
+    /// Linked Ancient choices are grandchildren, so extend the same focus-following behavior to
+    /// those AP-owned child buttons.
+    /// </summary>
+    [HarmonyPatch(typeof(NRewardsScreen), "ProcessGuiFocus")]
+    public static class ScrollToFocusedApLinkedRewardChild
+    {
+        [HarmonyPostfix]
+        public static void Postfix(
+            NRewardsScreen __instance,
+            Control focusedControl,
+            RewardsSet ____rewardsSet,
+            Control ____rewardContainerMask,
+            Control ____rewardsContainer,
+            ref Vector2 ____targetDragPos)
+        {
+            if (!ArchipelagoRewardUI.IsApRewardSet(____rewardsSet))
+                return;
+
+            ApLinkedRewardControllerFocus.ProcessFocus(
+                __instance,
+                focusedControl,
+                ____rewardContainerMask,
+                ____rewardsContainer,
+                ref ____targetDragPos
+            );
+        }
+    }
+
+    /// <summary>
+    /// Adds the selectable children of AP Ancient linked rewards to MegaCrit's vertical focus
+    /// graph without changing RitsuLib's choose-one reward lifecycle.
+    /// </summary>
+    internal static class ApLinkedRewardControllerFocus
+    {
+        private sealed class FocusState
+        {
+            public WeakReference<Control>? LastLinkedChild { get; set; }
+        }
+
+        private static readonly ConditionalWeakTable<NRewardsScreen, FocusState> States = new();
+
+        internal static void ReplaceClaimCallback(NLinkedRewardSet linkedSet)
+        {
+            List<NRewardButton> children = GetApLinkedChildren(linkedSet);
+            if (children.Count == 0)
+                return;
+
+            foreach (NRewardButton child in children)
+            {
+                // This list is a snapshot, so disconnecting while iterating it is safe.
+                foreach (Godot.Collections.Dictionary connection in
+                         child.GetSignalConnectionList(NRewardButton.SignalName.RewardClaimed))
+                {
+                    Callable callback = connection["callable"].AsCallable();
+                    child.Disconnect(NRewardButton.SignalName.RewardClaimed, callback);
+                }
+
+                child.Connect(
+                    NRewardButton.SignalName.RewardClaimed,
+                    Callable.From<NRewardButton>(_ => CollectLinkedReward(linkedSet))
+                );
+            }
+        }
+
+        internal static void RebuildFocusGraph(NRewardsScreen screen)
+        {
+            List<Control> controls = GetFlattenedControls(screen);
+            for (int i = 0; i < controls.Count; i++)
+            {
+                Control control = controls[i];
+                NodePath ownPath = control.GetPath();
+                control.FocusNeighborLeft = ownPath;
+                control.FocusNeighborRight = ownPath;
+                control.FocusNeighborTop = i > 0 ? controls[i - 1].GetPath() : ownPath;
+                control.FocusNeighborBottom = i < controls.Count - 1
+                    ? controls[i + 1].GetPath()
+                    : ownPath;
+            }
+        }
+
+        internal static Control ResolvePreferredFocus(NRewardsScreen screen, Control nativeFocus)
+        {
+            FocusState state = States.GetOrCreateValue(screen);
+            if (state.LastLinkedChild?.TryGetTarget(out Control? previous) == true
+                && IsUsable(previous)
+                && IsNestedApRewardButton(previous))
+            {
+                return previous;
+            }
+
+            if (nativeFocus is not NLinkedRewardSet linkedSet)
+                return nativeFocus;
+
+            return GetApLinkedChildren(linkedSet).FirstOrDefault() ?? nativeFocus;
+        }
+
+        internal static void ProcessFocus(
+            NRewardsScreen screen,
+            Control focusedControl,
+            Control rewardContainerMask,
+            Control rewardsContainer,
+            ref Vector2 targetDragPos)
+        {
+            FocusState state = States.GetOrCreateValue(screen);
+            if (!IsNestedApRewardButton(focusedControl))
+            {
+                if (focusedControl is NRewardButton directButton
+                    && directButton.Reward is ApNativeRewardMenu.IApNativeReward
+                    && ReferenceEquals(directButton.GetParent(), rewardsContainer))
+                {
+                    state.LastLinkedChild = null;
+                }
+                return;
+            }
+
+            state.LastLinkedChild = new WeakReference<Control>(focusedControl);
+
+            const float topLimit = 35f;
+            const float visibleRewardHeight = 400f;
+            if (!screen.IsVisibleInTree() || rewardsContainer.Size.Y < visibleRewardHeight)
+                return;
+
+            float positionInRewards = focusedControl.GlobalPosition.Y - rewardsContainer.GlobalPosition.Y;
+            float bottomLimit = topLimit - rewardsContainer.Size.Y + visibleRewardHeight;
+            float targetY = -positionInRewards + rewardContainerMask.Size.Y * 0.5f;
+            targetDragPos.Y = Mathf.Clamp(targetY, bottomLimit, topLimit);
+        }
+
+        private static List<Control> GetFlattenedControls(NRewardsScreen screen)
+        {
+            var controls = new List<Control>();
+            Control? container = screen.GetNodeOrNull<Control>("%RewardsContainer");
+            if (container == null)
+                return controls;
+
+            foreach (Control control in container.GetChildren().OfType<Control>())
+            {
+                if (control is NLinkedRewardSet linkedSet)
+                {
+                    List<NRewardButton> children = GetApLinkedChildren(linkedSet);
+                    if (children.Count > 0)
+                    {
+                        linkedSet.FocusMode = Control.FocusModeEnum.None;
+                        controls.AddRange(children);
+                        continue;
+                    }
+                }
+
+                controls.Add(control);
+            }
+
+            return controls;
+        }
+
+        private static bool IsNestedApRewardButton(Control control) =>
+            control is NRewardButton button
+            && button.Reward is ApNativeRewardMenu.IApNativeReward
+            && FindLinkedParent(button) is { } linkedSet
+            && GetApLinkedChildren(linkedSet).Contains(button);
+
+        private static List<NRewardButton> GetApLinkedChildren(NLinkedRewardSet linkedSet)
+        {
+            Control? container = linkedSet.GetNodeOrNull<Control>("%RewardContainer");
+            if (container == null)
+                return new List<NRewardButton>();
+
+            return container.GetChildren()
+                .OfType<NRewardButton>()
+                .Where(button => button.Reward is ApNativeRewardMenu.IApNativeReward)
+                .ToList();
+        }
+
+        private static NLinkedRewardSet? FindLinkedParent(Node node)
+        {
+            Node? current = node.GetParent();
+            while (current != null)
+            {
+                if (current is NLinkedRewardSet linkedSet)
+                    return linkedSet;
+                current = current.GetParent();
+            }
+
+            return null;
+        }
+
+        private static void CollectLinkedReward(NLinkedRewardSet linkedSet)
+        {
+            if (!GodotObject.IsInstanceValid(linkedSet)
+                || linkedSet.IsQueuedForDeletion()
+                || FindRewardsScreen(linkedSet) is not { } screen)
+            {
+                return;
+            }
+
+            screen.RewardCollectedFrom(linkedSet);
+            linkedSet.LinkedRewardSet.OnSkipped();
+            linkedSet.EmitSignal(NLinkedRewardSet.SignalName.RewardClaimed, linkedSet);
+            linkedSet.QueueFreeSafely();
+
+            Callable.From(() =>
+            {
+                if (GodotObject.IsInstanceValid(screen)
+                    && screen.IsInsideTree()
+                    && !screen.IsQueuedForDeletion())
+                {
+                    screen.DefaultFocusedControl.GrabFocus();
+                }
+            }).CallDeferred();
+        }
+
+        private static NRewardsScreen? FindRewardsScreen(Node node)
+        {
+            Node? current = node.GetParent();
+            while (current != null)
+            {
+                if (current is NRewardsScreen screen)
+                    return screen;
+                current = current.GetParent();
+            }
+
+            return null;
+        }
+
+        private static bool IsUsable(Control control) =>
+            GodotObject.IsInstanceValid(control)
+            && control.IsInsideTree()
+            && control.IsVisibleInTree()
+            && !control.IsQueuedForDeletion();
     }
 
     /// <summary>
