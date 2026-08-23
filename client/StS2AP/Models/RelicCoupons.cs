@@ -1,7 +1,5 @@
-using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Relics;
-using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.RelicPools;
 using MegaCrit.Sts2.Core.Runs;
@@ -12,8 +10,8 @@ using STS2RitsuLib.Scaffolding.Content;
 namespace StS2AP.Models;
 
 /// <summary>
-/// Permanent AP-run indicator for earned natural relic rewards that have not yet been paired
-/// with a received AP Relic item. The authoritative value remains on ArchipelagoProgress.
+/// Permanent AP-run indicator comparing earned natural relic rewards and the run's anytime
+/// allowance with received AP Relic items. The authoritative inputs remain on ArchipelagoProgress.
 /// NOTE: since this is a RitsuLib relic: the appropriate relics.json localization must stay
 /// as ARCHIPELAGO to match the current ModId (even if it goes against the other localization names)
 /// </summary>
@@ -21,9 +19,6 @@ namespace StS2AP.Models;
 public sealed class RelicCoupons : ModRelicTemplate
 {
     private const string CouponIconPath = "res://images/APIcon.png";
-    private int? _activationDisplayAmount;
-    private int _activationSequence;
-
     // This is AP run-state presentation, not a character starter relic. Touch of Orobas
     // selects the first owned Starter-rarity relic, so classifying the coupon as Starter
     // can make Touch replace it with Circlet instead of upgrading the real starter relic.
@@ -32,7 +27,11 @@ public sealed class RelicCoupons : ModRelicTemplate
     public override bool ShowCounter => true;
 
     public override int DisplayAmount =>
-        _activationDisplayAmount ?? ArchipelagoClient.Progress.BankedRelicRewards;
+        RelicRewardUtility.GetCouponBalance(GameUtility.CurrentPlayer);
+
+    // RelicModel uses this flag to exclude one-time pickup relics from relic-trading events.
+    // Relic Coupons has no actual pickup effect, but it is permanent AP run-state UI.
+    public override bool HasUponPickupEffect => true;
 
     public override bool ShouldReceiveCombatHooks => false;
 
@@ -86,8 +85,7 @@ public sealed class RelicCoupons : ModRelicTemplate
     }
 
     /// <summary>
-    /// Uses the same native relic flash event as counting relics such as Lasting Candy. This is
-    /// shown when an earned coupon is immediately paired, even if its displayed balance stays at 0.
+    /// Uses the same native relic flash event as counting relics such as Lasting Candy.
     /// </summary>
     public static void Activate(Player? player = null)
     {
@@ -97,7 +95,7 @@ public sealed class RelicCoupons : ModRelicTemplate
             if (relic == null)
                 return;
 
-            TaskHelper.RunSafely(relic.DoActivateVisuals());
+            relic.ActivateVisuals();
         }
         catch (Exception ex)
         {
@@ -106,23 +104,10 @@ public sealed class RelicCoupons : ModRelicTemplate
         }
     }
 
-    private async Task DoActivateVisuals()
+    private void ActivateVisuals()
     {
         AssertMutable();
-        var activationSequence = ++_activationSequence;
-
-        // Pairing has already decremented the authoritative balance. Briefly show its previous
-        // value so an immediate earn-and-spend visibly ticks from 1 to 0 instead of appearing idle.
-        _activationDisplayAmount = ArchipelagoClient.Progress.BankedRelicRewards + 1;
-        InvokeCouponCountChanged();
         Flash();
-
-        await Cmd.Wait(1f);
-        if (activationSequence != _activationSequence)
-            return;
-
-        _activationDisplayAmount = null;
-        InvokeCouponCountChanged();
     }
 
     private void InvokeCouponCountChanged() => InvokeDisplayAmountChanged();

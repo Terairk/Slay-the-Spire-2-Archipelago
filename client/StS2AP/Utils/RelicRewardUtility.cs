@@ -100,6 +100,24 @@ namespace StS2AP.Utils
         }
 
         /// <summary>
+        /// Returns the signed Relic Coupons counter. Negative values mean more eligible natural
+        /// relic rewards are needed; positive values mean more AP Relic receipts are needed.
+        /// </summary>
+        public static int GetCouponBalance(Player? player)
+        {
+            var progress = ArchipelagoClient.Progress;
+            var earnedRewards = Math.Min(
+                ArchipelagoProgress._maxRelicRewards,
+                progress.RelicRewardsAttempted
+            );
+            var relicReceipts = player == null ? 0 : CountReceivedRelics(player);
+
+            return earnedRewards
+                + progress.RelicRewardsAvailableAnytimeForRun
+                - relicReceipts;
+        }
+
+        /// <summary>
         /// Pairs the newly recorded bank with the oldest waiting gated receipt. The AP item is
         /// consumed immediately because the native reward screen now owns the relic grant.
         /// Returns true if it succeeded consuming a receipt.

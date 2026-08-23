@@ -19,6 +19,11 @@ public static class ModSettingsRegistration
     // Keybindings
     private const string KeyBinds_APMenuId = "keybind_ap_menu";
 
+    // Controller.joystickPress was renamed to Controller.lStickPress in 0.108. Keeping both
+    // action strings lets the multiplayer branch retain the cross-version runtime binding.
+    private const string LegacyControllerStickPress = "controller_joystick_press";
+    private const string CurrentControllerStickPress = "controller_l_stick_press";
+
     // Notifications
     private const string Notif_AnnouncerId = "notif_announcer";
 
@@ -68,7 +73,7 @@ public static class ModSettingsRegistration
         // And register it
         ApLootHotkeyHandle?.Dispose();
         ApLootHotkeyHandle = RuntimeHotkeyService.Register(
-            normalizedBinding,
+            GetApLootBindings(normalizedBinding),
             () =>
             {
                 // Ignore if we're not in a run
@@ -81,11 +86,23 @@ public static class ModSettingsRegistration
             {
                 Id = $"{ModEntry.ModId}.{KeyBinds_APMenuId}",
                 DisplayName = RuntimeHotkeyText.Literal("Open AP Loot Menu"),
-                Description = RuntimeHotkeyText.Literal("Opens the Archipelago Loot menu."),
+                Description = RuntimeHotkeyText.Literal(
+                    "Opens the Archipelago Loot menu with the configured keyboard shortcut or L3."
+                ),
                 Category = RuntimeHotkeyText.Literal("Archipelago"),
                 MarkInputHandled = true,
             }
         );
+    }
+
+    private static string[] GetApLootBindings(string keyboardBinding)
+    {
+        return
+        [
+            keyboardBinding,
+            RuntimeHotkeyService.ActionBinding(LegacyControllerStickPress),
+            RuntimeHotkeyService.ActionBinding(CurrentControllerStickPress),
+        ];
     }
 
     #endregion
@@ -221,9 +238,11 @@ public static class ModSettingsRegistration
     private static void ConfigureKeybindsSection(ModSettingsSectionBuilder section)
     {
         section
-            .WithTitle(ModSettingsText.Literal("Keyboard Controls"))
+            .WithTitle(ModSettingsText.Literal("Controls"))
             .WithDescription(
-                ModSettingsText.Literal("Configure keybinds for Archipelago functionality.")
+                ModSettingsText.Literal(
+                    "Configure Archipelago controls. The AP Loot Menu also opens with L3."
+                )
             )
             .AddKeyBinding(
                 KeyBinds_APMenuId,
@@ -239,12 +258,13 @@ public static class ModSettingsRegistration
                         // Attempt to rebind it (it should have been initially bound during startup)
                         if (ApLootHotkeyHandle is not null)
                         {
-                            ApLootHotkeyHandle.TryRebind(normalizedBinding, out var error);
-
-                            if (error is not null)
+                            if (!ApLootHotkeyHandle.TryRebind(
+                                    GetApLootBindings(normalizedBinding),
+                                    out _
+                                ))
                             {
                                 RitsuLibFramework.Logger.Warn(
-                                    $"Unable to rebind AP menu hotkey: {error}"
+                                    $"Unable to rebind AP menu keyboard hotkey to '{normalizedBinding}'."
                                 );
                             }
                         }
