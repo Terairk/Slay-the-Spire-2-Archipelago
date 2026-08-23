@@ -159,11 +159,11 @@ namespace StS2AP.Patches
                 // Progressive threshold items
                 case APItem.ProgressiveSmith:
                     HandleThreshholdItem(item, Progress.ProgressiveSmiths, "Progressive Smiths");
-                    RestSiteMultiplayer.QueueRelevantStateRefresh();
+                    PublishRestSiteProgress(liveDelivery);
                     break;
                 case APItem.ProgressiveRest:
                     HandleThreshholdItem(item, Progress.ProgressiveRests, "Progressive Rests");
-                    RestSiteMultiplayer.QueueRelevantStateRefresh();
+                    PublishRestSiteProgress(liveDelivery);
                     break;
                 case APItem.ProgressiveAncient:
                 {
@@ -401,6 +401,19 @@ namespace StS2AP.Patches
             {
                 LogUtility.Error(
                     $"Failed to process {name} when this item was received: ({item.ItemDisplayName} from {item.Player.Name})"
+                );
+            }
+        }
+
+        private static void PublishRestSiteProgress(bool liveDelivery)
+        {
+            if (liveDelivery
+                && MultiplayerSupport.IsRealMultiplayerRun
+                && GameUtility.CurrentPlayer is Player currentPlayer
+                && !ApRunData.PublishLocalProgress(currentPlayer))
+            {
+                LogUtility.Error(
+                    "Progressive Rest/Smith state could not be published to the host"
                 );
             }
         }

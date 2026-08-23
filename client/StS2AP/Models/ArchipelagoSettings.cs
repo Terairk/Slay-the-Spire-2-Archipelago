@@ -37,6 +37,14 @@ namespace StS2AP.Models
     /// </summary>
     public class ArchipelagoSettings
     {
+        private static readonly StringComparer CharacterNameComparer =
+            StringComparer.InvariantCultureIgnoreCase;
+
+        private IDictionary<string, CharacterConfig> _characters =
+            CreateCharacterMap();
+        private IDictionary<string, CharacterConfig> _unrecognizedCharacters =
+            CreateCharacterMap();
+
         // TODO: update to be a set
         public int AscensionLevel { get; set; }
 
@@ -58,12 +66,20 @@ namespace StS2AP.Models
         /// This is *not* a collection of which characters are unlocked, just which characters *can* be unlocked for this slot.
         /// Official Name -> CharacterConfig
         /// </summary>
-        public IDictionary<string, CharacterConfig> Characters { get; set;} = new ConcurrentDictionary<string, CharacterConfig>(StringComparer.InvariantCultureIgnoreCase);
+        public IDictionary<string, CharacterConfig> Characters
+        {
+            get => _characters;
+            set => _characters = CreateCharacterMap(value);
+        }
 
         /// <summary>
         /// The collection of characters that are unrecognized by the mod.  Needed so we can send out unlocks.
         /// </summary>
-        public IDictionary<string, CharacterConfig> UnrecognizedCharacters { get; set; } = new ConcurrentDictionary<string, CharacterConfig>(StringComparer.InvariantCultureIgnoreCase);
+        public IDictionary<string, CharacterConfig> UnrecognizedCharacters
+        {
+            get => _unrecognizedCharacters;
+            set => _unrecognizedCharacters = CreateCharacterMap(value);
+        }
 
         public bool NeowSanity { get; set; }
 
@@ -142,5 +158,16 @@ namespace StS2AP.Models
         public Version? APWorldVersion { get; set;}
 
         #endregion
+
+        private static IDictionary<string, CharacterConfig> CreateCharacterMap(
+            IEnumerable<KeyValuePair<string, CharacterConfig>>? entries = null)
+        {
+            return entries == null
+                ? new ConcurrentDictionary<string, CharacterConfig>(CharacterNameComparer)
+                : new ConcurrentDictionary<string, CharacterConfig>(
+                    entries,
+                    CharacterNameComparer
+                );
+        }
     }
 }

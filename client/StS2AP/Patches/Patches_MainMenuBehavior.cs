@@ -98,8 +98,10 @@ namespace StS2AP.Patches
         // The path that StS2 stores the main menu buttons in
         private const string MainMenuButtonsPath = "MainMenuTextButtons";
 
-        // The subpath to the "Single Player" button, which we rename to "Archipelago"
+        // The subpath to the "Single Player" button, which we rename to "AP Singleplayer"
         private const string SingleplayerButtonPath = MainMenuButtonsPath + "/SingleplayerButton";
+
+        private const string MultiplayerButtonPath = MainMenuButtonsPath + "/MultiplayerButton";
 
         private const string ConnectButtonName = "ArchipelagoConnectButton";
         private const string ConnectButtonPath = MainMenuButtonsPath + "/" + ConnectButtonName;
@@ -204,7 +206,7 @@ namespace StS2AP.Patches
                     MainMenuButtonsPath + "/ContinueButton"
                 );
                 var multiplayerButton = __instance.GetNode<NMainMenuTextButton>(
-                    MainMenuButtonsPath + "/MultiplayerButton"
+                    MultiplayerButtonPath
                 );
                 _multiplayerButton = multiplayerButton;
                 var abandonRunButton = __instance.GetNode<NMainMenuTextButton>(
@@ -282,8 +284,8 @@ namespace StS2AP.Patches
         }
 
         /// <summary>
-        /// Creates an Archipelago Settings button by duplicating the vanilla
-        /// Settings button and placing it immediately after Archipelago.
+        /// Creates the Archipelago main-menu buttons and places the primary actions in the
+        /// order Connect, AP Singleplayer, AP Multiplayer.
         ///
         /// Duplicating a vanilla button preserves the game's styling,
         /// sounds, animations, and controller behavior.
@@ -298,7 +300,10 @@ namespace StS2AP.Patches
 
             // Grab references to the buttons we need to manipulate
             var singleplayerButton = mainMenu.GetNode<NMainMenuTextButton>(SingleplayerButtonPath);
+            var multiplayerButton = mainMenu.GetNode<NMainMenuTextButton>(MultiplayerButtonPath);
             var settingsButton = mainMenu.GetNode<NMainMenuTextButton>(SettingsButtonPath);
+            Node buttonContainer = singleplayerButton.GetParent();
+            int singleplayerIndex = singleplayerButton.GetIndex();
 
             var connectButton = (NMainMenuTextButton)settingsButton.Duplicate();
             connectButton.Name = ConnectButtonName;
@@ -312,6 +317,7 @@ namespace StS2AP.Patches
                 })
             );
             singleplayerButton.AddSibling(connectButton);
+            buttonContainer.MoveChild(connectButton, singleplayerIndex);
             connectButton.CustomMinimumSize = new Vector2(
                 300f,
                 connectButton.CustomMinimumSize.Y
@@ -327,7 +333,7 @@ namespace StS2AP.Patches
                     MenuUtility.OpenArchipelagoSettings();
                 })
             );
-            connectButton.AddSibling(archipelagoSettingsButton);
+            multiplayerButton.AddSibling(archipelagoSettingsButton);
             archipelagoSettingsButton.CustomMinimumSize = new Vector2(
                 300f,
                 archipelagoSettingsButton.CustomMinimumSize.Y

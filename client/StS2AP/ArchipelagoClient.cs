@@ -739,7 +739,6 @@ namespace StS2AP
                     ArchipelagoConnectionUI.SetStatus(preparationError);
                     return;
                 }
-                RestSiteMultiplayer.QueueRelevantStateRefresh();
             }
             else
             {
@@ -856,7 +855,6 @@ namespace StS2AP
                 TextUtility.RegisterLocTableAtRuntime("ap", locationLocalizations);
 
                 LogUtility.Success($"Pre-scouted {ScoutedLocations.Count} locations successfully");
-                RestSiteMultiplayer.QueueRelevantStateRefresh();
             }
             catch (Exception ex)
             {

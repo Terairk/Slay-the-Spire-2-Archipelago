@@ -11,6 +11,10 @@ namespace StS2AP.Data
 {
     public static class LocationData
     {
+        private const long CharacterLocationStride = 10000;
+        private const long FirstCampfireBaseId = 89;
+        private const int CampfiresPerAct = 2;
+
         /// <summary>
         /// Combines a base Location ID with a character's offset ID
         /// </summary>
@@ -158,6 +162,28 @@ namespace StS2AP.Data
                 }
             }
             return ids;
+        }
+
+        /// <summary>
+        /// Resolves a Campfiresanity location without consulting a process-local AP session.
+        /// Every multiplayer replica can therefore construct the same owner-specific option list.
+        /// </summary>
+        public static long GetCampfireLocationId(long characterOffset, int act, int campfire)
+        {
+            if (characterOffset < 1 || act is < 1 or > 3 || campfire is < 1 or > 2)
+                return -1;
+
+            long baseId = FirstCampfireBaseId
+                + ((act - 1) * CampfiresPerAct)
+                + (campfire - 1);
+            return ((characterOffset - 1) * CharacterLocationStride) + baseId;
+        }
+
+        public static bool IsCampfireLocationId(long locationId)
+        {
+            long baseId = Math.Abs(locationId) % CharacterLocationStride;
+            return baseId is >= FirstCampfireBaseId
+                and < FirstCampfireBaseId + (3 * CampfiresPerAct);
         }
         public static List<long> GetShopsanityLocations(CharacterModel character)
         {

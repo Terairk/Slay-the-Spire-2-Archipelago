@@ -4,8 +4,9 @@ using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
 using StS2AP.Models;
+using StS2AP.Utils;
 
-namespace StS2AP.Utils;
+namespace StS2AP.Multiplayer;
 
 /// <summary>
 /// Resolves the AP slot which owns a player's location checks. Own-slot players use their
@@ -70,6 +71,38 @@ public static class MultiplayerLocationChecks
             ApRunData.PublishLocalProgress(player);
     }
 
+    /// <summary>
+    /// Publishes the canonical progress record that owns this player's location checks. An AP
+    /// Guest writes checks to the fixed host's AP slot, so the host player's record is the one
+    /// that must be updated for subsequent replicated construction.
+    /// </summary>
+    public static bool PublishEffectiveCheckProgress(Player player)
+    {
+        if (!MultiplayerSupport.IsRealMultiplayerRun)
+            return true;
+        if (player.RunState is not RunState runState
+            || !ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState state))
+        {
+            return false;
+        }
+
+        if (state.Participation == ApParticipationKind.OwnApSlot)
+            return IsLocalProgressOwner(player) && ApRunData.PublishLocalProgress(player);
+
+        if (state.Participation != ApParticipationKind.ApGuest
+            || RunManager.Instance.NetService.Type != NetGameType.Host
+            || !BetaMainCompatibility.TryGetHostNetId(
+                RunManager.Instance.NetService,
+                out ulong hostNetId
+            )
+            || runState.GetPlayer(hostNetId) is not Player hostPlayer)
+        {
+            return false;
+        }
+
+        return ApRunData.PublishLocalProgress(hostPlayer);
+    }
+
     public static int IncrementCardRewards(Player player) =>
         IncrementCounter(player, Counter.Card);
 
@@ -129,6 +162,65 @@ public static class MultiplayerLocationChecks
 
         progress = null!;
         return false;
+    }
+
+    /// <summary>
+    /// Resolves the canonical AP-slot progress that owns location checks for a player. Own-slot
+    /// players use their Net-ID record; AP Guests use the fixed STS host's AP-slot record.
+    /// </summary>
+    public static bool TryGetEffectiveCheckProgress(
+        Player player,
+        out ApRunProgressState progress,
+        out string reason)
+    {
+        progress = null!;
+        reason = string.Empty;
+        if (!MultiplayerSupport.IsRealMultiplayerRun)
+        {
+            progress = ArchipelagoClient.Progress.ToRunProgressState();
+            return true;
+        }
+
+        if (player.RunState is not RunState runState
+            || !ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState state))
+        {
+            reason = $"no canonical AP run state exists for player {player.NetId}";
+            return false;
+        }
+
+        if (state.Participation == ApParticipationKind.OwnApSlot)
+        {
+            progress = state.Progress;
+        }
+        else if (state.Participation == ApParticipationKind.ApGuest
+            && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
+            && shared.SharedSlotCheckScope == SharedSlotCheckScope.AllApParticipants
+            && BetaMainCompatibility.TryGetHostNetId(
+                RunManager.Instance.NetService,
+                out ulong hostNetId
+            )
+            && ApRunData.TryGetPlayerState(
+                runState,
+                hostNetId,
+                out ApPlayerRunState hostState
+            )
+            && hostState.Participation == ApParticipationKind.OwnApSlot)
+        {
+            progress = hostState.Progress;
+        }
+        else
+        {
+            reason = $"player {player.NetId} has no AP slot that owns Campfire checks";
+            return false;
+        }
+
+        if (!progress.Initialized)
+        {
+            reason = $"AP progress for player {player.NetId} is not initialized";
+            progress = null!;
+            return false;
+        }
+        return true;
     }
 
     internal static IReadOnlyList<int> GetReplicatedRelicReceiptIndexes(

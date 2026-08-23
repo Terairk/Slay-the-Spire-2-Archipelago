@@ -1,17 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace StS2AP.Models;
-
-/// <summary>
-/// The complete run-scoped state for one progressive starter. Sending the related fields as one
-/// unit prevents a peer from observing an ID/tier combination that never existed on the owner.
-/// </summary>
-public sealed class ApProgressiveStarterState
-{
-    public string? BaseId { get; set; }
-    public string? UpgradedId { get; set; }
-    public ProgressiveStarterTier Tier { get; set; }
-}
+namespace StS2AP.Persistence;
 
 /// <summary>
 /// Ordered field-level mutation for <see cref="ApRunProgressState"/>. Assignment dictionaries
@@ -51,6 +40,12 @@ public sealed class ApProgressDelta
     public List<int> AncientRelicChoiceAssignmentRemovals { get; set; } = new();
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<long, int>? ProgressiveAncients { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<long, int>? ProgressiveRests { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<long, int>? ProgressiveSmiths { get; set; }
+    public HashSet<long> CheckedCampfireLocationIdsAdded { get; set; } = new();
+    public HashSet<long> CheckedCampfireLocationIdsRemoved { get; set; } = new();
     public Dictionary<int, ApCardAssignmentState> CardAssignmentUpserts { get; set; } = new();
     public List<int> CardAssignmentRemovals { get; set; } = new();
     public Dictionary<int, string> PotionAssignmentUpserts { get; set; } = new();
@@ -81,6 +76,10 @@ public sealed class ApProgressDelta
         || AncientRelicChoiceAssignmentUpserts.Count > 0
         || AncientRelicChoiceAssignmentRemovals.Count > 0
         || ProgressiveAncients != null
+        || ProgressiveRests != null
+        || ProgressiveSmiths != null
+        || CheckedCampfireLocationIdsAdded.Count > 0
+        || CheckedCampfireLocationIdsRemoved.Count > 0
         || CardAssignmentUpserts.Count > 0
         || CardAssignmentRemovals.Count > 0
         || PotionAssignmentUpserts.Count > 0
@@ -119,6 +118,12 @@ public sealed class ApProgressDelta
             )
                 ? null
                 : new Dictionary<long, int>(after.ProgressiveAncients),
+            ProgressiveRests = CountMapsEqual(before.ProgressiveRests, after.ProgressiveRests)
+                ? null
+                : new Dictionary<long, int>(after.ProgressiveRests),
+            ProgressiveSmiths = CountMapsEqual(before.ProgressiveSmiths, after.ProgressiveSmiths)
+                ? null
+                : new Dictionary<long, int>(after.ProgressiveSmiths),
             StarterCard = StarterChanged(
                 before.ProgressiveStarterCardBaseId,
                 before.ProgressiveStarterCardUpgradedId,
@@ -176,6 +181,10 @@ public sealed class ApProgressDelta
             .Except(before.PendingLocationChecks).ToHashSet();
         delta.PendingLocationChecksRemoved = before.PendingLocationChecks
             .Except(after.PendingLocationChecks).ToHashSet();
+        delta.CheckedCampfireLocationIdsAdded = after.CheckedCampfireLocationIds
+            .Except(before.CheckedCampfireLocationIds).ToHashSet();
+        delta.CheckedCampfireLocationIdsRemoved = before.CheckedCampfireLocationIds
+            .Except(after.CheckedCampfireLocationIds).ToHashSet();
         if (!before.Ascensions.ToHashSet().SetEquals(after.Ascensions))
             delta.Ascensions = after.Ascensions.Distinct().OrderBy(level => level).ToList();
         return delta;
@@ -212,6 +221,12 @@ public sealed class ApProgressDelta
         ApplyDictionary(result.AncientRelicChoiceAssignments, AncientRelicChoiceAssignmentUpserts, AncientRelicChoiceAssignmentRemovals);
         if (ProgressiveAncients != null)
             result.ProgressiveAncients = new Dictionary<long, int>(ProgressiveAncients);
+        if (ProgressiveRests != null)
+            result.ProgressiveRests = new Dictionary<long, int>(ProgressiveRests);
+        if (ProgressiveSmiths != null)
+            result.ProgressiveSmiths = new Dictionary<long, int>(ProgressiveSmiths);
+        result.CheckedCampfireLocationIds.ExceptWith(CheckedCampfireLocationIdsRemoved);
+        result.CheckedCampfireLocationIds.UnionWith(CheckedCampfireLocationIdsAdded);
         ApplyDictionary(result.CardAssignments, CardAssignmentUpserts, CardAssignmentRemovals);
         ApplyDictionary(result.PotionAssignments, PotionAssignmentUpserts, PotionAssignmentRemovals);
         result.UsedItems.RemoveAll(UsedItemsRemoved.Contains);
@@ -246,6 +261,9 @@ public sealed class ApProgressDelta
             pair => pair.Value.ToList()
         ),
         ProgressiveAncients = new Dictionary<long, int>(source.ProgressiveAncients),
+        ProgressiveRests = new Dictionary<long, int>(source.ProgressiveRests),
+        ProgressiveSmiths = new Dictionary<long, int>(source.ProgressiveSmiths),
+        CheckedCampfireLocationIds = new HashSet<long>(source.CheckedCampfireLocationIds),
         CardAssignments = source.CardAssignments.ToDictionary(
             pair => pair.Key,
             pair => CloneCardAssignment(pair.Value)

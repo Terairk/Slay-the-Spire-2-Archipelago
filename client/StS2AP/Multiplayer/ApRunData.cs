@@ -4,11 +4,12 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
 using StS2AP.Models;
+using StS2AP.Utils;
 using STS2RitsuLib;
 using STS2RitsuLib.Networking.Sidecar;
 using STS2RitsuLib.RunData;
 
-namespace StS2AP.Utils;
+namespace StS2AP.Multiplayer;
 
 /// <summary>
 /// Owns the AP data embedded in MegaCrit's canonical run snapshot. Lobby methods stage the
@@ -129,7 +130,6 @@ public static class ApRunData
             },
             Progress = existing?.Progress ?? new ApRunProgressState(),
             ProgressRevision = existing?.ProgressRevision ?? 0,
-            RestSiteState = existing?.RestSiteState,
         };
         // SyncLobbyOnChange makes this a contribution to the authoritative host staging
         // session. On a client RitsuLib pushes the local PlayerRunSavedData payload with a
@@ -182,27 +182,6 @@ public static class ApRunData
             return _players.TryGet(runState, netId, out state);
         state = null!;
         return false;
-    }
-
-    /// <summary>
-    /// Installs one host-confirmed rest-site state into the canonical per-player run record.
-    /// Every replica keeps the same in-memory copy; only the fixed host persists it.
-    /// </summary>
-    public static bool TrySetRestSiteState(
-        RunState runState,
-        ulong ownerNetId,
-        ApRestSiteState restSiteState)
-    {
-        if (!_initialized
-            || !_players.TryGet(runState, ownerNetId, out ApPlayerRunState state)
-            || state.Participation == ApParticipationKind.VanillaGuest)
-        {
-            return false;
-        }
-
-        state.RestSiteState = restSiteState;
-        _players.Set(runState, ownerNetId, state);
-        return true;
     }
 
     public static bool TryGetLobbySharedState(

@@ -158,7 +158,6 @@ namespace StS2AP.Patches
                 if (localPlayer == null)
                     return;
 
-                RestSiteMultiplayer.BindRun(__result);
                 AncientMultiplayer.BindRun(__result);
 
                 ArchipelagoCharTrackerUI.RemoveUI();
@@ -222,9 +221,6 @@ namespace StS2AP.Patches
                     MultiplayerSupport.InvalidateRunClaims(bindError);
                     return;
                 }
-                RestSiteMultiplayer.PublishRelevantStates();
-                RestSiteMultiplayer.QueueRelevantStateRefresh();
-
                 if (MultiplayerSupport.IsLocalOwnApSlot)
                     PendingCheckUtility.ReconcileAndSend();
                 if (MultiplayerSupport.IsLocalOwnApSlot

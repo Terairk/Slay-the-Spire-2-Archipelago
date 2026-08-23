@@ -5,6 +5,7 @@ using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
+using StS2AP.Data;
 using StS2AP.Utils;
 using static StS2AP.Data.CharTable;
 using MegaCrit.Sts2.Core.Saves;
@@ -130,7 +131,11 @@ namespace StS2AP.Models
         /// </summary>
         public int BossRewardsDistributed { get; set; } = 0;
 
-        public Dictionary<string, bool> CampfiresChecked { get; set; } = new Dictionary<string, bool>();
+        /// <summary>
+        /// Campfiresanity locations already present in the AP slot or queued by this client.
+        /// Location IDs are deterministic across STS replicas and are the canonical identity.
+        /// </summary>
+        public HashSet<long> CheckedCampfireLocationIds { get; set; } = new();
 
         /// <summary>
         /// Maps an Archipelago Relic item's index to the choices pre-pulled from the RelicFactory for it.
@@ -329,18 +334,19 @@ namespace StS2AP.Models
 
         public void InitializeFromServer(Player player)
         {
-            var name = player.APName();
-            for (int i = 1; i <= 3; i++)
-            {
-                for (int j = 1; j <= 2; j++)
-                {
-                    var checkName = $"{name} Act {i} Campfire {j}";
-                    var locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
-                    CampfiresChecked[checkName] = ArchipelagoClient.Session.Locations.AllLocationsChecked.Contains(locationId);
-                }
-            }
+            RefreshCheckedCampfiresFromClient();
             Ascensions.Initialize(GameUtility.CurrentConfig);
             LogUtility.Info($"Starting game with ascension levels {string.Join(",", Ascensions.CurrentAscension)}");
+        }
+
+        public void RefreshCheckedCampfiresFromClient()
+        {
+            CheckedCampfireLocationIds.UnionWith(
+                ArchipelagoClient.CheckedLocations.Where(LocationData.IsCampfireLocationId)
+            );
+            CheckedCampfireLocationIds.UnionWith(
+                PendingLocationChecks.Where(LocationData.IsCampfireLocationId)
+            );
         }
 
         public void ResetTrackers()
@@ -353,7 +359,7 @@ namespace StS2AP.Models
             RelicRewardsAvailableAnytimeForRun = RelicRewardUtility.EffectiveAvailableAnytime;
             GoldRewardsAttempted = 0;
             PotionRewardsAttempted = 0;
-            CampfiresChecked.Clear();
+            CheckedCampfireLocationIds.Clear();
             ShopSlotsChecked.Clear();
             RelicChoiceAssignments.Clear();
             AncientRelicChoiceAssignments.Clear();
@@ -644,6 +650,7 @@ namespace StS2AP.Models
 
         public ApRunProgressState ToRunProgressState()
         {
+            RefreshCheckedCampfiresFromClient();
             return new ApRunProgressState
             {
                 Initialized = true,
@@ -675,6 +682,9 @@ namespace StS2AP.Models
                     )
                 ).ToDictionary(),
                 ProgressiveAncients = new Dictionary<long, int>(ProgressiveAncients),
+                ProgressiveRests = new Dictionary<long, int>(ProgressiveRests),
+                ProgressiveSmiths = new Dictionary<long, int>(ProgressiveSmiths),
+                CheckedCampfireLocationIds = new HashSet<long>(CheckedCampfireLocationIds),
                 ProgressiveStarterCardBaseId = ProgressiveStarterCardBaseId,
                 ProgressiveStarterCardUpgradedId = ProgressiveStarterCardUpgradedId,
                 ProgressiveStarterCardTier = ProgressiveStarterCardTier,
@@ -762,6 +772,11 @@ namespace StS2AP.Models
                     )
                 ).ToDictionary(),
                 ProgressiveAncients = new Dictionary<long, int>(saveData.ProgressiveAncients),
+                ProgressiveRests = new Dictionary<long, int>(saveData.ProgressiveRests),
+                ProgressiveSmiths = new Dictionary<long, int>(saveData.ProgressiveSmiths),
+                CheckedCampfireLocationIds = new HashSet<long>(
+                    saveData.CheckedCampfireLocationIds
+                ),
                 ProgressiveStarterCardBaseId = saveData.ProgressiveStarterCardBaseId,
                 ProgressiveStarterCardUpgradedId = saveData.ProgressiveStarterCardUpgradedId,
                 ProgressiveStarterCardTier = saveData.ProgressiveStarterCardTier,
