@@ -517,6 +517,10 @@ public static class ApRunData
                 return;
             }
 
+            PreserveRegularCardRewardConstructionCounter(
+                state.Progress,
+                context.Message.Progress
+            );
             state.Progress = context.Message.Progress;
             state.ProgressRevision = context.Message.Revision;
             _players.Set(runState, context.Message.OwnerNetId, state);
@@ -597,7 +601,9 @@ public static class ApRunData
                 return;
             }
 
-            state.Progress = context.Message.Delta.ApplyToCopy(state.Progress);
+            ApRunProgressState updatedProgress = context.Message.Delta.ApplyToCopy(state.Progress);
+            PreserveRegularCardRewardConstructionCounter(state.Progress, updatedProgress);
+            state.Progress = updatedProgress;
             state.ProgressRevision = context.Message.Revision;
             _players.Set(runState, context.Message.OwnerNetId, state);
             if (runState.GetPlayer(context.Message.OwnerNetId) is Player confirmedOwner)
@@ -621,6 +627,21 @@ public static class ApRunData
         });
         if (!posted)
             LogUtility.Error("Could not schedule the AP progress delta on the game main loop.");
+    }
+
+    /// <summary>
+    /// Regular combat card rewards are constructed on every multiplayer process, so every process
+    /// advances this counter itself. An owner's live AP progress message already contains that same
+    /// advancement; applying it before local reward construction would count the reward twice.
+    /// The host-carried run snapshot establishes the initial/reconnect baseline before progress is
+    /// initialized, so only live updates to an initialized view preserve the local cursor.
+    /// </summary>
+    private static void PreserveRegularCardRewardConstructionCounter(
+        ApRunProgressState current,
+        ApRunProgressState incoming)
+    {
+        if (current.Initialized)
+            incoming.CardRewardsAttempted = current.CardRewardsAttempted;
     }
 
     private static bool TryGetProgressOwner(

@@ -53,7 +53,10 @@ public sealed class ApRestSiteModel : HookedSingletonModel
         bool canSmith = smithLevel >= currentAct;
 
         if (!canRest)
+        {
             RemoveOption(options, "HEAL");
+            RemoveOption(options, "MEND");
+        }
         if (!canSmith)
             RemoveOption(options, "SMITH");
         if (!canRest && !canSmith)
