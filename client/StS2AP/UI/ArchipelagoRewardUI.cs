@@ -1,4 +1,5 @@
 using Godot;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
@@ -214,8 +215,18 @@ public static class ArchipelagoRewardUI
         if (reward.CanClaim(out string reason))
             return true;
 
+        string message = string.IsNullOrWhiteSpace(reason)
+            ? "This AP reward cannot be claimed."
+            : reason;
+        bool blockedByCombat = CombatManager.Instance.IsInProgress
+            && message.Contains("outside combat", StringComparison.OrdinalIgnoreCase);
         NotificationUtility.ShowRawText(
-            string.IsNullOrWhiteSpace(reason) ? "This AP reward cannot be claimed." : reason
+            blockedByCombat ? $"[font_size=60]{message}[/font_size]" : message,
+            timeout: blockedByCombat ? 3.5 : 3.0,
+            priority: blockedByCombat
+                ? NotificationUtility.NotificationPriority.High
+                : NotificationUtility.NotificationPriority.Normal,
+            includeInDevConsole: !blockedByCombat
         );
         return false;
     }
