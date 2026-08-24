@@ -42,6 +42,7 @@ public static class MultiplayerSupport
         MultiplayerFeature.RestSites,
         MultiplayerFeature.Ancients,
         MultiplayerFeature.VictoryChecks,
+        MultiplayerFeature.DeathLink,
         MultiplayerFeature.SaveAndReconnect,
     };
 
@@ -911,6 +912,7 @@ public static class MultiplayerSupport
         ApGrantDispatcher.EndRun();
         ApMirroredRewardDispatcher.EndRun();
         AncientMultiplayer.EndRun();
+        DeathLinkMultiplayer.EndRun();
     }
 
     public static bool CanClaimGold(out string reason)

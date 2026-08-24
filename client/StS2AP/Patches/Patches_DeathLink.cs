@@ -4,12 +4,7 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using StS2AP.Utils;
-using StS2AP.Models;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace StS2AP.Patches
 {
@@ -23,8 +18,7 @@ namespace StS2AP.Patches
         /// This prevents the infinite feedback loop where receiving a Death Link kill triggers us to send
         /// another one back, which kills the sender again, and so on.
         /// </summary>
-        // TODO: 3 seconds seems crazy small, especially once multiplayer is introduced
-        private const double DeathLinkSuppressionWindowSeconds = 3.0;
+        private const double DeathLinkSuppressionWindowSeconds = 6.0;
 
         /// <summary>
         /// Fires when the player sees the "Game Over" screen.
@@ -35,8 +29,13 @@ namespace StS2AP.Patches
         {
             static bool Prefix(NRun __instance, SerializableRun serializableRun)
             {
-                // AP_MP: Death Link restore needs synchronized ownership and loop suppression.
+                // AP_MP: multiplayer uses a replicated individual-death boundary instead.
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink))
+                    return true;
+
+                // Multiplayer sends at the individual player's actual death boundary instead of
+                // waiting for the shared game-over screen.
+                if (MultiplayerSupport.IsRealMultiplayerRun)
                     return true;
 
                 // If Death Link isn't enabled, there's nothing to do

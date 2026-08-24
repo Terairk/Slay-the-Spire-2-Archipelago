@@ -22,6 +22,9 @@ public enum MultiplayerFeature
     AscensionEffects,
     CombatEffects,
     DeathLink,
+
+    // AP_MP: permanent deck and combat-pile mutation remains disabled independently of damage.
+    DeathFragments,
     SaveAndReconnect,
     UnknownReceivedItems,
 }

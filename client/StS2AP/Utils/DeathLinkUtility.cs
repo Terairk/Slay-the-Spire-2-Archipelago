@@ -23,8 +23,7 @@ namespace StS2AP.Utils
         /// <summary>
         /// Based on both Client and Server settings, determines if Death Link is enabled for this player.
         /// </summary>
-        // AP_MP: Death Link remains off until incoming effects sync without feedback loops.
-        // EXPLAIN: why even single player is affected by a multiplayer feature being disabled
+        // AP_MP: multiplayer effects are enabled only through the reviewed synchronized transport.
         public static bool IsDeathLinkEnabled =>
             MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
             && (!MultiplayerSupport.UsesFrozenHostSettings
@@ -34,6 +33,8 @@ namespace StS2AP.Utils
 
         public static void Initialize()
         {
+            DeathLinkMultiplayer.Initialize();
+
             // Subscribe to all mod settings value writes
             ModSettingsBindingWriteEvents.ValueWritten += OnSettingChanged;
         }
@@ -58,10 +59,9 @@ namespace StS2AP.Utils
         /// <summary>
         /// Whether or not Death Fragments are enabled
         /// </summary>
-        // AP_MP: Death fragments share the disabled multiplayer Death Link transport.
-        // EXPLAIN: why even single player is affected by a multiplayer feature being disabled
+        // AP_MP: synchronized DeathLink damage is enabled separately from permanent deck mutation.
         public static bool AreDeathFragmentsEnabled =>
-            MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
+            MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathFragments)
             && (!MultiplayerSupport.UsesFrozenHostSettings
                 && ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
                 ? ArchipelagoClient.LocalSettings.Value.EnableDeathFragments
@@ -128,6 +128,12 @@ namespace StS2AP.Utils
             // If we're not in the run, there's nothing to do other than log it
             if (!GameUtility.IsInRun || GameUtility.CurrentPlayer == null)
                 return;
+
+            if (MultiplayerSupport.IsRealMultiplayerRun)
+            {
+                DeathLinkMultiplayer.Receive(info);
+                return;
+            }
 
             // Notify the User
             try
