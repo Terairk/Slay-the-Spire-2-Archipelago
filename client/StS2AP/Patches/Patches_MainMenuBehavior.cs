@@ -11,6 +11,8 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.addons.mega_text;
 using StS2AP.UI;
 using StS2AP.Utils;
@@ -544,6 +546,60 @@ namespace StS2AP.Patches
 
                 return MultiplayerSupport.CanEnterMultiplayerLobby(out _);
             }
+        }
+
+        /// <summary>
+        /// Stops every native host entry point before it creates a lobby unless this process is
+        /// connected to and prepared for its own AP slot. Joining remains available to guests.
+        /// </summary>
+        private static bool AllowHostCreation()
+        {
+            if (MultiplayerSupport.CanHostMultiplayer(out string reason))
+                return true;
+
+            LogUtility.Warn($"Blocked multiplayer host creation: {reason}");
+            NotificationUtility.ShowRawText(reason);
+            return false;
+        }
+
+        [HarmonyPatch(typeof(NMultiplayerSubmenu), "OnHostPressed", new[] { typeof(NButton) })]
+        private static class RequireApSlotForHostButton
+        {
+            [HarmonyPrefix]
+            private static bool Prefix() => AllowHostCreation();
+        }
+
+        [HarmonyPatch(
+            typeof(NMultiplayerSubmenu),
+            nameof(NMultiplayerSubmenu.FastHost),
+            new[] { typeof(GameMode) }
+        )]
+        private static class RequireApSlotForFastHost
+        {
+            [HarmonyPrefix]
+            private static bool Prefix() => AllowHostCreation();
+        }
+
+        [HarmonyPatch(
+            typeof(NMultiplayerSubmenu),
+            nameof(NMultiplayerSubmenu.StartHost),
+            new[] { typeof(SerializableRun) }
+        )]
+        private static class RequireApSlotForSavedHost
+        {
+            [HarmonyPrefix]
+            private static bool Prefix() => AllowHostCreation();
+        }
+
+        [HarmonyPatch(
+            typeof(NMultiplayerHostSubmenu),
+            nameof(NMultiplayerHostSubmenu.StartHost),
+            new[] { typeof(GameMode) }
+        )]
+        private static class RequireApSlotForHostMode
+        {
+            [HarmonyPrefix]
+            private static bool Prefix() => AllowHostCreation();
         }
 
         /// <summary>Prevents a local ready signal unless this process's AP owner is prepared.</summary>

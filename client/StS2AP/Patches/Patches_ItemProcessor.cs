@@ -372,11 +372,22 @@ namespace StS2AP.Patches
         /// Handles universal items that do not have a character offset baked in.
         ///
         /// Universal items have no character offset, so their ItemId is cast directly to APItem
-        /// without any modulo operation. Currently all universal items are combat buffs applied
-        /// via <see cref="BuffUtility"/> at the start of the player's next turn.
+        /// without any modulo operation. In multiplayer, combat buffs are converted into five
+        /// raw AP gold for every configured character because combat effects are disabled.
         /// </summary>
         private static void HandleUniversalItem(ItemInfo item, int index)
         {
+            if (MultiplayerSupport.IsMultiplayerScope
+                && ItemTable.IsUniversalCombatBuff(item.ItemId))
+            {
+                ApGrantDispatcher.AddUniversalBuffGold(ArchipelagoClient.Progress.GoldReceived);
+                LogUtility.Success(
+                    $"Converted universal buff {item.ItemName} (index {index}) into "
+                        + $"{ApGrantDispatcher.UniversalBuffGoldValue} AP gold for every configured character"
+                );
+                return;
+            }
+
             // Cast ItemId directly � no modulo needed since universal items have no character offset.
             var universalId = (APItem)item.ItemId;
             switch (universalId)

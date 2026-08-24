@@ -268,7 +268,9 @@ public static class MultiplayerSupport
     {
         var item = indexedItem.Item;
         if (item.ItemId < 10000)
-            return MultiplayerFeature.CombatEffects;
+            return IsUniversalCombatBuff(item.ItemId)
+                ? MultiplayerFeature.GoldRewards
+                : MultiplayerFeature.UnknownReceivedItems;
 
         return item.GetCharacterSpecificItemID() switch
         {
@@ -538,6 +540,28 @@ public static class MultiplayerSupport
 
         reason = string.Empty;
         return true;
+    }
+
+    /// <summary>
+    /// Hosting is AP-authoritative, so only a process connected to and prepared for its own AP
+    /// slot may create a lobby. Disconnected players remain free to enter the native Join flow.
+    /// </summary>
+    public static bool CanHostMultiplayer(out string reason)
+    {
+        if (!ArchipelagoClient.IsConnected)
+        {
+            reason = "Connect to an Archipelago slot before hosting multiplayer. You can still join as a guest.";
+            return false;
+        }
+
+        if (PendingDestination != ApPlayDestination.Multiplayer
+            || PendingParticipation != ApParticipationKind.OwnApSlot)
+        {
+            reason = "Archipelago has not prepared this player to host with its connected slot.";
+            return false;
+        }
+
+        return CanEnterMultiplayerLobby(out reason);
     }
 
     public static bool CanEmbark(CharacterModel character, out string reason)

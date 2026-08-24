@@ -17,6 +17,8 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ApGrantDispatcher
 {
+    public const int UniversalBuffGoldValue = 5;
+
     private static long? _activeCharacterOffset;
 
     /// <summary>Rebuilds the raw per-character bank from authoritative AP history.</summary>
@@ -26,7 +28,11 @@ public static class ApGrantDispatcher
         foreach (ItemInfo item in receivedItems)
         {
             if (item.ItemId < 10000)
+            {
+                if (ItemTable.IsUniversalCombatBuff(item.ItemId))
+                    AddUniversalBuffGold(rebuilt);
                 continue;
+            }
 
             APItem itemId = item.GetCharacterSpecificItemID();
             if (!ItemTable.GoldItemAmounts.TryGetValue(itemId, out int amount))
@@ -43,6 +49,22 @@ public static class ApGrantDispatcher
                 + string.Join(",", rebuilt.OrderBy(pair => pair.Key)
                     .Select(pair => $"{pair.Key}={pair.Value}"))
         );
+    }
+
+    /// <summary>
+    /// Converts one universal combat buff into ordinary raw AP gold for every character
+    /// configured by this slot. Each character can therefore redeem it independently on its
+    /// next run, through the same cursor and Poverty handling as all other AP gold.
+    /// </summary>
+    public static void AddUniversalBuffGold(IDictionary<long, int> goldBank)
+    {
+        foreach (long characterOffset in ArchipelagoClient.Settings.Characters.Values
+                     .Select(config => (long)config.CharOffset)
+                     .Distinct())
+        {
+            goldBank.TryGetValue(characterOffset, out int previous);
+            goldBank[characterOffset] = previous + UniversalBuffGoldValue;
+        }
     }
 
     /// <summary>Binds the host-owned per-player cursor to the launched local STS run.</summary>

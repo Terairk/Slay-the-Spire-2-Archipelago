@@ -37,6 +37,12 @@ namespace StS2AP
     public static class ArchipelagoClient
     {
         /// <summary>
+        /// Highest slot-data contract understood by this client. Release versions are allowed
+        /// to differ independently when they use a compatible schema.
+        /// </summary>
+        public const int SupportedSlotDataVersion = 1;
+
+        /// <summary>
         /// The version of the Archipelago Mod (semantic version: major.minor.patch)
         /// </summary>
         public static string Version
@@ -500,77 +506,53 @@ namespace StS2AP
                     LogUtility.Info($"VAL: {kvp.Value.ToString()}");
                 }
 
+                string apWorldVersion = SlotData.TryGetValue(
+                    "mod_compat_version",
+                    out object? apWorldVersionValue)
+                        ? Convert.ToString(apWorldVersionValue) ?? "unknown"
+                        : "unknown";
+                int apWorldSlotDataVersion = ResolveSlotDataVersion(
+                    apWorldVersion,
+                    out string? schemaWarning
+                );
+                LogUtility.Info($"APWorld Version: v{apWorldVersion}");
+                LogUtility.Info($"Client Version: {Version}");
+                LogUtility.Info(
+                    $"APWorld slot-data schema: {apWorldSlotDataVersion}; "
+                        + $"client supports: {SupportedSlotDataVersion}"
+                );
+
+                if (schemaWarning != null
+                    || apWorldSlotDataVersion > SupportedSlotDataVersion)
+                {
+                    string warning = schemaWarning
+                        ?? $"This APWorld uses slot-data schema {apWorldSlotDataVersion}, but "
+                            + $"this client supports through schema {SupportedSlotDataVersion}. "
+                            + "Continuing anyway; a crash or incorrect behavior is possible.";
+                    LogUtility.Warn(warning);
+                    NotificationUtility.ShowRawText(
+                        warning,
+                        timeout: 8.0,
+                        priority: NotificationUtility.NotificationPriority.High
+                    );
+                }
+                else if (!string.Equals(
+                             $"v{apWorldVersion}",
+                             Version,
+                             StringComparison.OrdinalIgnoreCase))
+                {
+                    LogUtility.Info(
+                        $"Release versions differ (APWorld v{apWorldVersion}, client {Version}), "
+                            + "but their slot-data schema is compatible."
+                    );
+                }
+
+                // Compatibility is advisory: attempt to parse and connect even when the world
+                // advertises a newer schema. The warning above is intentionally nonmodal.
                 Settings = GetPlayerSettings();
 
-                // Before we tell the user everything is okay, let's make sure that the mod version is correct
-                var apWorldVersion = "v" + (SlotData["mod_compat_version"] as string);
-                LogUtility.Info($"APWorld Version: {apWorldVersion}");
-                LogUtility.Info($"Client Version: {Version}");
-
-                // If there's a version mismatch, we have another step
-                if (apWorldVersion == null || apWorldVersion != Version)
-                {
-                    // Log the mismatch
-                    LogUtility.Warn(
-                        $"Version mismatch! Server expects version {apWorldVersion}, but client is version {Version}. Please update your mod."
-                    );
-
-                    // Warn the user that there's a version mismatch, and let them decide how to proceed.
-                    var popup = new ConfirmPopup();
-                    popup.Header = new LocString("main_menu_ui", "VERSION_MISMATCH.header");
-                    popup.Body = new LocString("main_menu_ui", "VERSION_MISMATCH.body");
-                    popup.Body.Add("server", apWorldVersion!);
-                    popup.Body.Add("client", Version);
-                    popup.ButtonPressed = (yesPressed) =>
-                    {
-                        // On no, we should cancel out.
-                        if (!yesPressed)
-                        {
-                            LogUtility.Warn(
-                                "User was warned about version mismatch, proceeded anyways!"
-                            );
-
-                            // Show the connection UI again
-                            ArchipelagoConnectionUI.Show();
-
-                            // Disconnect from the server since we can't guarantee compatibility
-                            Disconnect();
-
-                            // Re-Enable the UI
-                            ArchipelagoConnectionUI.SetConnectButtonEnabled(true);
-                            ArchipelagoConnectionUI.SetCloseButtonEnabled(true);
-
-                            // Tell the user they need to update their mod
-                            ArchipelagoConnectionUI.SetStatus(
-                                $"Version mismatch! Server expects version {apWorldVersion}, but client is version {Version}. Please update your mod."
-                            );
-
-                            return;
-                        }
-                        // On yes, we proceed
-                        else
-                        {
-                            // Complete any locations that we have
-                            outText = $"Successfully connected to {ServerAddress} as {PlayerName}!";
-
-                            // Let the game know that we've connected
-                            OnConnected();
-                        }
-                    };
-
-                    // Hide the connection UI and show the popup
-                    ArchipelagoConnectionUI.Hide();
-                    popup.Show();
-                }
-                // Otherwise proceed
-                else
-                {
-                    // Complete any locations that we have
-                    outText = $"Successfully connected to {ServerAddress} as {PlayerName}!";
-
-                    // Let the game know that we've connected
-                    OnConnected();
-                }
+                outText = $"Successfully connected to {ServerAddress} as {PlayerName}!";
+                OnConnected();
             }
             else
             {
@@ -587,6 +569,44 @@ namespace StS2AP
                 if (wasAutomaticReconnect)
                     ApReconnectController.OnAttemptFailed();
             }
+        }
+
+        private static int ResolveSlotDataVersion(
+            string apWorldReleaseVersion,
+            out string? warning)
+        {
+            warning = null;
+            if (SlotData.TryGetValue("slot_data_version", out object? value))
+            {
+                try
+                {
+                    int version = Convert.ToInt32(value);
+                    if (version < 0)
+                        throw new InvalidDataException("Slot-data versions cannot be negative.");
+                    return version;
+                }
+                catch (Exception exception)
+                {
+                    warning = $"The APWorld supplied an invalid slot-data schema value "
+                        + $"('{Convert.ToString(value)}'). Continuing anyway; a crash or "
+                        + $"incorrect behavior is possible. ({exception.Message})";
+                    return SupportedSlotDataVersion + 1;
+                }
+            }
+
+            // APWorld 1.0 predates the explicit integer while using the same contract as
+            // schema 1. Older worlds retain their original schema-0 parsing behavior.
+            if (System.Version.TryParse(apWorldReleaseVersion, out var parsedReleaseVersion)
+                && parsedReleaseVersion.CompareTo(new System.Version(1, 0, 0)) >= 0)
+            {
+                LogUtility.Info(
+                    "APWorld omitted slot_data_version; inferred schema 1 from its release version."
+                );
+                return 1;
+            }
+
+            LogUtility.Info("APWorld omitted slot_data_version; treating it as legacy schema 0.");
+            return 0;
         }
 
         /// <summary>
