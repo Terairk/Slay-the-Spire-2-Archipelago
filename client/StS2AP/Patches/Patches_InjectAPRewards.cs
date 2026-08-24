@@ -404,6 +404,15 @@ namespace StS2AP.Patches
                     }
                 }
 
+                if (____currentRelics.Count > 0
+                    && ____currentRelics.Count < runState.Players.Count)
+                {
+                    LogUtility.Info(
+                        $"Opening shared scarcity chest: {____currentRelics.Count} relic candidate(s) "
+                            + $"for {runState.Players.Count} players"
+                    );
+                }
+
                 if (____currentRelics.Count == 0)
                     RunManager.Instance.TreasureRoomRelicSynchronizer.CompleteWithNoRelics();
             }
