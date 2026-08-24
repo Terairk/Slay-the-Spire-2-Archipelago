@@ -340,6 +340,16 @@ namespace StS2AP.Patches
                 case APItem.ToughEnemies:
                 case APItem.DeadlyEnemies:
                 case APItem.DoubleBoss:
+                    if (MultiplayerSupport.IsMultiplayerScope)
+                    {
+                        Progress.AllReceivedItems.Add(indexedInfo);
+                        if (liveDelivery && MultiplayerSupport.IsRealMultiplayerRun)
+                            AscensionMultiplayer.ReceiveLiveReceipt(indexedInfo);
+                        else if (liveDelivery)
+                            AscensionMultiplayer.RefreshLobbyStagingForReceipt();
+                        break;
+                    }
+
                     Progress.Ascensions.ProcessAscensionLevel(
                         GameUtility.CurrentConfig,
                         item,

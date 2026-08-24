@@ -388,25 +388,37 @@ public static class ProgressiveStarterMultiplayer
         Player owner,
         string description)
     {
-        if (RitsuLibManagedNetActions.Request(
+        ManagedActionRequestScheduler.RequestOrDefer(
+            message.ActionId,
+            $"Progressive Starter {description}",
+            () => RitsuLibManagedNetActions.Request(
                 RunManager.Instance,
                 ActionDescriptor,
                 message,
                 owner.NetId
-            ))
-        {
-            LogUtility.Info(
+            ),
+            () => IsCurrentRequest(message),
+            () => LogUtility.Info(
                 $"Requested managed Progressive Starter {description} {message.ActionId} "
                     + $"with {message.Targets.Count} target(s)."
-            );
-            return;
-        }
-
-        string reason = $"could not enqueue Progressive Starter {description}";
-        LogUtility.Error(reason);
-        MultiplayerSupport.InvalidateRunClaims(reason);
-        NotificationUtility.ShowRawText("Could not synchronize a Progressive Starter item.");
+            ),
+            reason =>
+            {
+                LogUtility.Error(reason);
+                MultiplayerSupport.InvalidateRunClaims(reason);
+                NotificationUtility.ShowRawText(
+                    "Could not synchronize a Progressive Starter item."
+                );
+            }
+        );
     }
+
+    private static bool IsCurrentRequest(ApProgressiveStarterActionMessage message) =>
+        MultiplayerSupport.IsRealMultiplayerRun
+        && !MultiplayerSupport.ClaimsInvalidated
+        && RunManager.Instance.DebugOnlyGetState() is RunState runState
+        && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
+        && shared.RunId == message.RunId;
 
     private static void FailCapture(string description, Exception ex)
     {

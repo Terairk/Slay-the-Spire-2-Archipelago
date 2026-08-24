@@ -806,6 +806,7 @@ namespace StS2AP
             );
             ApReceiptRelay.PublishCurrentRunSnapshot();
             MultiplayerSupport.RestoreFrozenHostSettingsForActiveRun();
+            AscensionMultiplayer.QueueReconnectReconciliation();
             return true;
         }
 

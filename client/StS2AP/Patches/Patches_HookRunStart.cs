@@ -74,6 +74,17 @@ namespace StS2AP.Patches
                         $"AP multiplayer run launch refused: {blockedReason}"
                     );
                 }
+
+                if (lobby.NetService.Type == NetGameType.Host
+                    && !AscensionMultiplayer.IsLobbyConstructionPrepared(
+                        lobby,
+                        out blockedReason))
+                {
+                    NotificationUtility.ShowRawText(blockedReason);
+                    throw new InvalidOperationException(
+                        $"AP multiplayer ascension staging failed: {blockedReason}"
+                    );
+                }
             }
         }
 
@@ -168,6 +179,7 @@ namespace StS2AP.Patches
                 if (MultiplayerSupport.IsLocalGuest)
                 {
                     GameUtility.CurrentConfig = null;
+                    AscensionMultiplayer.BeginRun(__result, localPlayer);
                     LogUtility.Info(
                         $"Bound local multiplayer guest: netId={localPlayer.NetId}, "
                             + $"character={localPlayer.Character.Id.Entry}"
@@ -204,6 +216,7 @@ namespace StS2AP.Patches
                     MultiplayerSupport.InvalidateRunClaims(receiptError);
                     return;
                 }
+                AscensionMultiplayer.SyncLocalProjection(__result);
                 RelicCoupons.EnsureOwnedBy(localPlayer);
                 if (!ApRunData.PublishLocalProgress(localPlayer))
                 {
@@ -222,6 +235,7 @@ namespace StS2AP.Patches
                     MultiplayerSupport.InvalidateRunClaims(bindError);
                     return;
                 }
+                AscensionMultiplayer.BeginRun(__result, localPlayer);
                 ProgressiveStarterMultiplayer.BeginRun(__result, localPlayer);
                 if (MultiplayerSupport.IsLocalOwnApSlot)
                     PendingCheckUtility.ReconcileAndSend();

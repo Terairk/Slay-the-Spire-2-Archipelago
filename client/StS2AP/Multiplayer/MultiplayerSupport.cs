@@ -43,6 +43,7 @@ public static class MultiplayerSupport
         MultiplayerFeature.Ancients,
         MultiplayerFeature.VictoryChecks,
         MultiplayerFeature.ProgressiveStarters,
+        MultiplayerFeature.AscensionEffects,
         MultiplayerFeature.DeathLink,
         MultiplayerFeature.SaveAndReconnect,
     };
@@ -799,6 +800,16 @@ public static class MultiplayerSupport
 
     public static IReadOnlyList<ItemInfo> GetPreparedReceivedItems() => _preparedReceivedItems;
 
+    /// <summary>
+    /// Returns the current authoritative SDK history for a connected own-slot process. Lobby
+    /// staging uses this instead of the connection-time snapshot so receipts received while the
+    /// character screen is open are included before launch.
+    /// </summary>
+    public static IReadOnlyList<ItemInfo> GetCurrentOwnSlotReceivedItems() =>
+        ArchipelagoClient.IsConnected
+            ? ArchipelagoClient.Session.Items.AllItemsReceived
+            : _preparedReceivedItems;
+
     public static bool RestorePreparedReceiptView(out string reason)
     {
         if (_preparedSessionIdentity is not { } identity)
@@ -938,9 +949,11 @@ public static class MultiplayerSupport
         ClaimsInvalidated = false;
         _claimInvalidationNoticeShown = false;
         ApRunData.EndRun();
+        ManagedActionRequestScheduler.EndRun();
         ApGrantDispatcher.EndRun();
         ApMirroredRewardDispatcher.EndRun();
         ProgressiveStarterMultiplayer.EndRun();
+        AscensionMultiplayer.EndRun();
         AncientMultiplayer.EndRun();
         DeathLinkMultiplayer.EndRun();
     }

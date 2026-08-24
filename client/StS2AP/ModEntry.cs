@@ -55,6 +55,7 @@ namespace StS2AP
             // Initialize Utilities
             ApMirroredRewardDispatcher.Initialize();
             ProgressiveStarterMultiplayer.Initialize();
+            AscensionMultiplayer.Initialize();
             DeathLinkUtility.Initialize();
             BuffUtility.Initialize();
 

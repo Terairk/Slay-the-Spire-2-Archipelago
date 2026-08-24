@@ -21,7 +21,7 @@ namespace StS2AP.Multiplayer;
 /// </summary>
 public static class ApRunData
 {
-    private const int RunSchemaVersion = 6;
+    private const int RunSchemaVersion = 7;
     private const string ProgressSnapshotMessageKey = "player_ap_progress_snapshot_v1";
     private const string ProgressDeltaMessageKey = "player_ap_progress_delta_v1";
     private static RunSavedData<ApRunSharedState> _sharedRun = null!;
@@ -203,6 +203,48 @@ public static class ApRunData
         return true;
     }
 
+    /// <summary>
+    /// Atomically records one managed Ascension Down receipt and removes its level from the
+    /// canonical host-authored set. Managed actions call this identically on every replica.
+    /// </summary>
+    public static bool TryApplyAscensionDown(
+        RunState runState,
+        int receivedItemIndex,
+        MegaCrit.Sts2.Core.Entities.Ascension.AscensionLevel level,
+        out bool alreadyHandled,
+        out bool removed)
+    {
+        alreadyHandled = false;
+        removed = false;
+        if (!_initialized
+            || !_sharedRun.TryGet(runState, out ApRunSharedState shared)
+            || !shared.AscensionStateInitialized)
+        {
+            return false;
+        }
+
+        alreadyHandled = shared.HandledAscensionDownReceiptIndexes.Contains(receivedItemIndex);
+        if (alreadyHandled)
+            return true;
+
+        removed = shared.CurrentAscensions.Contains((int)level);
+        _sharedRun.Modify(runState, state =>
+        {
+            state.CurrentAscensions = state.CurrentAscensions
+                .Where(value => value != (int)level)
+                .Distinct()
+                .Order()
+                .ToList();
+            state.HandledAscensionDownReceiptIndexes = state
+                .HandledAscensionDownReceiptIndexes
+                .Append(receivedItemIndex)
+                .Distinct()
+                .Order()
+                .ToList();
+        });
+        return true;
+    }
+
     public static bool TryGetLobbySharedState(
         StartRunLobby lobby,
         out ApRunSharedState state)
@@ -255,26 +297,23 @@ public static class ApRunData
             }
         }
 
-        bool hasApGuest = BetaMainCompatibility.GetLobbyPlayerNetIds(lobby).Any(netId =>
-            TryGetLobbyPlayerState(lobby, netId, out ApPlayerRunState participant)
-            && participant.Participation == ApParticipationKind.ApGuest
-        );
-        if (hasApGuest)
+        ulong fixedHostNetId = lobby.NetService.NetId;
+        if (!TryGetLobbyPlayerState(lobby, fixedHostNetId, out ApPlayerRunState fixedHost)
+            || fixedHost.Participation != ApParticipationKind.OwnApSlot
+            || !fixedHost.ReceiptSourceReady)
         {
-            ulong hostNetId = lobby.NetService.NetId;
-            if (!TryGetLobbyPlayerState(lobby, hostNetId, out ApPlayerRunState host)
-                || host.Participation != ApParticipationKind.OwnApSlot
-                || !host.ReceiptSourceReady)
-            {
-                reason = "AP Guests require the fixed STS host to have a prepared AP slot.";
-                return false;
-            }
-            if (!TryGetLobbySharedState(lobby, out ApRunSharedState shared)
-                || shared.HostSettings == null)
-            {
-                reason = "The host's AP settings have not been frozen into lobby run data.";
-                return false;
-            }
+            reason = "The fixed STS host must have a prepared AP slot.";
+            return false;
+        }
+
+        if (!TryGetLobbySharedState(lobby, out ApRunSharedState hostShared)
+            || hostShared.SchemaVersion != RunSchemaVersion
+            || hostShared.HostSettings == null
+            || !hostShared.AscensionStateInitialized
+            || !hostShared.HostCharacterOffset.HasValue)
+        {
+            reason = "The host's AP settings and ascensions have not been frozen into lobby run data.";
+            return false;
         }
 
         reason = string.Empty;
@@ -739,6 +778,34 @@ public static class ApRunData
         bool shouldStageHostSettings =
             hostParticipation == ApParticipationKind.OwnApSlot;
 
+        ArchipelagoSettings? hostSettings = shouldStageHostSettings
+            ? MultiplayerSupport.CreateEffectiveHostSettingsSnapshot()
+            : null;
+        long hostCharacterOffset = 0;
+        var configuredAscensions = new List<int>();
+        var currentAscensions = new List<int>();
+        var handledReceiptIndexes = new List<int>();
+        string ascensionError = "the fixed host does not have AP settings";
+        bool ascensionStateInitialized = hostSettings != null
+            && AscensionMultiplayer.TryBuildLobbyState(
+                lobby,
+                hostSettings,
+                MultiplayerSupport.GetCurrentOwnSlotReceivedItems(),
+                out hostCharacterOffset,
+                out configuredAscensions,
+                out currentAscensions,
+                out handledReceiptIndexes,
+                out ascensionError);
+        if (!ascensionStateInitialized)
+        {
+            hostCharacterOffset = 0;
+            configuredAscensions = new List<int>();
+            currentAscensions = new List<int>();
+            handledReceiptIndexes = new List<int>();
+            if (shouldStageHostSettings)
+                LogUtility.Warn($"Could not stage host ascensions: {ascensionError}");
+        }
+
         // Lobby writes emit RunSavedDataLobbyStagingEvent. That event asks the host UI to
         // refresh, and the refresh stages this same contract again. Archipelago slot settings
         // are immutable after login, so an already-staged value is authoritative and must not
@@ -749,19 +816,31 @@ public static class ApRunData
             && existing.SharedSlotCheckScope == sharedSlotCheckScope
             && (shouldStageHostSettings
                 ? existing.HostSettings != null
-                : existing.HostSettings == null))
+                : existing.HostSettings == null)
+            && existing.AscensionStateInitialized == ascensionStateInitialized
+            && existing.HostCharacterOffset == (ascensionStateInitialized
+                ? hostCharacterOffset
+                : null)
+            && existing.ConfiguredAscensions.SequenceEqual(configuredAscensions)
+            && existing.CurrentAscensions.SequenceEqual(currentAscensions)
+            && existing.HandledAscensionDownReceiptIndexes.SequenceEqual(
+                handledReceiptIndexes))
         {
             return;
         }
 
-        ArchipelagoSettings? hostSettings = shouldStageHostSettings
-            ? MultiplayerSupport.CreateEffectiveHostSettingsSnapshot()
-            : null;
         _sharedRun.Lobby.Modify(lobby, state =>
         {
             state.SchemaVersion = RunSchemaVersion;
             state.SharedSlotCheckScope = sharedSlotCheckScope;
             state.HostSettings = hostSettings;
+            state.AscensionStateInitialized = ascensionStateInitialized;
+            state.HostCharacterOffset = ascensionStateInitialized
+                ? hostCharacterOffset
+                : null;
+            state.ConfiguredAscensions = configuredAscensions;
+            state.CurrentAscensions = currentAscensions;
+            state.HandledAscensionDownReceiptIndexes = handledReceiptIndexes;
         });
     }
 
@@ -798,8 +877,27 @@ public static class ApRunData
 
     private static void OnLobbyStagingChanged(RunSavedDataLobbyStagingEvent evt)
     {
-        if (evt.IsMultiplayer && evt.IsHost)
-            MultiplayerSupport.RequestHostLobbyRefresh(evt.Lobby);
+        if (!evt.IsMultiplayer || !evt.IsHost)
+            return;
+
+        if (evt.Reason == RunSavedDataLobbyStagingReason.Committing)
+        {
+            if (!AscensionMultiplayer.PrepareRunConstruction(
+                    evt.Lobby,
+                    out int nativeAscensionLevel,
+                    out string reason))
+            {
+                LogUtility.Error($"Could not capture host ascensions at lobby commit: {reason}");
+                return;
+            }
+
+            // Match single-player before the begin-run message is sent. The native value keeps
+            // base presentation/save topology coherent; individual checks use the frozen set.
+            evt.Lobby.SyncAscensionChange(nativeAscensionLevel);
+            return;
+        }
+
+        MultiplayerSupport.RequestHostLobbyRefresh(evt.Lobby);
     }
 
     private static void OnRunDataPreparing(RunSavedDataPreparingEvent evt)
@@ -813,13 +911,26 @@ public static class ApRunData
             {
                 LogUtility.Error("AP multiplayer run snapshot arrived without a host RunId");
             }
-            return;
+        }
+        else
+        {
+            _sharedRun.Modify(evt.RunState, state =>
+            {
+                if (state.RunId == Guid.Empty)
+                    state.RunId = Guid.NewGuid();
+            });
         }
 
-        _sharedRun.Modify(evt.RunState, state =>
+        if (evt.IsMultiplayer
+            && !AscensionMultiplayer.PrepareRunConstruction(
+                evt.RunState,
+                out string ascensionReason))
         {
-            if (state.RunId == Guid.Empty)
-                state.RunId = Guid.NewGuid();
-        });
+            LogUtility.Error(
+                $"Could not prepare multiplayer ascensions from the run payload: "
+                    + ascensionReason
+            );
+            MultiplayerSupport.InvalidateRunClaims(ascensionReason);
+        }
     }
 }
