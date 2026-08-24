@@ -61,9 +61,6 @@ namespace StS2AP.Utils
         {
             Callable.From(() =>
             {
-                // AP_MP: Starter mutations need synchronized concrete deck/relic transitions.
-                // TODO: this is probably easier than expected, just make the relics sync as well
-                // the card itself will be a little tricky and needs to be buffered
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
                     return;
 

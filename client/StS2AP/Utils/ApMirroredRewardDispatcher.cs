@@ -715,6 +715,7 @@ public static class ApMirroredRewardDispatcher
         ?? throw new InvalidOperationException($"Could not deserialize AP model {typeof(T).Name}.");
 
     private static int _descriptionSequence;
+    private const int RewardOriginFontSize = 16;
 
     private static LocString CreateApDescription(LocString primary, ApMirroredRewardSpec spec) =>
         CreateApDescription(primary.GetFormattedText(), spec);
@@ -726,7 +727,8 @@ public static class ApMirroredRewardDispatcher
             : $" ({spec.FoundLocation})";
         string origin = string.IsNullOrWhiteSpace(spec.SenderName)
             ? string.Empty
-            : $"\n[blue]from {spec.SenderName}{location}[/blue]";
+            : $"\n[font_size={RewardOriginFontSize}]"
+                + $"[blue]from {spec.SenderName}{location}[/blue][/font_size]";
         string key = $"AP_NATIVE_REWARD_{System.Threading.Interlocked.Increment(ref _descriptionSequence)}";
         TextUtility.RegisterLocString(key, primary + origin, "ap");
         return new LocString("ap", key);

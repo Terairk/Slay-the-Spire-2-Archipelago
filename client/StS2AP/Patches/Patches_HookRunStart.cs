@@ -222,6 +222,7 @@ namespace StS2AP.Patches
                     MultiplayerSupport.InvalidateRunClaims(bindError);
                     return;
                 }
+                ProgressiveStarterMultiplayer.BeginRun(__result, localPlayer);
                 if (MultiplayerSupport.IsLocalOwnApSlot)
                     PendingCheckUtility.ReconcileAndSend();
                 if (MultiplayerSupport.IsLocalOwnApSlot
@@ -258,7 +259,11 @@ namespace StS2AP.Patches
             {
                 await finalizeTask;
 
-                // AP_MP: Starter reconciliation needs synchronized deck/relic transitions.
+                // Multiplayer authors concrete per-player recipes after AP ownership is bound in
+                // RunManager.Launch; its mutations travel through non-combat managed actions.
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                    return;
+
                 if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
                     return;
 

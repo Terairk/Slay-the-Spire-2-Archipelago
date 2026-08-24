@@ -21,7 +21,7 @@ namespace StS2AP.Multiplayer;
 /// </summary>
 public static class ApRunData
 {
-    private const int RunSchemaVersion = 5;
+    private const int RunSchemaVersion = 6;
     private const string ProgressSnapshotMessageKey = "player_ap_progress_snapshot_v1";
     private const string ProgressDeltaMessageKey = "player_ap_progress_delta_v1";
     private static RunSavedData<ApRunSharedState> _sharedRun = null!;
@@ -130,6 +130,8 @@ public static class ApRunData
             },
             Progress = existing?.Progress ?? new ApRunProgressState(),
             ProgressRevision = existing?.ProgressRevision ?? 0,
+            ProgressiveStarters = existing?.ProgressiveStarters
+                ?? new ApProgressiveStarterPlayerState(),
         };
         // SyncLobbyOnChange makes this a contribution to the authoritative host staging
         // session. On a client RitsuLib pushes the local PlayerRunSavedData payload with a
@@ -182,6 +184,23 @@ public static class ApRunData
             return _players.TryGet(runState, netId, out state);
         state = null!;
         return false;
+    }
+
+    /// <summary>
+    /// Commits a managed action's per-player starter recipe to canonical run data. Managed
+    /// actions execute on every replica, so this mutation must be made identically everywhere.
+    /// </summary>
+    public static bool SetProgressiveStarterState(
+        RunState runState,
+        ulong netId,
+        ApProgressiveStarterPlayerState progressiveStarters)
+    {
+        if (!_initialized || !_players.TryGet(runState, netId, out ApPlayerRunState state))
+            return false;
+
+        state.ProgressiveStarters = progressiveStarters;
+        _players.Set(runState, netId, state);
+        return true;
     }
 
     public static bool TryGetLobbySharedState(

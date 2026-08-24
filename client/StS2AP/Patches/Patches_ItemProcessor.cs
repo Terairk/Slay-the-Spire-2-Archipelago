@@ -192,13 +192,37 @@ namespace StS2AP.Patches
                     break;
                 }
                 case APItem.ProgressiveStarterCard:
+                {
                     HandleThreshholdItem(item, Progress.ProgressiveStarterCards, "Progressive Starter Cards");
-                    ProgressiveStarterUtility.QueueReconcileCurrentPlayer();
+                    Progress.ProgressiveStarterCards.TryGetValue(
+                        item.GetCharacterOffset(),
+                        out int receivedCount
+                    );
+                    HandleProgressiveStarterReceipt(
+                        liveDelivery,
+                        index,
+                        item.GetCharacterOffset(),
+                        ApProgressiveStarterActionMessage.StarterKind.Card,
+                        receivedCount
+                    );
                     break;
+                }
                 case APItem.ProgressiveStarterRelic:
+                {
                     HandleThreshholdItem(item, Progress.ProgressiveStarterRelics, "Progressive Starter Relics");
-                    ProgressiveStarterUtility.QueueReconcileCurrentPlayer();
+                    Progress.ProgressiveStarterRelics.TryGetValue(
+                        item.GetCharacterOffset(),
+                        out int receivedCount
+                    );
+                    HandleProgressiveStarterReceipt(
+                        liveDelivery,
+                        index,
+                        item.GetCharacterOffset(),
+                        ApProgressiveStarterActionMessage.StarterKind.Relic,
+                        receivedCount
+                    );
                     break;
+                }
                 case APItem.Relic:
                 {
                     // Save loading replays the whole item list, then reconciles once at the end.
@@ -418,6 +442,30 @@ namespace StS2AP.Patches
                     "Progressive Rest/Smith state could not be published to the host"
                 );
             }
+        }
+
+        private static void HandleProgressiveStarterReceipt(
+            bool liveDelivery,
+            int receivedItemIndex,
+            long characterOffset,
+            ApProgressiveStarterActionMessage.StarterKind kind,
+            int receivedCount)
+        {
+            if (MultiplayerSupport.IsMultiplayerScope)
+            {
+                if (liveDelivery && MultiplayerSupport.IsRealMultiplayerRun)
+                {
+                    ProgressiveStarterMultiplayer.ReceiveLiveReceipt(
+                        receivedItemIndex,
+                        characterOffset,
+                        kind,
+                        receivedCount
+                    );
+                }
+                return;
+            }
+
+            ProgressiveStarterUtility.QueueReconcileCurrentPlayer();
         }
 
         public static void ReprocessItems()

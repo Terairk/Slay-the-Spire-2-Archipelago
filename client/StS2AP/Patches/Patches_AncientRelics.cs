@@ -99,10 +99,17 @@ namespace StS2AP.Patches
         private static bool Prefix(Orobas __instance, ref IReadOnlyList<EventOption> __result)
         {
             // AP_MP: Progressive starter filtering needs synchronized starter transitions.
-            if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.ProgressiveStarters
+                ))
                 return true;
 
-            if (__instance.Owner is null || !ShouldFilterProgressiveStarters())
+            if (__instance.Owner is null
+                || !ApPlayerContextResolver.TryGetRewardSettings(
+                    __instance.Owner,
+                    out ArchipelagoSettings settings
+                )
+                || !ShouldFilterProgressiveStarters(settings))
                 return true;
 
             try
@@ -139,7 +146,7 @@ namespace StS2AP.Patches
                 }
 
                 pool1.Add(dynamicPool1Option);
-                pool1.RemoveAll(IsBlocked);
+                pool1.RemoveAll(option => IsBlocked(option, settings));
                 var firstOption = PickRequired(
                     __instance,
                     pool1,
@@ -147,7 +154,7 @@ namespace StS2AP.Patches
                 );
 
                 var pool2 = GetPrivateProperty<IEnumerable<EventOption>>(__instance, "OptionPool2").ToList();
-                pool2.RemoveAll(IsBlocked);
+                pool2.RemoveAll(option => IsBlocked(option, settings));
                 var secondOption = PickRequired(
                     __instance,
                     pool2,
@@ -155,7 +162,7 @@ namespace StS2AP.Patches
                 );
 
                 var pool3 = GetPrivateProperty<IEnumerable<EventOption>>(__instance, "OptionPool3").ToList();
-                pool3.RemoveAll(option => IsBlocked(option) || option.Relic is null);
+                pool3.RemoveAll(option => IsBlocked(option, settings) || option.Relic is null);
                 var thirdOptionPool = pool3.Count > 0
                     ? pool3
                     : BuildFallbackThirdPool(pool1, pool2, firstOption, secondOption);
@@ -178,12 +185,17 @@ namespace StS2AP.Patches
             }
         }
 
-        private static bool IsBlocked(EventOption option) =>
-            ProgressiveStarterUtility.ShouldExcludeAncientRelic(option.Relic);
+        private static bool IsBlocked(EventOption option, ArchipelagoSettings settings) =>
+            ProgressiveStarterUtility.ShouldExcludeAncientRelic(option.Relic, settings);
 
-        private static bool ShouldFilterProgressiveStarters() =>
-            ProgressiveStarterUtility.ShouldExcludeAncientRelic(ModelDb.Relic<ArchaicTooth>()) ||
-            ProgressiveStarterUtility.ShouldExcludeAncientRelic(ModelDb.Relic<TouchOfOrobas>());
+        private static bool ShouldFilterProgressiveStarters(ArchipelagoSettings settings) =>
+            ProgressiveStarterUtility.ShouldExcludeAncientRelic(
+                ModelDb.Relic<ArchaicTooth>(),
+                settings
+            ) || ProgressiveStarterUtility.ShouldExcludeAncientRelic(
+                ModelDb.Relic<TouchOfOrobas>(),
+                settings
+            );
 
         private static List<EventOption> BuildFallbackThirdPool(
             IEnumerable<EventOption> pool1,

@@ -1,5 +1,6 @@
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Screens;
@@ -18,6 +19,8 @@ namespace StS2AP.Patches
     [HarmonyPatch(typeof(NRewardButton), nameof(NRewardButton._Ready))]
     public static class StyleNativeApRewardButton
     {
+        private const int RewardFontSize = 24;
+
         // SelfModulate remains in effect while MegaCrit's native HSV material supplies the
         // focus/press brightness animation, keeping Ancient rows dark and visibly distinct.
         private static readonly Color AncientBackgroundTint = new(0.52f, 0.27f, 0.66f);
@@ -34,6 +37,21 @@ namespace StS2AP.Patches
                     __instance.CustomMinimumSize.X,
                     Mathf.Max(__instance.CustomMinimumSize.Y, 74f)
                 );
+
+                // Match the old AP catalog's deterministic text layout. Native auto-sizing can
+                // choose a different size for each transient row rectangle; AP instead keeps a
+                // fixed base size, wraps naturally, and lets FitContent increase the row height.
+                if (__instance.GetNodeOrNull<MegaRichTextLabel>("%Label") is { } label)
+                {
+                    label.AutoSizeEnabled = false;
+                    label.FitContent = true;
+                    foreach (StringName fontSizeProperty in
+                             ThemeConstants.RichTextLabel.AllFontSizes)
+                    {
+                        label.RemoveThemeFontSizeOverride(fontSizeProperty);
+                        label.AddThemeFontSizeOverride(fontSizeProperty, RewardFontSize);
+                    }
+                }
             }
 
             if (reward.UseAncientStyle

@@ -42,6 +42,7 @@ public static class MultiplayerSupport
         MultiplayerFeature.RestSites,
         MultiplayerFeature.Ancients,
         MultiplayerFeature.VictoryChecks,
+        MultiplayerFeature.ProgressiveStarters,
         MultiplayerFeature.DeathLink,
         MultiplayerFeature.SaveAndReconnect,
     };
@@ -377,6 +378,16 @@ public static class MultiplayerSupport
         DeferredItems.Clear();
         ArchipelagoClient.Progress.AllReceivedItems.Clear();
         ArchipelagoClient.Progress.ProgressiveAncients.Clear();
+        ArchipelagoClient.Progress.ProgressiveStarterCards.Clear();
+        ArchipelagoClient.Progress.ProgressiveStarterRelics.Clear();
+        ArchipelagoClient.Progress.ProgressiveStarterCardBaseId = null;
+        ArchipelagoClient.Progress.ProgressiveStarterCardUpgradedId = null;
+        ArchipelagoClient.Progress.ProgressiveStarterCardTier =
+            ProgressiveStarterTier.Unsupported;
+        ArchipelagoClient.Progress.ProgressiveStarterRelicBaseId = null;
+        ArchipelagoClient.Progress.ProgressiveStarterRelicUpgradedId = null;
+        ArchipelagoClient.Progress.ProgressiveStarterRelicTier =
+            ProgressiveStarterTier.Unsupported;
         ArchipelagoClient.Progress.ShopCardSlotsReceived.Clear();
         ArchipelagoClient.Progress.ShopNeutralSlotsReceived.Clear();
         ArchipelagoClient.Progress.ShopRelicSlotsReceived.Clear();
@@ -413,6 +424,24 @@ public static class MultiplayerSupport
                     && (!ArchipelagoClient.Settings.NeowSanity || count > 1))
                 {
                     ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
+                }
+            }
+            else if (feature == MultiplayerFeature.ProgressiveStarters
+                && item.ItemId >= 10000)
+            {
+                Dictionary<long, int>? counts = item.GetCharacterSpecificItemID() switch
+                {
+                    APItem.ProgressiveStarterCard =>
+                        ArchipelagoClient.Progress.ProgressiveStarterCards,
+                    APItem.ProgressiveStarterRelic =>
+                        ArchipelagoClient.Progress.ProgressiveStarterRelics,
+                    _ => null,
+                };
+                if (counts != null)
+                {
+                    long characterOffset = item.GetCharacterOffset();
+                    counts.TryGetValue(characterOffset, out int count);
+                    counts[characterOffset] = count + 1;
                 }
             }
             else if (feature == MultiplayerFeature.Shops && item.ItemId >= 10000)
@@ -911,6 +940,7 @@ public static class MultiplayerSupport
         ApRunData.EndRun();
         ApGrantDispatcher.EndRun();
         ApMirroredRewardDispatcher.EndRun();
+        ProgressiveStarterMultiplayer.EndRun();
         AncientMultiplayer.EndRun();
         DeathLinkMultiplayer.EndRun();
     }

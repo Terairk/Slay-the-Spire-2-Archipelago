@@ -5,7 +5,7 @@ namespace StS2AP.Persistence;
 /// </summary>
 public sealed class ApPlayerRunState
 {
-    public int SchemaVersion { get; set; } = 5;
+    public int SchemaVersion { get; set; } = 6;
     public ApParticipationKind Participation { get; set; } = ApParticipationKind.VanillaGuest;
     public string? ApRoomSeed { get; set; }
     public int? ApTeamId { get; set; }
@@ -16,4 +16,5 @@ public sealed class ApPlayerRunState
     public bool ReceiptSourceReady { get; set; }
     public ApRunProgressState Progress { get; set; } = new();
     public long ProgressRevision { get; set; }
+    public ApProgressiveStarterPlayerState ProgressiveStarters { get; set; } = new();
 }
