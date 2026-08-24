@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Rewards;
 using MegaCrit.Sts2.Core.Factories;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
@@ -833,7 +834,12 @@ public static class ApMirroredRewardDispatcher
     private sealed class ApNativeCardReward : CardReward, IApNativeReward
     {
         private readonly int _itemIndex;
+        private readonly bool _isRare;
         private readonly LocString _description;
+
+        protected override string IconPath => _isRare
+            ? ImageHelper.GetImagePath("ui/reward_screen/reward_icon_rare.png")
+            : base.IconPath;
 
         public override LocString Description => _description;
 
@@ -846,6 +852,7 @@ public static class ApMirroredRewardDispatcher
             : base(cards, CardCreationSource.Encounter, player, rerollOptions)
         {
             _itemIndex = spec.ReceivedItemIndex;
+            _isRare = spec.IsRareCardReward;
             _description = CreateApDescription(
                 new LocString("gameplay_ui", "COMBAT_REWARD_ADD_CARD"),
                 spec
