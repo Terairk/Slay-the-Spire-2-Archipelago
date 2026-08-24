@@ -502,13 +502,23 @@ namespace StS2AP.Utils
         /// Uses a local HashSet for deduplication to avoid DataStorage deserialization issues
         /// and then writes to DataStorage with Operation.Update for cross-session persistence.
         /// </summary>
-        public static async Task TrySetGoalAchieved()
+        public static async Task TrySetGoalAchieved(Player player)
         {
-            LogUtility.Debug("TrySetGoalAchieved() Called");
+            LogUtility.Debug($"TrySetGoalAchieved() called for player {player.NetId}");
 
-            if (CurrentPlayer == null || !ArchipelagoClient.IsConnected)
+            if (!ArchipelagoClient.IsConnected)
             {
-                LogUtility.Warn("TrySetGoalAchieved: no active player or not connected");
+                LogUtility.Warn("TrySetGoalAchieved: not connected");
+                return;
+            }
+
+            if (MultiplayerSupport.IsRealMultiplayerRun
+                && (!MultiplayerSupport.IsLocalOwnApSlot
+                    || !MultiplayerLocationChecks.IsLocalProgressOwner(player)))
+            {
+                LogUtility.Warn(
+                    $"Refusing to originate AP victory progress for non-local player {player.NetId}"
+                );
                 return;
             }
 
@@ -521,7 +531,7 @@ namespace StS2AP.Utils
                     return;
                 }
 
-                var charName = CurrentPlayer.Character.Id.Entry;
+                var charName = player.Character.Id.Entry;
                 const string storageKey = "StS2AP_GoaledChars";
                 LogUtility.Debug($"TrySetGoalAchieved: charName - {charName}");
 
@@ -573,7 +583,7 @@ namespace StS2AP.Utils
                     // Goal progress is independent from whether victory releases this character's checks.
                     if (settings.ReleaseOnVictory)
                     {
-                        await TryReleaseAllCharacterChecks(CurrentPlayer.APName());
+                        await TryReleaseAllCharacterChecks(player.APName());
                         foreach(var unrecognized in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
                         {
                             await TryReleaseAllCharacterChecks(unrecognized.Name);

@@ -41,6 +41,7 @@ public static class MultiplayerSupport
         MultiplayerFeature.Shops,
         MultiplayerFeature.RestSites,
         MultiplayerFeature.Ancients,
+        MultiplayerFeature.VictoryChecks,
         MultiplayerFeature.SaveAndReconnect,
     };
 
