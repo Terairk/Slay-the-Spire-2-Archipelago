@@ -422,6 +422,7 @@ dist-ssr
 *.ntvs*
 *.njsproj
 *.sln
+!/StS2AP.sln
 *.sw?
 auto-imports.d.ts
 components.d.ts
