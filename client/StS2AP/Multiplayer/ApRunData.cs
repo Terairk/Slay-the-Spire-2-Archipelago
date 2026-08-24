@@ -463,7 +463,7 @@ public static class ApRunData
                     player.NetId,
                     out ApPlayerRunState state
                 ) && state.Participation == ApParticipationKind.ApGuest)
-            .Select(player => player.Character.GetCharacterOffset())
+            .Select(player => player.GetCharacterOffset())
             .Where(offset => offset.HasValue)
             .Select(offset => offset!.Value)
             .Distinct()

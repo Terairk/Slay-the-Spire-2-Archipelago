@@ -246,7 +246,7 @@ namespace StS2AP.Utils
             if (index < 0)
                 return null;
 
-            var characterOffset = player.Character.GetCharacterOffset();
+            var characterOffset = player.GetCharacterOffset();
             var orderedCardRewardIndices = ArchipelagoClient.Progress.AllReceivedItems
                 .Where(item =>
                     item.Item.GetCharacterOffset() == characterOffset

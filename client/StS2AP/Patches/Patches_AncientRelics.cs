@@ -1,6 +1,7 @@
 ﻿using HarmonyLib;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
@@ -20,19 +21,69 @@ using System.Linq;
 namespace StS2AP.Patches
 {
     [HarmonyPatch(typeof(EventSynchronizer), nameof(EventSynchronizer.BeginEvent))]
-    public static class Patches_AncientEventSynchronization
+    internal static class Patches_AncientEventSynchronization
     {
         [HarmonyPrefix]
-        public static void FreezeConfirmedProgress(EventModel __0)
+        public static void BeginAncientEncounter(EventModel __0)
         {
-            if (RunManager.Instance.DebugOnlyGetState() is RunState runState)
+            if (RunManager.Instance.DebugOnlyGetState() is not RunState runState)
+                return;
+
+            bool isAncient = __0 is AncientEventModel;
+            AncientMultiplayer.BeginEncounter(runState, isAncient);
+            if (!isAncient
+                || !MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
             {
-                AncientMultiplayer.BeginEncounter(
-                    runState,
-                    __0 is AncientEventModel
-                );
+                return;
             }
+
+            // Reaching the Ancient is the location boundary. Every process observes it, but the
+            // existing writer guard means only an own-slot process or the fixed host for an
+            // eligible AP Guest can mutate an Archipelago slot.
+            foreach (var player in runState.Players)
+                SendAncientCheck(player);
         }
+
+        private static void SendAncientCheck(Player player)
+        {
+            if (!ApPlayerContextResolver.TryGetRewardSettings(
+                    player,
+                    out ArchipelagoSettings settings
+                )
+                || !ApPlayerContextResolver.HasCharacterChecks(player))
+            {
+                return;
+            }
+
+            int currentAct = player.RunState.CurrentActIndex + 1;
+            if (currentAct == 1 && !settings.NeowSanity)
+                return;
+
+            if (!ApPlayerContextResolver.TryGetApCharacterName(
+                    player,
+                    out string characterName
+                ))
+            {
+                if (MultiplayerLocationChecks.IsCheckWriter(player))
+                {
+                    LogUtility.Warn(
+                        $"Could not map Ancient check owner {player.Character.Id.Entry} "
+                            + $"for player {player.NetId}"
+                    );
+                }
+                return;
+            }
+
+            string locationName = $"{characterName} Ancient Act {currentAct}";
+
+            if (!MultiplayerSupport.IsRealMultiplayerRun)
+                GameUtility.SendCheck(locationName);
+            else
+                MultiplayerLocationChecks.QueueCheck(player, locationName);
+        }
+
     }
 
     /// <summary>
@@ -203,7 +254,7 @@ namespace StS2AP.Patches
             long characterOffset;
             if (MultiplayerSupport.IsRealMultiplayerRun)
             {
-                if (AncientMultiplayer.IsVanillaGuest(player))
+                if (ApPlayerContextResolver.IsVanillaGuest(player))
                     return;
                 if (!AncientMultiplayer.TryGetFrozenContext(
                         player,
@@ -224,7 +275,7 @@ namespace StS2AP.Patches
             else
             {
                 settings = ArchipelagoClient.Settings;
-                characterOffset = player.Character.GetCharacterOffset() ?? -1;
+                characterOffset = player.GetCharacterOffset() ?? -1;
                 ArchipelagoClient.Progress.ProgressiveAncients.TryGetValue(
                     characterOffset,
                     out receivedCount
@@ -306,54 +357,6 @@ namespace StS2AP.Patches
                     $"leaving the native options in place: {ex.Message}"
                 );
             }
-        }
-
-        [HarmonyPrefix]
-        public static void SendAncientCheck(AncientEventModel __instance)
-        {
-            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
-                    MultiplayerFeature.Ancients
-                ))
-                return;
-
-            var player = __instance.Owner;
-            if (player == null || AncientMultiplayer.IsVanillaGuest(player))
-                return;
-            if (!AncientMultiplayer.TryGetSettings(player, out ArchipelagoSettings settings))
-            {
-                LogUtility.Warn(
-                    $"Could not resolve AP Ancient settings for player {player.NetId}; "
-                        + "the encounter check was not sent"
-                );
-                return;
-            }
-
-            var currentAct = player.RunState.CurrentActIndex + 1;
-            if(currentAct == 1 && !settings.NeowSanity)
-                return;
-
-            if (!MultiplayerSupport.IsRealMultiplayerRun)
-            {
-                GameUtility.SendCheck(
-                    $"{player.Character.APName()} Ancient Act {currentAct}"
-                );
-                return;
-            }
-
-            if (!AncientMultiplayer.TryGetLocationName(
-                    player,
-                    settings,
-                    currentAct,
-                    out string locationName
-                ))
-            {
-                LogUtility.Warn(
-                    $"Could not map Ancient check owner {player.Character.Id.Entry} "
-                        + $"for player {player.NetId}"
-                );
-                return;
-            }
-            MultiplayerLocationChecks.QueueCheck(player, locationName);
         }
 
         private static EventOption CreateFakeOption(AncientEventModel ancient)

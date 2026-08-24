@@ -244,7 +244,7 @@ namespace StS2AP.Models
             // Anytime mode; with Neow Sanity enabled, it omits the first unlock because
             // that remains Neow's start-of-run reward. Sorting the remaining entries by
             // AP item index maps ordinal 0 to Act 2 and ordinal 1 to Act 3.
-            var characterOffset = player.Character.GetCharacterOffset();
+            var characterOffset = player.GetCharacterOffset();
             var orderedAncientItemIndices = AllReceivedItems
                 .Where(item => item.Item.GetCharacterOffset() == characterOffset &&
                                item.Item.GetCharacterSpecificItemID() == APItem.ProgressiveAncient)

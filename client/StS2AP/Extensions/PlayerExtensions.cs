@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using StS2AP.Models;
+using StS2AP.Multiplayer;
 
 namespace StS2AP.Extensions
 {
@@ -15,22 +17,40 @@ namespace StS2AP.Extensions
         /// <example>An Ironclad instance returns "Ironclad", because items for that character include "Ironclad Card Reward", "Ironclad Relic", etc.</example>
         public static string APName(this Player player)
         {
-            var config = ArchipelagoClient.Settings.Characters[player.getInternalName()];
-            if(config == null)
+            if (ApPlayerContextResolver.TryGetApCharacterName(
+                    player,
+                    out string name
+                ))
             {
-                LogUtility.Warn($"Could not find character id for {player.getInternalName()}");
-                return player.Character.GetType().Name;
+                return name;
             }
 
-            if(config.ModNum == 0)
+            string internalName = player.getInternalName();
+            LogUtility.Warn(
+                $"Could not resolve AP character name for player {player.NetId} "
+                    + $"with character id '{internalName}'"
+            );
+            return internalName;
+        }
+
+        /// <summary>
+        /// Returns this player's AP character offset using that player's multiplayer AP context.
+        /// </summary>
+        public static long? GetCharacterOffset(this Player player)
+        {
+            if (ApPlayerContextResolver.TryGetCharacterConfig(
+                    player,
+                    out CharacterConfig config
+                ))
             {
-                return config.Name;
-            }
-            else
-            {
-                return $"Custom Character {config.ModNum}";
+                return config.CharOffset;
             }
 
+            LogUtility.Warn(
+                $"Could not resolve AP character offset for player {player.NetId} "
+                    + $"with character id '{player.getInternalName()}'"
+            );
+            return null;
         }
 
         /// <summary>

@@ -212,7 +212,7 @@ public static class ApMirroredRewardDispatcher
             }
 
             bool belongsToCharacter = receipt.Item.ItemId < 10000
-                || receipt.Item.GetCharacterOffset() == player.Character.GetCharacterOffset();
+                || receipt.Item.GetCharacterOffset() == player.GetCharacterOffset();
             if (!MultiplayerSupport.IsMultiplayerScope
                 || !belongsToCharacter
                 || ArchipelagoClient.Progress.UsedItems.Contains(receipt.Index))

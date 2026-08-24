@@ -15,39 +15,15 @@ namespace StS2AP.Multiplayer;
 /// </summary>
 public static class MultiplayerLocationChecks
 {
-    public static bool TryGetSettings(Player player, out ArchipelagoSettings settings)
+    public static bool TryGetCheckSettings(Player player, out ArchipelagoSettings settings)
     {
-        if (!MultiplayerSupport.IsRealMultiplayerRun)
-        {
-            settings = ArchipelagoClient.Settings;
-            return settings != null;
-        }
-
-        if (player.RunState is not RunState runState
-            || !ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState state))
+        if (!ApPlayerContextResolver.HasCharacterChecks(player))
         {
             settings = null!;
             return false;
         }
 
-        switch (state.Participation)
-        {
-            case ApParticipationKind.OwnApSlot when state.SlotSettings != null:
-                settings = state.SlotSettings;
-                return true;
-            case ApParticipationKind.ApGuest:
-                if (ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-                    && shared.SharedSlotCheckScope == SharedSlotCheckScope.AllApParticipants
-                    && shared.HostSettings != null)
-                {
-                    settings = shared.HostSettings;
-                    return true;
-                }
-                break;
-        }
-
-        settings = null!;
-        return false;
+        return ApPlayerContextResolver.TryGetRewardSettings(player, out settings);
     }
 
     public static bool IsLocalProgressOwner(Player player)
@@ -80,6 +56,8 @@ public static class MultiplayerLocationChecks
     {
         if (!MultiplayerSupport.IsRealMultiplayerRun)
             return true;
+        if (!ApPlayerContextResolver.HasCharacterChecks(player))
+            return false;
         if (player.RunState is not RunState runState
             || !ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState state))
         {
@@ -168,66 +146,30 @@ public static class MultiplayerLocationChecks
     /// Resolves the canonical AP-slot progress that owns location checks for a player. Own-slot
     /// players use their Net-ID record; AP Guests use the fixed STS host's AP-slot record.
     /// </summary>
-    public static bool TryGetEffectiveCheckProgress(
+    public static bool TryGetCheckProgress(
         Player player,
         out ApRunProgressState progress,
         out string reason)
     {
-        progress = null!;
-        reason = string.Empty;
-        if (!MultiplayerSupport.IsRealMultiplayerRun)
+        if (!ApPlayerContextResolver.HasCharacterChecks(player))
         {
-            progress = ArchipelagoClient.Progress.ToRunProgressState();
-            return true;
-        }
-
-        if (player.RunState is not RunState runState
-            || !ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState state))
-        {
-            reason = $"no canonical AP run state exists for player {player.NetId}";
-            return false;
-        }
-
-        if (state.Participation == ApParticipationKind.OwnApSlot)
-        {
-            progress = state.Progress;
-        }
-        else if (state.Participation == ApParticipationKind.ApGuest
-            && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-            && shared.SharedSlotCheckScope == SharedSlotCheckScope.AllApParticipants
-            && BetaMainCompatibility.TryGetHostNetId(
-                RunManager.Instance.NetService,
-                out ulong hostNetId
-            )
-            && ApRunData.TryGetPlayerState(
-                runState,
-                hostNetId,
-                out ApPlayerRunState hostState
-            )
-            && hostState.Participation == ApParticipationKind.OwnApSlot)
-        {
-            progress = hostState.Progress;
-        }
-        else
-        {
-            reason = $"player {player.NetId} has no AP slot that owns Campfire checks";
-            return false;
-        }
-
-        if (!progress.Initialized)
-        {
-            reason = $"AP progress for player {player.NetId} is not initialized";
             progress = null!;
+            reason = $"player {player.NetId} has no AP slot that owns character checks";
             return false;
         }
-        return true;
+
+        return ApPlayerContextResolver.TryGetRewardProgress(
+            player,
+            out progress,
+            out reason
+        );
     }
 
     internal static IReadOnlyList<int> GetReplicatedRelicReceiptIndexes(
         Player player,
         ApRunProgressState progress)
     {
-        long? characterOffset = player.Character.GetCharacterOffset();
+        long? characterOffset = player.GetCharacterOffset();
         if (!characterOffset.HasValue)
             return Array.Empty<int>();
 
@@ -249,6 +191,8 @@ public static class MultiplayerLocationChecks
 
     public static bool IsCheckWriter(Player player)
     {
+        if (!ApPlayerContextResolver.HasCharacterChecks(player))
+            return false;
         if (!MultiplayerSupport.IsRealMultiplayerRun)
             return player == GameUtility.CurrentPlayer;
         if (player.RunState is not RunState runState

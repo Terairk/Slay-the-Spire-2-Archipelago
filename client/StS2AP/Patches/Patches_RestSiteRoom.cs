@@ -20,7 +20,7 @@ public static class Patches_RestSiteRoom
                     MultiplayerFeature.RestSites
                 )
                 || GameUtility.CurrentPlayer is not Player localPlayer
-                || !MultiplayerLocationChecks.TryGetSettings(
+                || !MultiplayerLocationChecks.TryGetCheckSettings(
                     localPlayer,
                     out ArchipelagoSettings settings
                 )

@@ -45,7 +45,7 @@ namespace StS2AP.Utils
             ArchipelagoSettings? settings = null,
             long? characterOffset = null)
         {
-            characterOffset ??= player.Character.GetCharacterOffset();
+            characterOffset ??= player.GetCharacterOffset();
             var ownedOrReservedRelicIds = player.Relics.Select(relic => relic.Id).ToHashSet();
             if (reservedRelicIds != null)
                 ownedOrReservedRelicIds.UnionWith(reservedRelicIds);
@@ -165,7 +165,7 @@ namespace StS2AP.Utils
             ArchipelagoSettings? settings = null,
             long? characterOffset = null)
         {
-            characterOffset ??= player.Character.GetCharacterOffset();
+            characterOffset ??= player.GetCharacterOffset();
             var ownedOrReservedRelicIds = player.Relics.Select(relic => relic.Id).ToHashSet();
             if (reservedRelicIds != null)
                 ownedOrReservedRelicIds.UnionWith(reservedRelicIds);

@@ -76,7 +76,7 @@ namespace StS2AP.Patches
                 ))
                     return;
 
-                if (!MultiplayerLocationChecks.TryGetSettings(
+                if (!MultiplayerLocationChecks.TryGetCheckSettings(
                         player,
                         out ArchipelagoSettings settings))
                 {
@@ -206,7 +206,7 @@ namespace StS2AP.Patches
                     return;
 
                 var player = __instance.Player;
-                if (!MultiplayerLocationChecks.TryGetSettings(player, out _))
+                if (!MultiplayerLocationChecks.TryGetCheckSettings(player, out _))
                     return;
 
                 if (room.RoomType == RoomType.Elite)
@@ -344,7 +344,7 @@ namespace StS2AP.Patches
 
                 var player = GameUtility.CurrentPlayer;
                 if (player == null
-                    || !MultiplayerLocationChecks.TryGetSettings(player, out _)
+                    || !MultiplayerLocationChecks.TryGetCheckSettings(player, out _)
                     || ArchipelagoClient.Progress.RelicRewardsAttempted
                         >= ArchipelagoProgress._maxRelicRewards
                     || RelicRewardUtility.HasWaitingReceiptForNaturalReward(player))
@@ -380,7 +380,7 @@ namespace StS2AP.Patches
                         continue;
 
                     bool apOwnedCandidate =
-                        MultiplayerLocationChecks.TryGetSettings(player, out _)
+                        MultiplayerLocationChecks.TryGetCheckSettings(player, out _)
                         && MultiplayerLocationChecks.GetRelicRewardsAttempted(player)
                             < ArchipelagoProgress._maxRelicRewards;
                     if (apOwnedCandidate
@@ -438,7 +438,7 @@ namespace StS2AP.Patches
                     return;
 
                 if (!__result
-                    || !MultiplayerLocationChecks.TryGetSettings(player, out _)
+                    || !MultiplayerLocationChecks.TryGetCheckSettings(player, out _)
                     || room?.RoomType != RoomType.Elite)
                 {
                     return;

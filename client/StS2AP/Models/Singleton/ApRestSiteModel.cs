@@ -23,12 +23,15 @@ public sealed class ApRestSiteModel : HookedSingletonModel
         ICollection<RestSiteOption> options)
     {
         if (!MultiplayerSupport.ShouldRunReplicatedConstruction(MultiplayerFeature.RestSites)
-            || !MultiplayerLocationChecks.TryGetSettings(
+            || !ApPlayerContextResolver.TryGetRewardSettings(
                 player,
                 out ArchipelagoSettings settings
             )
             || !settings.CampfireSanity
-            || !TryGetCharacterConfig(player, settings, out CharacterConfig config))
+            || !ApPlayerContextResolver.TryGetCharacterConfig(
+                player,
+                out CharacterConfig config
+            ))
         {
             return false;
         }
@@ -62,23 +65,26 @@ public sealed class ApRestSiteModel : HookedSingletonModel
         if (!canRest && !canSmith)
             InsertFirst(options, new FakeRestSiteOption(player));
 
-        string characterName = config.ModNum == 0
-            ? config.Name
-            : $"Custom Character {config.ModNum}";
-        for (int act = 1; act <= currentAct; act++)
+        if (ApPlayerContextResolver.HasCharacterChecks(player))
         {
-            for (int campfire = 1; campfire <= 2; campfire++)
+            string characterName = config.ModNum == 0
+                ? config.Name
+                : $"Custom Character {config.ModNum}";
+            for (int act = 1; act <= currentAct; act++)
             {
-                long locationId = LocationData.GetCampfireLocationId(
-                    config.CharOffset,
-                    act,
-                    campfire
-                );
-                if (checkedLocations.Contains(locationId))
-                    continue;
+                for (int campfire = 1; campfire <= 2; campfire++)
+                {
+                    long locationId = LocationData.GetCampfireLocationId(
+                        config.CharOffset,
+                        act,
+                        campfire
+                    );
+                    if (checkedLocations.Contains(locationId))
+                        continue;
 
-                string locationName = $"{characterName} Act {act} Campfire {campfire}";
-                options.Add(new ApRestSiteOption(player, locationId, locationName));
+                    string locationName = $"{characterName} Act {act} Campfire {campfire}";
+                    options.Add(new ApRestSiteOption(player, locationId, locationName));
+                }
             }
         }
 
@@ -87,21 +93,6 @@ public sealed class ApRestSiteModel : HookedSingletonModel
                 + $"restLevel={restLevel}, smithLevel={smithLevel}"
         );
         return true;
-    }
-
-    private static bool TryGetCharacterConfig(
-        Player player,
-        ArchipelagoSettings settings,
-        out CharacterConfig config)
-    {
-        if (settings.Characters.TryGetValue(player.Character.Id.Entry, out config!))
-            return true;
-
-        LogUtility.Error(
-            $"Leaving native rest-site options unchanged for player {player.NetId}: "
-                + $"character '{player.Character.Id.Entry}' has no AP configuration"
-        );
-        return false;
     }
 
     private static bool TryGetProgress(
@@ -124,7 +115,7 @@ public sealed class ApRestSiteModel : HookedSingletonModel
         restLevel = 0;
         smithLevel = 0;
         checkedLocations = new HashSet<long>();
-        if (!MultiplayerLocationChecks.TryGetEffectiveCheckProgress(
+        if (!ApPlayerContextResolver.TryGetRewardProgress(
                 player,
                 out var progress,
                 out reason

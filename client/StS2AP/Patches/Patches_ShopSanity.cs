@@ -547,7 +547,7 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                long? charId = player.Character.GetCharacterOffset();
+                long? charId = player.GetCharacterOffset();
                 if (!charId.HasValue)
                 {
                     LogUtility.Error(

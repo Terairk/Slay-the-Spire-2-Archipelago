@@ -99,7 +99,7 @@ namespace StS2AP.Patches
                         : Array.Empty<MegaCrit.Sts2.Core.Entities.Players.Player>();
             foreach (var player in players)
             {
-                if (!MultiplayerLocationChecks.TryGetSettings(
+                if (!MultiplayerLocationChecks.TryGetCheckSettings(
                         player,
                         out ArchipelagoSettings settings)
                     || !settings.Floorsanity
