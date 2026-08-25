@@ -168,6 +168,13 @@ namespace StS2AP.Patches
                 Player? localPlayer = MultiplayerSupport.BeginRun(__result);
                 if (localPlayer == null)
                     return;
+                if (MultiplayerSupport.ClaimsInvalidated)
+                {
+                    LogUtility.Error(
+                        "Skipping AP multiplayer binding because the saved local identity did not match."
+                    );
+                    return;
+                }
 
                 AncientMultiplayer.BindRun(__result);
                 StandardRelicPool.BindRun(__result);

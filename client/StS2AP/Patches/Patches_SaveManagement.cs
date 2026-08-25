@@ -31,9 +31,13 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(RunSaveManager), nameof(RunSaveManager.SaveRun), new[] { typeof(AbstractRoom) })]
         public static class SaveRun
         {
+            [ThreadStatic]
+            private static bool _syncMultiplayerCampaignAfterSave;
+
             [HarmonyPrefix]
             public static bool replaceSave(AbstractRoom? preFinishedRoom, ref Task __result)
             {
+                _syncMultiplayerCampaignAfterSave = false;
                 if (MultiplayerSupport.IsRealMultiplayerRun)
                 {
                     // MegaCrit owns the multiplayer save and RitsuLib embeds the authoritative
@@ -41,7 +45,21 @@ namespace StS2AP.Patches
                     if (RunManager.Instance.NetService.Type
                         == MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Host)
                     {
+                        if (!TryGetCheckpointEligibility(
+                            preFinishedRoom,
+                            out _,
+                            out _,
+                            out string multiplayerCheckpointReason))
+                        {
+                            LogUtility.Info(
+                                $"Skipping multiplayer AP checkpoint: {multiplayerCheckpointReason}"
+                            );
+                            __result = Task.CompletedTask;
+                            return false;
+                        }
+
                         ApRunData.CaptureLocalHostProgressBeforeSave();
+                        _syncMultiplayerCampaignAfterSave = true;
                         return true;
                     }
 
@@ -54,47 +72,19 @@ namespace StS2AP.Patches
                 LogUtility.Info($"Current Map node type {RunManager.Instance.DebugOnlyGetState()?.CurrentMapPoint?.PointType}");
                 LogUtility.Info($"Game thinks we should save: {RunManager.Instance.ShouldSave}");
 
-                var maxSaveAct = ArchipelagoClient.Progress.MaxProgressiveAncientLevel(
-                    GameUtility.CurrentConfig?.CharOffset ?? -1
-                );
-                var currentAct = (GameUtility.CurrentPlayer?.RunState.CurrentActIndex ?? 0) + 1;
-                var currentMapPointType = RunManager
-                    .Instance.DebugOnlyGetState()
-                    ?.CurrentMapPoint?.PointType;
-                // Act 3 has no later supported checkpoint. Preserve its treasure-room save
-                // instead of replacing it after either Act 3 boss.
-                var isBossAutosave =
-                    preFinishedRoom?.RoomType == RoomType.Boss
-                    && currentAct < 3;
-                var isTreasureAutosave = currentMapPointType == MapPointType.Treasure;
-                var isEligibleSaveLocation =
-                    isBossAutosave
-                    || isTreasureAutosave
-                    || (
-                        preFinishedRoom?.RoomType == RoomType.Event
-                        && currentMapPointType == MapPointType.Ancient
-                    );
-                var ancientRelicLocation = ArchipelagoClient.Settings?.AncientRelicLocation
-                    ?? AncientRelicLocation.Anytime;
-                var usesProgressiveAncients =
-                    ArchipelagoClient.Settings.APWorldVersion > Constants.VERSION_0_5_3;
-                var ancientIsLocked =
-                    usesProgressiveAncients
-                    && ancientRelicLocation == AncientRelicLocation.StartOfAct
-                    && currentAct > 1
-                    && maxSaveAct < currentAct;
-
-                LogUtility.Info(
-                    $"Max Act: {maxSaveAct} Current Act: {currentAct} " +
-                    $"AncientRelicLocation: {ancientRelicLocation}"
-                );
                 // Save after boss kills, in treasure rooms, and after ancient selections.
-                if (!RunManager.Instance.ShouldSave ||
-                    (RunManager.Instance.NetService.Type != MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Singleplayer && RunManager.Instance.NetService.Type != MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Host)
-                    || !isEligibleSaveLocation
-                    || ancientIsLocked)
+                bool isEligibleCheckpoint = TryGetCheckpointEligibility(
+                    preFinishedRoom,
+                    out bool isBossAutosave,
+                    out bool isTreasureAutosave,
+                    out string checkpointReason
+                );
+                if ((RunManager.Instance.NetService.Type != MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Singleplayer && RunManager.Instance.NetService.Type != MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Host)
+                    || !isEligibleCheckpoint)
                 {
-                    LogUtility.Info($"Skipping save {preFinishedRoom?.RoomType}");
+                    LogUtility.Info(
+                        $"Skipping save {preFinishedRoom?.RoomType}: {checkpointReason}"
+                    );
                     __result = Task.CompletedTask;
                     return false;
                 }
@@ -103,6 +93,66 @@ namespace StS2AP.Patches
                 SerializableRun saveMe = RunManager.Instance.ToSave(preFinishedRoom);
                 __result = asyncSave(saveMe, isBossAutosave || isTreasureAutosave);
                 return false;
+            }
+
+            [HarmonyPostfix]
+            public static void SyncMultiplayerCampaign(ref Task __result)
+            {
+                bool shouldSync = _syncMultiplayerCampaignAfterSave;
+                _syncMultiplayerCampaignAfterSave = false;
+                if (shouldSync)
+                    __result = ApMultiplayerCampaignStore.SyncAfterCheckpoint(__result);
+            }
+
+            private static bool TryGetCheckpointEligibility(
+                AbstractRoom? preFinishedRoom,
+                out bool isBossAutosave,
+                out bool isTreasureAutosave,
+                out string reason)
+            {
+                int maxSaveAct = ArchipelagoClient.Progress.MaxProgressiveAncientLevel(
+                    GameUtility.CurrentConfig?.CharOffset ?? -1
+                );
+                int currentAct = (GameUtility.CurrentPlayer?.RunState.CurrentActIndex ?? 0) + 1;
+                MapPointType? currentMapPointType = RunManager
+                    .Instance.DebugOnlyGetState()
+                    ?.CurrentMapPoint?.PointType;
+                // Act 3 has no later supported checkpoint. Preserve its treasure-room save
+                // instead of replacing it after either Act 3 boss.
+                isBossAutosave = preFinishedRoom?.RoomType == RoomType.Boss && currentAct < 3;
+                isTreasureAutosave = currentMapPointType == MapPointType.Treasure;
+                bool isEligibleSaveLocation =
+                    isBossAutosave
+                    || isTreasureAutosave
+                    || (
+                        preFinishedRoom?.RoomType == RoomType.Event
+                        && currentMapPointType == MapPointType.Ancient
+                    );
+                AncientRelicLocation ancientRelicLocation =
+                    ArchipelagoClient.Settings?.AncientRelicLocation
+                    ?? AncientRelicLocation.Anytime;
+                bool usesProgressiveAncients =
+                    ArchipelagoClient.Settings.APWorldVersion > Constants.VERSION_0_5_3;
+                bool ancientIsLocked =
+                    usesProgressiveAncients
+                    && ancientRelicLocation == AncientRelicLocation.StartOfAct
+                    && currentAct > 1
+                    && maxSaveAct < currentAct;
+
+                LogUtility.Info(
+                    $"Max Act: {maxSaveAct} Current Act: {currentAct} "
+                        + $"AncientRelicLocation: {ancientRelicLocation}"
+                );
+
+                if (!RunManager.Instance.ShouldSave)
+                    reason = "the run is not currently saveable";
+                else if (!isEligibleSaveLocation)
+                    reason = "this room is not an AP checkpoint";
+                else if (ancientIsLocked)
+                    reason = "the progressive Ancient checkpoint is locked";
+                else
+                    reason = string.Empty;
+                return reason.Length == 0;
             }
 
             public static async Task asyncSave(

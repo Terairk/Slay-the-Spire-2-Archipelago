@@ -610,6 +610,13 @@ public static class MultiplayerSupport
             return false;
         }
 
+        if (ApRunData.TryGetLocalPlayerState(runState, localPlayer.NetId, out ApPlayerRunState savedState)
+            && !ValidateReturningPlayerIdentity(savedState, out reason))
+        {
+            reason = "The saved campaign cannot be loaded by this AP identity: " + reason;
+            return false;
+        }
+
         return CanEmbark(localPlayer.Character, out reason);
     }
 
@@ -775,7 +782,18 @@ public static class MultiplayerSupport
 
         _activeParticipation = PendingParticipation;
         if (ApRunData.TryGetLocalPlayerState(runState, localPlayer.NetId, out var savedPlayerState))
+        {
             _activeParticipation = savedPlayerState.Participation;
+            if (!ValidateReturningPlayerIdentity(savedPlayerState, out string identityReason))
+            {
+                ClaimsInvalidated = true;
+                LogUtility.Error($"Saved AP multiplayer identity mismatch: {identityReason}");
+                Callable.From(() => NotificationUtility.ShowRawText(
+                    "This saved campaign belongs to a different AP participation identity. "
+                        + "AP progress and rewards are disabled for this run."
+                )).CallDeferred();
+            }
+        }
 
         if (_activeParticipation == ApParticipationKind.OwnApSlot
             && RunManager.Instance.NetService.Type == NetGameType.Host
@@ -820,6 +838,45 @@ public static class MultiplayerSupport
                 + $"players=[{string.Join(",", runState.Players.Select(p => p.NetId))}]"
         );
         return localPlayer;
+    }
+
+    private static bool ValidateReturningPlayerIdentity(
+        ApPlayerRunState savedState,
+        out string reason)
+    {
+        if (savedState.Participation != PendingParticipation)
+        {
+            reason = $"saved participation is {savedState.Participation}, but this process "
+                + $"entered as {PendingParticipation}";
+            return false;
+        }
+
+        if (savedState.Participation != ApParticipationKind.OwnApSlot)
+        {
+            reason = string.Empty;
+            return true;
+        }
+
+        if (_preparedSessionIdentity is not { } prepared
+            || savedState.ApRoomSeed == null
+            || savedState.ApTeamId == null
+            || savedState.ApSlotId == null)
+        {
+            reason = "the saved or currently prepared AP slot identity is incomplete";
+            return false;
+        }
+
+        if (!string.Equals(savedState.ApRoomSeed, prepared.RoomSeed, StringComparison.Ordinal)
+            || savedState.ApTeamId != prepared.ApTeamId
+            || savedState.ApSlotId != prepared.ApSlotId)
+        {
+            reason = $"saved={savedState.ApRoomSeed}/ap-team-{savedState.ApTeamId}/"
+                + $"ap-slot-{savedState.ApSlotId}, prepared={prepared}";
+            return false;
+        }
+
+        reason = string.Empty;
+        return true;
     }
 
     public static IReadOnlyList<ItemInfo> GetPreparedReceivedItems() => _preparedReceivedItems;

@@ -566,7 +566,17 @@ namespace StS2AP.Patches
         private static class RequireApSlotForHostButton
         {
             [HarmonyPrefix]
-            private static bool Prefix() => AllowHostCreation();
+            private static bool Prefix()
+            {
+                if (!AllowHostCreation())
+                    return false;
+
+                // Vanilla bypasses NMultiplayerHostSubmenu for a profile's first-ever run.
+                // Always route AP hosting through the mode submenu so save selection cannot
+                // skip the campaign picker.
+                MenuUtility.SubmenuStack.PushSubmenuType<NMultiplayerHostSubmenu>();
+                return false;
+            }
         }
 
         [HarmonyPatch(
@@ -599,7 +609,82 @@ namespace StS2AP.Patches
         private static class RequireApSlotForHostMode
         {
             [HarmonyPrefix]
-            private static bool Prefix() => AllowHostCreation();
+            private static bool Prefix(
+                NMultiplayerHostSubmenu __instance,
+                GameMode gameMode)
+            {
+                if (!AllowHostCreation())
+                    return false;
+                if (ApMultiplayerCampaignFlow.IsResumingNativeStart)
+                    return true;
+
+                try
+                {
+                    ApMultiplayerCampaignFlow.OpenPicker(__instance, gameMode);
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.Error($"Could not open the AP multiplayer campaign picker: {ex}");
+                    NotificationUtility.ShowRawText(
+                        "The AP multiplayer campaign picker could not be opened."
+                    );
+                }
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// AP owns multiplayer save selection. Keep Host available and remove the native
+        /// single-save Load/Abandon bypasses from the AP multiplayer submenu.
+        /// </summary>
+        [HarmonyPatch(typeof(NMultiplayerSubmenu), "UpdateButtons")]
+        private static class UseUnifiedApCampaignButton
+        {
+            [HarmonyPostfix]
+            private static void Postfix(NMultiplayerSubmenu __instance)
+            {
+                if (MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer
+                    || MultiplayerSupport.PendingParticipation != ApParticipationKind.OwnApSlot)
+                {
+                    return;
+                }
+
+                SetButtonVisible(__instance, "_hostButton", visible: true);
+                SetButtonVisible(__instance, "_loadButton", visible: false);
+                SetButtonVisible(__instance, "_abandonButton", visible: false);
+            }
+
+            private static void SetButtonVisible(
+                NMultiplayerSubmenu submenu,
+                string fieldName,
+                bool visible)
+            {
+                if (AccessTools.Field(typeof(NMultiplayerSubmenu), fieldName)
+                        ?.GetValue(submenu) is CanvasItem button)
+                {
+                    button.Visible = visible;
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(NMultiplayerSubmenu), "get_InitialFocusedControl")]
+        private static class FocusUnifiedApCampaignButton
+        {
+            [HarmonyPostfix]
+            private static void Postfix(NMultiplayerSubmenu __instance, ref Control __result)
+            {
+                if (MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer
+                    || MultiplayerSupport.PendingParticipation != ApParticipationKind.OwnApSlot)
+                {
+                    return;
+                }
+
+                if (AccessTools.Field(typeof(NMultiplayerSubmenu), "_hostButton")
+                        ?.GetValue(__instance) is Control hostButton)
+                {
+                    __result = hostButton;
+                }
+            }
         }
 
         /// <summary>Prevents a local ready signal unless this process's AP owner is prepared.</summary>
@@ -625,6 +710,13 @@ namespace StS2AP.Patches
                     return BlockReady(__instance, blockedReason);
                 }
 
+                if (!ApMultiplayerCampaignFlow.AllowNewCampaignEmbark(
+                    __instance,
+                    character))
+                {
+                    return false;
+                }
+
                 return true;
             }
 
@@ -636,6 +728,40 @@ namespace StS2AP.Patches
                     screen.Lobby.SetReady(ready: false);
                 NotificationUtility.ShowRawText(blockedReason);
                 LogUtility.Warn($"Blocked AP multiplayer embark: {blockedReason}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// The native load lobby permits continuing with missing players. Preserve that, but
+        /// reject any connected STS identity that was not in the campaign's frozen roster.
+        /// </summary>
+        [HarmonyPatch(typeof(NMultiplayerLoadGameScreen), "ShouldAllowRunToBegin")]
+        private static class RequireOriginalSavedRoster
+        {
+            [HarmonyPostfix]
+            private static void Postfix(
+                NMultiplayerLoadGameScreen __instance,
+                ref Task<bool> __result)
+            {
+                __result = ValidateAfterVanilla(__instance, __result);
+            }
+
+            private static async Task<bool> ValidateAfterVanilla(
+                NMultiplayerLoadGameScreen screen,
+                Task<bool> vanillaResult)
+            {
+                if (!await vanillaResult)
+                    return false;
+                if (ApMultiplayerCampaignFlow.ValidateLoadLobbyRoster(
+                    screen,
+                    out string reason))
+                {
+                    return true;
+                }
+
+                LogUtility.Warn($"Blocked AP saved-run launch: {reason}");
+                Callable.From(() => NotificationUtility.ShowRawText(reason)).CallDeferred();
                 return false;
             }
         }

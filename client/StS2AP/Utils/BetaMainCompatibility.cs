@@ -3,6 +3,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves.Managers;
 
 namespace StS2AP.Utils;
 
@@ -12,6 +13,39 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class BetaMainCompatibility
 {
+    /// <summary>
+    /// Resolves a run-save path without binding the compiled mod to the public branch's
+    /// two-parameter overload or the beta branch's three-parameter overload.
+    /// </summary>
+    public static string GetRunSavePath(int profileId, string fileName)
+    {
+        var betaMethod = AccessTools.Method(
+            typeof(RunSaveManager),
+            nameof(RunSaveManager.GetRunSavePath),
+            new[] { typeof(int), typeof(string), typeof(bool?) }
+        );
+        if (betaMethod != null)
+        {
+            return betaMethod.Invoke(null, new object?[] { profileId, fileName, null }) as string
+                ?? throw new InvalidCastException(
+                    $"{typeof(RunSaveManager).FullName}.GetRunSavePath returned a non-string value."
+                );
+        }
+
+        var mainMethod = AccessTools.Method(
+            typeof(RunSaveManager),
+            nameof(RunSaveManager.GetRunSavePath),
+            new[] { typeof(int), typeof(string) }
+        ) ?? throw new MissingMethodException(
+            typeof(RunSaveManager).FullName,
+            nameof(RunSaveManager.GetRunSavePath)
+        );
+        return mainMethod.Invoke(null, new object?[] { profileId, fileName }) as string
+            ?? throw new InvalidCastException(
+                $"{typeof(RunSaveManager).FullName}.GetRunSavePath returned a non-string value."
+            );
+    }
+
     /// <summary>
     /// Resolves the authoritative MegaCrit host from live network state. Do not duplicate this
     /// value in AP run data: a host process owns its own <see cref="INetGameService.NetId"/>,
