@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Archipelago.MultiClient.Net.BounceFeatures.DeathLink;
 using Godot;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -134,21 +135,54 @@ public static class DeathLinkMultiplayer
             Cause = cause,
         };
 
-        if (!RitsuLibManagedNetActions.Request(
+        ManagedActionRequestScheduler.RequestOrDefer(
+            message.EventId,
+            $"DeathLink {message.EventId}",
+            () => RitsuLibManagedNetActions.Request(
                 RunManager.Instance,
                 DamageActionDescriptor,
                 message,
                 owner.NetId
-            ))
-        {
-            LogUtility.Error($"Could not enqueue managed DeathLink {message.EventId}.");
-            NotificationUtility.ShowRawText("Could not synchronize the received DeathLink.");
-            return;
-        }
-
-        LogUtility.Info(
-            $"Requested managed DeathLink {message.EventId} for AP owner {owner.NetId}."
+            ),
+            () => IsCurrentRequest(message),
+            () => LogUtility.Info(
+                $"Requested managed DeathLink {message.EventId} for AP owner {owner.NetId}."
+            ),
+            reason =>
+            {
+                LogUtility.Error(reason);
+                NotificationUtility.ShowRawText("Could not synchronize the received DeathLink.");
+            },
+            canRequest: IsSafeRequestBoundary
         );
+    }
+
+    private static bool IsCurrentRequest(DeathLinkActionMessage message) =>
+        MultiplayerSupport.IsRealMultiplayerRun
+        && MultiplayerSupport.IsLocalOwnApSlot
+        && MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
+        && RunManager.Instance.DebugOnlyGetState() is RunState runState
+        && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
+        && shared.RunId == message.RunId;
+
+    /// <summary>
+    /// Keeps the managed action out of the native queues while combat setup, enemy actions,
+    /// end-turn processing, another action, or a player choice is active. ActionQueueSet.IsEmpty
+    /// remains false while an action is suspended for a player choice.
+    /// </summary>
+    private static bool IsSafeRequestBoundary()
+    {
+        CombatManager combat = CombatManager.Instance;
+        if (combat.IsStarting || combat.IsEnding)
+            return false;
+
+        ActionSynchronizerCombatState combatState =
+            RunManager.Instance.ActionQueueSynchronizer.CombatState;
+        bool phaseIsSafe = combatState == ActionSynchronizerCombatState.NotInCombat
+            || combatState == ActionSynchronizerCombatState.PlayPhase && combat.IsInProgress;
+        return phaseIsSafe
+            && RunManager.Instance.ActionExecutor.CurrentlyRunningAction == null
+            && RunManager.Instance.ActionQueueSet.IsEmpty;
     }
 
     private static DeathLinkActionMessage DeserializeActionMessage(ReadOnlySpan<byte> bytes)
@@ -173,6 +207,19 @@ public static class DeathLinkMultiplayer
         {
             LogUtility.Warn(
                 $"Ignored invalid managed DeathLink {message.EventId} owned by {owner.NetId}."
+            );
+            return;
+        }
+
+        // The request was authored at an idle boundary, but a client-authored request still has
+        // to travel through the host. If end-turn wins that race, Any keeps the action from being
+        // canceled and this guard moves the mutation to the next safe replicated phase.
+        if (!await WaitForSafeExecutionBoundary(message, owner))
+            return;
+        if (!TryValidateAction(message, owner, out runState, out settings))
+        {
+            LogUtility.Warn(
+                $"Managed DeathLink {message.EventId} became stale while waiting to execute."
             );
             return;
         }
@@ -237,6 +284,50 @@ public static class DeathLinkMultiplayer
                 }
             }
         }
+    }
+
+    private static async Task<bool> WaitForSafeExecutionBoundary(
+        DeathLinkActionMessage message,
+        Player owner)
+    {
+        bool loggedWait = false;
+        while (TryValidateAction(message, owner, out _, out _))
+        {
+            CombatManager combat = CombatManager.Instance;
+            ActionSynchronizerCombatState combatState =
+                RunManager.Instance.ActionQueueSynchronizer.CombatState;
+            bool phaseIsSafe =
+                combatState == ActionSynchronizerCombatState.NotInCombat && !combat.IsStarting
+                || combatState == ActionSynchronizerCombatState.PlayPhase
+                    && combat.IsInProgress
+                    && !combat.IsEnding;
+            if (phaseIsSafe)
+                return true;
+
+            if (!loggedWait)
+            {
+                LogUtility.Info(
+                    $"Managed DeathLink {message.EventId} is waiting to execute from "
+                        + $"combat state {combatState}."
+                );
+                loggedWait = true;
+            }
+
+            if (Engine.GetMainLoop() is not SceneTree sceneTree)
+            {
+                LogUtility.Error(
+                    $"Managed DeathLink {message.EventId} could not wait for a safe phase."
+                );
+                return false;
+            }
+
+            await sceneTree.ToSignal(sceneTree, SceneTree.SignalName.ProcessFrame);
+        }
+
+        LogUtility.Warn(
+            $"Managed DeathLink {message.EventId} became stale before a safe phase was reached."
+        );
+        return false;
     }
 
     private static bool TryValidateAction(
