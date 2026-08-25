@@ -62,7 +62,7 @@ public sealed class ArchipelagoReward : ModCustomReward
         _locationName = locationName;
         _locationId = MultiplayerLocationChecks.ResolveLocationId(player, locationName);
         _isChecked = MultiplayerLocationChecks.IsChecked(player, _locationId);
-        _descriptionKey = BuildDescriptionKey(locationName);
+        _descriptionKey = BuildDescriptionKey(player.NetId, locationName);
 
         string displayName = locationName;
         if (_locationId != -1
@@ -115,9 +115,15 @@ public sealed class ArchipelagoReward : ModCustomReward
     {
     }
 
-    private static string BuildDescriptionKey(string locationName)
+    private static string BuildDescriptionKey(ulong ownerNetId, string locationName)
     {
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(locationName));
+        // Multiple multiplayer owners can produce the same numbered location name. A non-writer
+        // replica cannot scout that owner's AP slot and registers the raw location name, so sharing
+        // a key would overwrite the local owner's scouted item text. Keep repeated instances for
+        // one owner stable while isolating each player's presentation.
+        byte[] hash = SHA256.HashData(
+            Encoding.UTF8.GetBytes($"{ownerNetId}:{locationName}")
+        );
         return $"AP_LOC_{Convert.ToHexString(hash.AsSpan(0, 8))}";
     }
 }
