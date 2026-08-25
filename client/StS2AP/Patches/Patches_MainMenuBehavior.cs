@@ -901,7 +901,11 @@ namespace StS2AP.Patches
             {
                 MultiplayerSupport.ObserveStartLobby(__instance);
 
-                if (MultiplayerSupport.IsLocalGuest)
+                // Neither guest mode owns a direct AP connection in this process. An AP Guest's
+                // host settings also arrive asynchronously after this callback, so constructing
+                // the trackers here would dereference an absent settings snapshot and abort the
+                // native join flow.
+                if (MultiplayerSupport.IsLocalGuest || MultiplayerSupport.IsLocalApGuest)
                     return;
 
                 // Find the first character on the screen

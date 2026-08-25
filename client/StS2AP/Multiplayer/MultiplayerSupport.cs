@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
 using StS2AP.Models;
+using StS2AP.Patches;
 using StS2AP.UI;
 using StS2AP.Utils;
 using static StS2AP.Data.ItemTable;
@@ -658,6 +659,11 @@ public static class MultiplayerSupport
 
         try
         {
+            // A shared-slot AP Guest initially opens this screen with every AP character
+            // locked. The host catalog is installed later on the Godot main thread, so refresh
+            // visibility/unlocks before re-evaluating readiness.
+            Patches_UnlockCharacters.OverrideCharacterSelectMenuOptions
+                .RefreshForCurrentParticipation(screen);
             ApRunData.StageLocalPlayer(screen.Lobby);
             NConfirmButton embarkButton = screen.GetNode<NConfirmButton>("ConfirmButton");
             if (!CanEnterMultiplayerLobby(out _))

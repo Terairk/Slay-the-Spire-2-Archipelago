@@ -32,6 +32,18 @@ namespace StS2AP.Patches
                     return;
                 }
 
+                // AP Guests enter character select before the host receipt/settings snapshot can
+                // arrive. Do not consult stale process-local AP progress during that window.
+                // The catalog-installed callback refreshes the buttons after rebuilding the host
+                // slot's unlocked-character view.
+                if (!MultiplayerSupport.IsRealMultiplayerRun
+                    && MultiplayerSupport.IsLocalApGuest
+                    && !MultiplayerSupport.HostReceiptCatalogReady)
+                {
+                    __result = Array.Empty<CharacterModel>();
+                    return;
+                }
+
                 // During the lobby this local override controls only this process's selectable
                 // characters. Once a multiplayer run launches, preserve each serialized remote
                 // player's own UnlockState instead of replacing it with the local AP list.
@@ -62,6 +74,12 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NCharacterSelectScreen __instance)
             {
+                RefreshForCurrentParticipation(__instance);
+            }
+
+            internal static void RefreshForCurrentParticipation(
+                NCharacterSelectScreen __instance)
+            {
                 if (MultiplayerSupport.IsLocalGuest)
                 {
                     if (CharButtonContainerField.GetValue(__instance) is Control guestContainer)
@@ -74,6 +92,23 @@ namespace StS2AP.Patches
                             button.UnlockIfPossible();
                         }
                     }
+                    return;
+                }
+
+                if (MultiplayerSupport.IsLocalApGuest
+                    && !MultiplayerSupport.HostReceiptCatalogReady)
+                {
+                    LogUtility.Debug(
+                        "OverrideCharacterSelectMenuOptions: Waiting for the host AP Guest catalog"
+                    );
+                    return;
+                }
+
+                if (ArchipelagoClient.Settings?.Characters == null)
+                {
+                    LogUtility.Warn(
+                        "OverrideCharacterSelectMenuOptions: AP settings are not available yet"
+                    );
                     return;
                 }
 
@@ -98,11 +133,11 @@ namespace StS2AP.Patches
                     LogUtility.Info($"OverrideCharacterSelectMenuOptions: '{name}' isVisible={isVisible}");
                     LogUtility.Info($"Current Configured Characters: {string.Join(",", ArchipelagoClient.Settings.Characters.Keys)}");
 
+                    button.Visible = isVisible;
                     if (!isVisible)
-                    {
                         LogUtility.Debug($"OverrideCharacterSelectMenuOptions: Hiding button for character '{name}' (character not in slot)");
-                        button.Visible = false;
-                    }
+                    else
+                        button.UnlockIfPossible();
                 }
             }
         }
