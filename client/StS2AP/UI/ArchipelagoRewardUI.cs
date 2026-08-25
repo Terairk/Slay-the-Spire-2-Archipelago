@@ -1,5 +1,4 @@
 using Godot;
-using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
@@ -24,6 +23,11 @@ namespace StS2AP.UI;
 /// </summary>
 public static class ArchipelagoRewardUI
 {
+    private const string MultiplayerCombatBlockedMessage =
+        "Multiplayer AP rewards can only be claimed outside combat.";
+    private const string NativeChoiceBlockedMessage =
+        "Finish the current card or relic selection before opening AP rewards.";
+
     private enum ReturnDestination
     {
         Room,
@@ -79,6 +83,8 @@ public static class ArchipelagoRewardUI
     {
         if (IsOpen || _opening)
             return;
+        if (TryBlockMultiplayerCombatOpen() || TryBlockNativeChoiceOpen())
+            return;
 
         _opening = true;
         Callable.From(() =>
@@ -90,11 +96,17 @@ public static class ArchipelagoRewardUI
     private static async Task OpenOnMainThread()
     {
         bool opened = false;
+        bool destinationPrepared = false;
         try
         {
             if (IsOpen)
                 return;
+            // ShowRewards is deferred, so combat or a native choice can begin after the click-time
+            // guard. Repeat both checks before OpenMenu creates a synchronized RewardsSet.
+            if (TryBlockMultiplayerCombatOpen() || TryBlockNativeChoiceOpen())
+                return;
             PrepareForOpen();
+            destinationPrepared = true;
             opened = await ApMirroredRewardDispatcher.OpenMenu();
         }
         catch (Exception ex)
@@ -103,7 +115,7 @@ public static class ArchipelagoRewardUI
         }
         finally
         {
-            if (!opened && !IsOpen)
+            if (destinationPrepared && !opened && !IsOpen)
                 RestoreDestination(_returnDestination);
             _opening = false;
         }
@@ -218,8 +230,45 @@ public static class ArchipelagoRewardUI
         string message = string.IsNullOrWhiteSpace(reason)
             ? "This AP reward cannot be claimed."
             : reason;
-        bool blockedByCombat = CombatManager.Instance.IsInProgress
+        bool blockedByCombat = MultiplayerSupport.IsSynchronizedCombatActive
             && message.Contains("outside combat", StringComparison.OrdinalIgnoreCase);
+        ShowBlockedMessage(message, blockedByCombat);
+        return false;
+    }
+
+    private static bool TryBlockMultiplayerCombatOpen()
+    {
+        if (!MultiplayerSupport.IsRealMultiplayerRun
+            || !MultiplayerSupport.IsSynchronizedCombatActive)
+        {
+            return false;
+        }
+
+        ShowBlockedMessage(MultiplayerCombatBlockedMessage, blockedByCombat: true);
+        return true;
+    }
+
+    private static bool TryBlockNativeChoiceOpen()
+    {
+        if (!MultiplayerSupport.IsRealMultiplayerRun
+            || !IsNativePlayerChoiceScreen(ActiveScreenContext.Instance.GetCurrentScreen()))
+        {
+            return false;
+        }
+
+        ShowBlockedMessage(NativeChoiceBlockedMessage, blockedByCombat: false);
+        return true;
+    }
+
+    private static bool IsNativePlayerChoiceScreen(IScreenContext? screen) =>
+        screen is NCardGridSelectionScreen
+            or NCardRewardSelectionScreen
+            or NChooseACardSelectionScreen
+            or NChooseABundleSelectionScreen
+            or NChooseARelicSelection;
+
+    private static void ShowBlockedMessage(string message, bool blockedByCombat)
+    {
         NotificationUtility.ShowRawText(
             blockedByCombat ? $"[font_size=60]{message}[/font_size]" : message,
             timeout: blockedByCombat ? 3.5 : 3.0,
@@ -228,7 +277,6 @@ public static class ArchipelagoRewardUI
                 : NotificationUtility.NotificationPriority.Normal,
             includeInDevConsole: !blockedByCombat
         );
-        return false;
     }
 
     internal static void CloseWithoutNativeSkip(NRewardsScreen screen)

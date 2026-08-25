@@ -3,6 +3,7 @@ using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -48,6 +49,11 @@ public static class MultiplayerSupport
         MultiplayerFeature.DeathLink,
         MultiplayerFeature.SaveAndReconnect,
     };
+
+    internal static bool IsSynchronizedCombatActive =>
+        CombatManager.Instance.IsStarting
+        || RunManager.Instance.ActionQueueSynchronizer.CombatState
+            != ActionSynchronizerCombatState.NotInCombat;
 
     private static readonly Dictionary<int, IndexedItemInfo> DeferredItems = new();
 
@@ -1081,7 +1087,7 @@ public static class MultiplayerSupport
             return false;
         }
 
-        if (CombatManager.Instance.IsInProgress)
+        if (IsSynchronizedCombatActive)
         {
             reason = "Multiplayer gold can only be claimed outside combat.";
             return false;
@@ -1130,7 +1136,7 @@ public static class MultiplayerSupport
             reason = "The local game is disconnected from its multiplayer session.";
             return false;
         }
-        if (CombatManager.Instance.IsInProgress)
+        if (IsSynchronizedCombatActive)
         {
             reason = "Multiplayer AP rewards can only be claimed outside combat.";
             return false;
