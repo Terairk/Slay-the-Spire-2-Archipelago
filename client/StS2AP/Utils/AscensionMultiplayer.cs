@@ -405,7 +405,10 @@ public static class AscensionMultiplayer
                 $"Requested managed Ascension Down receipt {receipt.Index} "
                     + $"({level}) as {message.ActionId}."
             ),
-            reason => Fail(reason)
+            reason => Fail(reason),
+            canRequest: () =>
+                RunManager.Instance.ActionQueueSynchronizer.CombatState
+                == ActionSynchronizerCombatState.NotInCombat
         );
     }
 

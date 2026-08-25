@@ -19,6 +19,7 @@ public static class ManagedActionRequestScheduler
         Guid ActionId,
         string Description,
         Func<bool> TryRequest,
+        Func<bool> CanRequest,
         Func<bool> IsStillCurrent,
         Action OnSuccess,
         Action<string> OnFailure,
@@ -31,9 +32,11 @@ public static class ManagedActionRequestScheduler
         Func<bool> tryRequest,
         Func<bool> isStillCurrent,
         Action onSuccess,
-        Action<string> onFailure)
+        Action<string> onFailure,
+        Func<bool>? canRequest = null)
     {
-        if (tryRequest())
+        Func<bool> requestAllowed = canRequest ?? AlwaysAllowRequest;
+        if (requestAllowed() && tryRequest())
         {
             onSuccess();
             return;
@@ -43,13 +46,14 @@ public static class ManagedActionRequestScheduler
             actionId,
             description,
             tryRequest,
+            requestAllowed,
             isStillCurrent,
             onSuccess,
             onFailure,
             DateTime.UtcNow + RequestTimeout
         );
         LogUtility.Warn(
-            $"Managed action {description} is waiting for the launched run's network transport."
+            $"Managed action {description} is waiting for a safe action slot or network transport."
         );
 
         if (!TryHookProcessFrame())
@@ -87,6 +91,19 @@ public static class ManagedActionRequestScheduler
             if (!request.IsStillCurrent())
             {
                 Pending.Remove(request.ActionId);
+                continue;
+            }
+
+            // Non-combat managed actions must not enter a native player queue during combat:
+            // they sit at the front but are ineligible to execute, blocking that player's cards
+            // and end-turn action. Time spent waiting for the safe boundary does not consume the
+            // transport timeout.
+            if (!request.CanRequest())
+            {
+                Pending[request.ActionId] = request with
+                {
+                    DeadlineUtc = DateTime.UtcNow + RequestTimeout,
+                };
                 continue;
             }
 
@@ -131,4 +148,6 @@ public static class ManagedActionRequestScheduler
         _sceneTree = null;
         _processFrameHooked = false;
     }
+
+    private static bool AlwaysAllowRequest() => true;
 }

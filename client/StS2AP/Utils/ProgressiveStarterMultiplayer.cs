@@ -409,7 +409,10 @@ public static class ProgressiveStarterMultiplayer
                 NotificationUtility.ShowRawText(
                     "Could not synchronize a Progressive Starter item."
                 );
-            }
+            },
+            canRequest: () =>
+                RunManager.Instance.ActionQueueSynchronizer.CombatState
+                == ActionSynchronizerCombatState.NotInCombat
         );
     }
 
