@@ -32,8 +32,9 @@ namespace StS2AP.Data
                 return -1;
             }
 
-            // Place the character offset in the leftmost position and location ID in the rightmost 4 digits (zero-padded)
-            return (long) _characterOffset + locationId;
+            // AP character offsets are one-based while location blocks are zero-based:
+            // Ironclad=0xxxx, Silent=1xxxx, Defect=2xxxx, etc.
+            return ((_characterOffset.Value - 1) * CharacterLocationStride) + locationId;
         }
 
         /// <summary>
