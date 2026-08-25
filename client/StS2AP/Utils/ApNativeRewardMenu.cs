@@ -4,6 +4,7 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Factories;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rewards;
@@ -22,6 +23,8 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ApNativeRewardMenu
 {
+    private const int RewardOriginFontSize = 16;
+
     private enum ApRewardKind
     {
         Card,
@@ -148,7 +151,8 @@ public static class ApNativeRewardMenu
             player,
             options,
             presentation,
-            assignment.CanReroll
+            assignment.CanReroll,
+            rare
         );
     }
 
@@ -279,7 +283,8 @@ public static class ApNativeRewardMenu
             : $" ({presentation.FoundLocation})";
         string origin = string.IsNullOrWhiteSpace(presentation.SenderName)
             ? string.Empty
-            : $"\n[blue]from {presentation.SenderName}{location}[/blue]";
+            : $"\n[font_size={RewardOriginFontSize}]"
+                + $"[blue]from {presentation.SenderName}{location}[/blue][/font_size]";
         string key = $"AP_NATIVE_REWARD_{Interlocked.Increment(ref _descriptionSequence)}";
         TextUtility.RegisterLocString(key, primary + origin, "ap");
         return new LocString("ap", key);
@@ -410,7 +415,12 @@ public static class ApNativeRewardMenu
     private sealed class ApNativeCardReward : CardReward, IApNativeReward
     {
         private readonly int _itemIndex;
+        private readonly bool _isRare;
         private readonly LocString _description;
+
+        protected override string IconPath => _isRare
+            ? ImageHelper.GetImagePath("ui/reward_screen/reward_icon_rare.png")
+            : base.IconPath;
 
         public override LocString Description => _description;
 
@@ -419,10 +429,12 @@ public static class ApNativeRewardMenu
             Player player,
             CardCreationOptions rerollOptions,
             ReceiptPresentation presentation,
-            bool canReroll)
+            bool canReroll,
+            bool isRare)
             : base(cards, CardCreationSource.Encounter, player, rerollOptions)
         {
             _itemIndex = presentation.ItemIndex;
+            _isRare = isRare;
             _description = CreateApDescription(
                 new LocString("gameplay_ui", "COMBAT_REWARD_ADD_CARD"),
                 presentation
