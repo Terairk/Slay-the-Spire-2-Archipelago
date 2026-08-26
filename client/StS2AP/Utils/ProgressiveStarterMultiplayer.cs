@@ -410,9 +410,10 @@ public static class ProgressiveStarterMultiplayer
                     "Could not synchronize a Progressive Starter item."
                 );
             },
-            canRequest: () =>
-                RunManager.Instance.ActionQueueSynchronizer.CombatState
-                == ActionSynchronizerCombatState.NotInCombat
+            canRequest: () => BetaMainCompatibility.IsActionSynchronizerCombatState(
+                RunManager.Instance.ActionQueueSynchronizer.CombatState,
+                nameof(ActionSynchronizerCombatState.NotInCombat)
+            )
         );
     }
 

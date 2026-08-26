@@ -406,9 +406,10 @@ public static class AscensionMultiplayer
                     + $"({level}) as {message.ActionId}."
             ),
             reason => Fail(reason),
-            canRequest: () =>
-                RunManager.Instance.ActionQueueSynchronizer.CombatState
-                == ActionSynchronizerCombatState.NotInCombat
+            canRequest: () => BetaMainCompatibility.IsActionSynchronizerCombatState(
+                RunManager.Instance.ActionQueueSynchronizer.CombatState,
+                nameof(ActionSynchronizerCombatState.NotInCombat)
+            )
         );
     }
 

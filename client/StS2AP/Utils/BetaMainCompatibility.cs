@@ -1,4 +1,5 @@
 ﻿using HarmonyLib;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -13,6 +14,16 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class BetaMainCompatibility
 {
+    /// <summary>
+    /// Compares an action-synchronizer phase by its runtime name. Newer game versions inserted
+    /// PreCombatSetup into this enum, shifting the numeric values of every later member. Direct
+    /// enum comparisons compiled against the public branch therefore misidentify those phases.
+    /// </summary>
+    public static bool IsActionSynchronizerCombatState(
+        ActionSynchronizerCombatState state,
+        string expectedName) =>
+        string.Equals(Enum.GetName(state), expectedName, StringComparison.Ordinal);
+
     /// <summary>
     /// Resolves a run-save path without binding the compiled mod to the public branch's
     /// two-parameter overload or the beta branch's three-parameter overload.

@@ -79,6 +79,8 @@ public static class DeathLinkMultiplayer
     private static SceneTree? _sceneTree;
     private static bool _processFrameHooked;
     private static Guid? _inboundActionInFlight;
+    private static Guid? _lastBlockedInboundEvent;
+    private static string? _lastInboundBlockReason;
 
     public static void Initialize()
     {
@@ -108,6 +110,8 @@ public static class DeathLinkMultiplayer
             ActiveInboundDeaths.Clear();
             RecentInboundLethalDamage.Clear();
             _inboundActionInFlight = null;
+            _lastBlockedInboundEvent = null;
+            _lastInboundBlockReason = null;
         }
         UnhookProcessFrame();
     }
@@ -314,7 +318,7 @@ public static class DeathLinkMultiplayer
 
         LogUtility.Info(
             $"Host queued incoming DeathLink {request.EventId} for AP owner "
-                + $"{request.OwnerNetId}."
+                + $"{request.OwnerNetId}; {DescribeAdmissionState()}."
         );
         if (!EnsureProcessFrameHook())
         {
@@ -353,6 +357,7 @@ public static class DeathLinkMultiplayer
         {
             lock (StateLock)
                 PendingInbound.Dequeue();
+            ClearAdmissionBlocker(request.EventId);
             LogUtility.Warn(
                 $"Consumed stale incoming DeathLink {request.EventId} before admission."
             );
@@ -361,9 +366,11 @@ public static class DeathLinkMultiplayer
         }
 
         if (!TryGetSafeActionDescriptor(
-                out RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage> descriptor
+                out RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage> descriptor,
+                out string blockedReason
             ))
         {
+            LogAdmissionBlocked(request.EventId, blockedReason);
             return;
         }
 
@@ -395,7 +402,10 @@ public static class DeathLinkMultiplayer
         {
             lock (StateLock)
                 _inboundActionInFlight = null;
-            LogUtility.Error($"Could not admit incoming DeathLink {request.EventId}: {ex.Message}");
+            LogAdmissionBlocked(
+                request.EventId,
+                $"managed-action request threw {ex.GetType().Name}: {ex.Message}"
+            );
             return;
         }
 
@@ -403,42 +413,125 @@ public static class DeathLinkMultiplayer
         {
             lock (StateLock)
                 _inboundActionInFlight = null;
+            LogAdmissionBlocked(
+                request.EventId,
+                "managed-action request returned false; transport, peer capability, or run "
+                    + "context is not ready"
+            );
             return;
         }
 
         lock (StateLock)
             PendingInbound.Dequeue();
+        ClearAdmissionBlocker(request.EventId);
 
         LogUtility.Info(
             $"Host admitted incoming DeathLink {request.EventId} as a "
-                + $"{descriptor.ActionType} action."
+                + $"{descriptor.ActionType} action; {DescribeAdmissionState()}."
         );
     }
 
     private static bool TryGetSafeActionDescriptor(
-        out RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage> descriptor)
+        out RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage> descriptor,
+        out string blockedReason)
     {
         descriptor = null!;
+        blockedReason = string.Empty;
         CombatManager combat = CombatManager.Instance;
-        if (combat.IsStarting
-            || combat.IsEnding
-            || RunManager.Instance.ActionExecutor.CurrentlyRunningAction != null
-            || !RunManager.Instance.ActionQueueSet.IsEmpty)
+        if (combat.IsStarting)
         {
+            blockedReason = "combat is starting";
+            return false;
+        }
+        if (combat.IsEnding)
+        {
+            blockedReason = $"combat is ending (aboutToLose={combat.IsAboutToLose})";
+            return false;
+        }
+        if (RunManager.Instance.ActionExecutor.CurrentlyRunningAction is { } currentAction)
+        {
+            blockedReason = $"native action {currentAction.GetType().Name} is still running "
+                + $"(state={currentAction.State}, synchronizer="
+                + $"{RunManager.Instance.ActionQueueSynchronizer.CombatState})";
+            return false;
+        }
+        if (!RunManager.Instance.ActionQueueSet.IsEmpty)
+        {
+            blockedReason = "native action queues are not empty "
+                + $"(executorRunning={RunManager.Instance.ActionExecutor.IsRunning}, "
+                + $"executorPaused={RunManager.Instance.ActionExecutor.IsPaused}, synchronizer="
+                + $"{RunManager.Instance.ActionQueueSynchronizer.CombatState})";
             return false;
         }
 
-        switch (RunManager.Instance.ActionQueueSynchronizer.CombatState)
+        ActionSynchronizerCombatState synchronizerState =
+            RunManager.Instance.ActionQueueSynchronizer.CombatState;
+        if (BetaMainCompatibility.IsActionSynchronizerCombatState(
+                synchronizerState,
+                nameof(ActionSynchronizerCombatState.PlayPhase)))
         {
-            case ActionSynchronizerCombatState.PlayPhase when combat.IsInProgress:
-                descriptor = CombatActionDescriptor;
-                return true;
-            case ActionSynchronizerCombatState.NotInCombat when !combat.IsInProgress:
-                descriptor = NonCombatActionDescriptor;
-                return true;
-            default:
-                return false;
+            // PlayPhase is the native synchronizer's authoritative indication that it is safe to
+            // enqueue a CombatPlayPhaseOnly action. Rechecking CombatManager.IsInProgress here can
+            // observe a different transition snapshot and incorrectly defer until NonCombat.
+            descriptor = CombatActionDescriptor;
+            return true;
         }
+        if (!combat.IsInProgress
+            && BetaMainCompatibility.IsActionSynchronizerCombatState(
+                synchronizerState,
+                nameof(ActionSynchronizerCombatState.NotInCombat)))
+        {
+            descriptor = NonCombatActionDescriptor;
+            return true;
+        }
+
+        blockedReason = "no descriptor matches the current phase "
+            + $"(combatInProgress={combat.IsInProgress}, synchronizer={synchronizerState})";
+        return false;
+    }
+
+    private static void LogAdmissionBlocked(Guid eventId, string reason)
+    {
+        bool changed;
+        lock (StateLock)
+        {
+            changed = _lastBlockedInboundEvent != eventId
+                || !string.Equals(_lastInboundBlockReason, reason, StringComparison.Ordinal);
+            _lastBlockedInboundEvent = eventId;
+            _lastInboundBlockReason = reason;
+        }
+
+        if (changed)
+        {
+            LogUtility.Info(
+                $"Incoming DeathLink {eventId} is waiting for admission: {reason}; "
+                    + $"{DescribeAdmissionState()}."
+            );
+        }
+    }
+
+    private static void ClearAdmissionBlocker(Guid eventId)
+    {
+        lock (StateLock)
+        {
+            if (_lastBlockedInboundEvent != eventId)
+                return;
+            _lastBlockedInboundEvent = null;
+            _lastInboundBlockReason = null;
+        }
+    }
+
+    private static string DescribeAdmissionState()
+    {
+        CombatManager combat = CombatManager.Instance;
+        var executor = RunManager.Instance.ActionExecutor;
+        string currentAction = executor.CurrentlyRunningAction?.GetType().Name ?? "none";
+        return $"combatInProgress={combat.IsInProgress}, combatStarting={combat.IsStarting}, "
+            + $"combatEnding={combat.IsEnding}, aboutToLose={combat.IsAboutToLose}, "
+            + $"synchronizer={RunManager.Instance.ActionQueueSynchronizer.CombatState}, "
+            + $"executorRunning={executor.IsRunning}, executorPaused={executor.IsPaused}, "
+            + $"currentAction={currentAction}, queueEmpty="
+            + RunManager.Instance.ActionQueueSet.IsEmpty;
     }
 
     private static List<DeathLinkActionMessage.TargetPlan> BuildTargetPlans(

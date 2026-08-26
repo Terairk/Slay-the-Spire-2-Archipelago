@@ -52,8 +52,10 @@ public static class MultiplayerSupport
 
     internal static bool IsSynchronizedCombatActive =>
         CombatManager.Instance.IsStarting
-        || RunManager.Instance.ActionQueueSynchronizer.CombatState
-            != ActionSynchronizerCombatState.NotInCombat;
+        || !BetaMainCompatibility.IsActionSynchronizerCombatState(
+            RunManager.Instance.ActionQueueSynchronizer.CombatState,
+            nameof(ActionSynchronizerCombatState.NotInCombat)
+        );
 
     private static readonly Dictionary<int, IndexedItemInfo> DeferredItems = new();
 
