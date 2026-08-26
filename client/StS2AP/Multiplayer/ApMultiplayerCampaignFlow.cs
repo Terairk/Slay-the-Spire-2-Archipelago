@@ -1,5 +1,4 @@
 using HarmonyLib;
-using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
@@ -46,14 +45,12 @@ public static class ApMultiplayerCampaignFlow
         }
     }
 
-    internal static bool AllowNewCampaignEmbark(
-        NCharacterSelectScreen screen,
-        CharacterModel character)
+    internal static bool AllowNewCampaignEmbark(NCharacterSelectScreen screen)
     {
         if (!ApMultiplayerCampaignStore.IsStartingNewCampaign
             || screen.Lobby.NetService.Type != NetGameType.Host
-            || !ApMultiplayerCampaignStore.TryGetActiveCampaignForCharacter(
-                character.Id.Entry,
+            || !ApMultiplayerCampaignStore.TryGetActiveCampaignForRoster(
+                screen.Lobby,
                 out ApMultiplayerCampaignStore.CampaignMetadata existing))
         {
             return true;
@@ -67,8 +64,8 @@ public static class ApMultiplayerCampaignFlow
         );
         TextUtility.RegisterLocString(
             key + "_BODY",
-            $"{character.Id.Entry} already has an active campaign for this Archipelago slot. "
-                + "Confirm to archive its checkpoint and start this new campaign.",
+            "This exact player and character lineup already has an active campaign for this "
+                + "Archipelago slot. Confirm to archive its checkpoint and start this new campaign.",
             "ap"
         );
 

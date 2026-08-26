@@ -134,20 +134,19 @@ public static class ApMultiplayerCampaignStore
         && metadata.ApTeamId == teamId
         && metadata.ApSlotId == slotId;
 
-    internal static bool TryGetActiveCampaignForCharacter(
-        string characterId,
+    internal static bool TryGetActiveCampaignForRoster(
+        object lobby,
         out CampaignMetadata metadata)
     {
+        IReadOnlyList<(ulong NetId, string CharacterId)> roster =
+            BetaMainCompatibility.GetLobbyPlayerCharacters(lobby);
         metadata = ListCampaigns()
             .Where(entry => entry.IsUsable && entry.Metadata != null)
             .Select(entry => entry.Metadata!)
             .FirstOrDefault(candidate =>
                 candidate.Status == CampaignStatus.Active
                 && IsCurrentApIdentity(candidate)
-                && string.Equals(
-                    candidate.HostCharacterId,
-                    characterId,
-                    StringComparison.OrdinalIgnoreCase))!;
+                && HasSameRoster(candidate.Roster, roster))!;
         return metadata != null;
     }
 
@@ -230,6 +229,10 @@ public static class ApMultiplayerCampaignStore
         int teamId = hostState.ApTeamId.Value;
         int slotId = hostState.ApSlotId.Value;
         string characterId = hostPlayer.getInternalName();
+        List<CampaignRosterEntry> importedRoster = BuildImportedRoster(
+            importedRun,
+            read.SaveData.PlatformType
+        );
         CampaignMetadata? existing = ListCampaigns()
             .Where(entry => entry.Metadata != null)
             .Select(entry => entry.Metadata!)
@@ -239,10 +242,7 @@ public static class ApMultiplayerCampaignStore
                     : string.Equals(metadata.ApRoomSeed, roomSeed, StringComparison.Ordinal)
                         && metadata.ApTeamId == teamId
                         && metadata.ApSlotId == slotId
-                        && string.Equals(
-                            metadata.HostCharacterId,
-                            characterId,
-                            StringComparison.OrdinalIgnoreCase));
+                        && HasSameRoster(metadata.Roster, importedRoster));
         if (existing != null)
         {
             if (existing.Status == CampaignStatus.Active)
@@ -274,7 +274,7 @@ public static class ApMultiplayerCampaignStore
             HostCharacterId = characterId,
             HostCharacterOffset = TryGetCharacterOffset(characterId),
             HostNetId = hostPlayer.NetId,
-            Roster = BuildImportedRoster(importedRun, read.SaveData.PlatformType),
+            Roster = importedRoster,
             CreatedAtUtc = now,
             LastSavedAtUtc = now,
             Act = read.SaveData.CurrentActIndex + 1,
@@ -368,6 +368,7 @@ public static class ApMultiplayerCampaignStore
         Player host = runState.Players.FirstOrDefault(player => player.NetId == hostNetId)
             ?? throw new InvalidOperationException("The host player is not present in the run snapshot.");
         string characterId = host.getInternalName();
+        List<CampaignRosterEntry> roster = BuildRuntimeRoster(runState);
 
         ReadSaveResult<SerializableRun> read = SaveManager.Instance
             .LoadAndCanonicalizeMultiplayerRunSave(PlatformUtil.GetLocalPlayerId(GetVanillaPlatform()));
@@ -390,7 +391,7 @@ public static class ApMultiplayerCampaignStore
         string campaignId = selected != null
             && selected.Status == CampaignStatus.Active
             && IsCurrentApIdentity(selected)
-            && string.Equals(selected.HostCharacterId, characterId, StringComparison.OrdinalIgnoreCase)
+            && selected.RunId == shared.RunId
                 ? selected.CampaignId
                 : shared.RunId.ToString("N");
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -402,7 +403,7 @@ public static class ApMultiplayerCampaignStore
                 metadata.Status == CampaignStatus.Active
                 && !string.Equals(metadata.CampaignId, campaignId, StringComparison.Ordinal)
                 && IsCurrentApIdentity(metadata)
-                && string.Equals(metadata.HostCharacterId, characterId, StringComparison.OrdinalIgnoreCase)))
+                && HasSameRoster(metadata.Roster, roster)))
         {
             conflict.Status = CampaignStatus.Archived;
             WriteMetadata(conflict);
@@ -426,7 +427,7 @@ public static class ApMultiplayerCampaignStore
         metadata.HostCharacterOffset = GameUtility.CurrentConfig?.CharOffset
             ?? TryGetCharacterOffset(characterId);
         metadata.HostNetId = hostNetId;
-        metadata.Roster = BuildRuntimeRoster(runState);
+        metadata.Roster = roster;
         metadata.LastSavedAtUtc = now;
         metadata.Act = read.SaveData.CurrentActIndex + 1;
         metadata.CompletedFloorCount = read.SaveData.MapPointHistory?.Sum(act => act.Count) ?? 0;
@@ -465,6 +466,33 @@ public static class ApMultiplayerCampaignStore
         }
         return roster;
     }
+
+    private static bool HasSameRoster(
+        IReadOnlyCollection<CampaignRosterEntry> savedRoster,
+        IReadOnlyCollection<(ulong NetId, string CharacterId)> candidateRoster)
+    {
+        if (savedRoster.Count != candidateRoster.Count)
+            return false;
+
+        Dictionary<ulong, string> candidateByNetId = candidateRoster
+            .ToDictionary(player => player.NetId, player => player.CharacterId);
+        return savedRoster.All(saved =>
+            candidateByNetId.TryGetValue(saved.NetId, out string? characterId)
+            && string.Equals(
+                saved.CharacterId,
+                characterId,
+                StringComparison.OrdinalIgnoreCase
+            )
+        );
+    }
+
+    private static bool HasSameRoster(
+        IReadOnlyCollection<CampaignRosterEntry> first,
+        IReadOnlyCollection<CampaignRosterEntry> second) =>
+        HasSameRoster(
+            first,
+            second.Select(player => (player.NetId, player.CharacterId)).ToArray()
+        );
 
     private static List<CampaignRosterEntry> BuildSerializableRoster(SerializableRun run) =>
         run.Players.Select(player => new CampaignRosterEntry
@@ -526,7 +554,8 @@ public static class ApMultiplayerCampaignStore
         if (!Guid.TryParseExact(metadata.CampaignId, "N", out _))
             return "Campaign ID is invalid.";
         if (string.IsNullOrWhiteSpace(metadata.ApRoomSeed)
-            || string.IsNullOrWhiteSpace(metadata.HostCharacterId))
+            || string.IsNullOrWhiteSpace(metadata.HostCharacterId)
+            || metadata.Roster is not { Count: > 0 })
             return "Campaign identity metadata is incomplete.";
         if (requirePayload && !File.Exists(GetPayloadPath(metadata.CampaignId)))
             return "Campaign checkpoint file is missing.";

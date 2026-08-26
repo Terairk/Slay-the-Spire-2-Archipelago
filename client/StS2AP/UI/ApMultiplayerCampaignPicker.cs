@@ -337,10 +337,14 @@ public sealed partial class ApMultiplayerCampaignPicker : Control, IScreenContex
     private static string FormatCampaignSummary(
         ApMultiplayerCampaignStore.CampaignMetadata campaign)
     {
+        string lineup = string.Join(" + ", campaign.Roster
+            .OrderBy(player => player.NetId == campaign.HostNetId ? 0 : 1)
+            .ThenBy(player => player.NetId)
+            .Select(player => player.CharacterId));
         string players = campaign.Roster.Count == 1
             ? "1 player"
             : $"{campaign.Roster.Count} players";
-        return $"{campaign.HostCharacterId} — Act {campaign.Act}, "
+        return $"{lineup} — Act {campaign.Act}, "
             + $"Floor {campaign.CompletedFloorCount} — {players}";
     }
 

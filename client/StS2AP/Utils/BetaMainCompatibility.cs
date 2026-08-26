@@ -91,6 +91,38 @@ public static class BetaMainCompatibility
     }
 
     /// <summary>
+    /// Reads the complete new-run lobby lineup without binding to the public branch's
+    /// LobbyPlayer or the beta branch's renamed player type.
+    /// </summary>
+    public static IReadOnlyList<(ulong NetId, string CharacterId)> GetLobbyPlayerCharacters(
+        object lobby)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+        object players = AccessTools.Property(lobby.GetType(), "Players")?.GetValue(lobby)
+            ?? throw new MissingMemberException(lobby.GetType().FullName, "Players");
+        if (players is not System.Collections.IEnumerable sequence)
+            throw new InvalidCastException($"{lobby.GetType().FullName}.Players is not enumerable.");
+
+        var result = new List<(ulong NetId, string CharacterId)>();
+        foreach (object player in sequence)
+        {
+            Type playerType = player.GetType();
+            object? rawNetId = AccessTools.Field(playerType, "id")?.GetValue(player)
+                ?? AccessTools.Property(playerType, "id")?.GetValue(player);
+            object? rawCharacter = AccessTools.Field(playerType, "character")?.GetValue(player)
+                ?? AccessTools.Property(playerType, "character")?.GetValue(player);
+            if (rawNetId is not ulong netId || rawCharacter is not CharacterModel character)
+            {
+                throw new InvalidCastException(
+                    $"Could not read the player identity and character from {playerType.FullName}."
+                );
+            }
+            result.Add((netId, character.Id.Entry));
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Enumerates only the players currently connected to an active run. The public branch calls
     /// this collection ConnectedPlayerIds, while newer beta branches expose PlayerIds.
     /// </summary>

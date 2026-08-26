@@ -710,9 +710,7 @@ namespace StS2AP.Patches
                     return BlockReady(__instance, blockedReason);
                 }
 
-                if (!ApMultiplayerCampaignFlow.AllowNewCampaignEmbark(
-                    __instance,
-                    character))
+                if (!ApMultiplayerCampaignFlow.AllowNewCampaignEmbark(__instance))
                 {
                     return false;
                 }
