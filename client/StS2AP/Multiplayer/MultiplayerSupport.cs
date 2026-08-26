@@ -388,6 +388,8 @@ public static class MultiplayerSupport
         DeferredItems.Clear();
         ArchipelagoClient.Progress.AllReceivedItems.Clear();
         ArchipelagoClient.Progress.ProgressiveAncients.Clear();
+        ArchipelagoClient.Progress.ProgressiveRests.Clear();
+        ArchipelagoClient.Progress.ProgressiveSmiths.Clear();
         ArchipelagoClient.Progress.ProgressiveStarterCards.Clear();
         ArchipelagoClient.Progress.ProgressiveStarterRelics.Clear();
         ArchipelagoClient.Progress.ProgressiveStarterCardBaseId = null;
@@ -434,6 +436,21 @@ public static class MultiplayerSupport
                     && (!ArchipelagoClient.Settings.NeowSanity || count > 1))
                 {
                     ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
+                }
+            }
+            else if (feature == MultiplayerFeature.RestSites && item.ItemId >= 10000)
+            {
+                Dictionary<long, int>? counts = item.GetCharacterSpecificItemID() switch
+                {
+                    APItem.ProgressiveRest => ArchipelagoClient.Progress.ProgressiveRests,
+                    APItem.ProgressiveSmith => ArchipelagoClient.Progress.ProgressiveSmiths,
+                    _ => null,
+                };
+                if (counts != null)
+                {
+                    long characterOffset = item.GetCharacterOffset();
+                    counts.TryGetValue(characterOffset, out int count);
+                    counts[characterOffset] = count + 1;
                 }
             }
             else if (feature == MultiplayerFeature.ProgressiveStarters

@@ -93,6 +93,20 @@ public static class MultiplayerLocationChecks
     public static int IncrementPotionRewards(Player player) =>
         IncrementCounter(player, Counter.Potion);
 
+    /// <summary>
+    /// Atomically marks one player's deterministic multiplayer boss compensation. The marker is
+    /// part of replicated run progress, so restoring a boss room cannot advance reward cursors twice.
+    /// </summary>
+    public static bool TryMarkBossCompensation(Player player, int act)
+    {
+        if (!MultiplayerSupport.IsRealMultiplayerRun || act is < 1 or > 3)
+            return false;
+        if (IsLocalProgressOwner(player))
+            return ArchipelagoClient.Progress.MultiplayerBossCompensatedActs.Add(act);
+        return TryGetRemoteProgress(player, out ApRunProgressState progress)
+            && progress.MultiplayerBossCompensatedActs.Add(act);
+    }
+
     public static int GetRelicRewardsAttempted(Player player)
     {
         if (!MultiplayerSupport.IsRealMultiplayerRun || IsLocalProgressOwner(player))

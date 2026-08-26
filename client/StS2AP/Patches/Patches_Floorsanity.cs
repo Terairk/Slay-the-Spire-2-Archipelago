@@ -1,4 +1,5 @@
 ﻿using HarmonyLib;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
@@ -57,15 +58,16 @@ namespace StS2AP.Patches
             /// Postfix patch that sends a floor check when entering any room type.
             /// </summary>
             /// <param name="runState">The current run state.</param>
-            /// <param name="isRestoringRoomStackBase">Whether the room is being restored from save.</param>
             [HarmonyPostfix]
-            public static void Postfix(IRunState? runState, bool isRestoringRoomStackBase)
+            public static void Postfix(
+                AbstractRoom __instance,
+                IRunState? runState)
             {
                 if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
                     MultiplayerFeature.FloorChecks))
                     return;
 
-                TrySendFloorChecks(runState);
+                TrySendFloorChecks(__instance, runState);
             }
         }
 
@@ -73,7 +75,9 @@ namespace StS2AP.Patches
         /// The logic to determine if we need to send a location check
         /// </summary>
         /// <param name="runState">The current state of the run</param>
-        static void TrySendFloorChecks(IRunState? runState)
+        static void TrySendFloorChecks(
+            AbstractRoom room,
+            IRunState? runState)
         {
             if (runState == null)
             {
@@ -90,27 +94,137 @@ namespace StS2AP.Patches
                 return;
             }
 
-            var floorValue = floorProperty.GetValue(runState);
-            IEnumerable<MegaCrit.Sts2.Core.Entities.Players.Player> players =
-                runState is RunState concreteRun
+            object? floorValue = floorProperty.GetValue(runState);
+            if (floorValue == null)
+            {
+                LogUtility.Error("TotalFloor was null, skipping Archipelago floor checks");
+                return;
+            }
+
+            var concreteRun = runState as RunState;
+            int rawFloor = Convert.ToInt32(floorValue);
+            int normalizedFloor = MultiplayerSupport.IsRealMultiplayerRun && concreteRun != null
+                ? rawFloor + concreteRun.CurrentActIndex
+                : rawFloor;
+            IEnumerable<Player> players =
+                concreteRun != null
                     ? concreteRun.Players
                     : GameUtility.CurrentPlayer is { } currentPlayer
                         ? new[] { currentPlayer }
-                        : Array.Empty<MegaCrit.Sts2.Core.Entities.Players.Player>();
+                        : Array.Empty<Player>();
+
+            bool isMultiplayerBossBoundary = MultiplayerSupport.IsRealMultiplayerRun
+                && concreteRun != null
+                && room.RoomType == RoomType.Boss;
+
             foreach (var player in players)
             {
                 if (!MultiplayerLocationChecks.TryGetCheckSettings(
                         player,
-                        out ArchipelagoSettings settings)
-                    || !settings.Floorsanity
-                    || !MultiplayerLocationChecks.IsCheckWriter(player))
+                        out ArchipelagoSettings settings))
                 {
                     continue;
                 }
 
-                string locationName = $"{player.APName()} Reached Floor {floorValue}";
-                LogUtility.Debug($"Attempting to record floor check: {locationName}");
-                MultiplayerLocationChecks.QueueCheck(player, locationName);
+                if (settings.Floorsanity && MultiplayerLocationChecks.IsCheckWriter(player))
+                {
+                    // IMPORTANT: Multiplayer has one fewer physical floor in every act. Keep the
+                    // APWorld's singleplayer-compatible 17/16/15 layout by offsetting later acts,
+                    // then emit the missing boss-arena milestone when the boss room is entered.
+                    QueueFloorCheck(player, normalizedFloor);
+                    if (isMultiplayerBossBoundary)
+                        QueueFloorCheck(player, normalizedFloor + 1);
+                }
+
+                if (isMultiplayerBossBoundary)
+                {
+                    int act = concreteRun!.CurrentActIndex + 1;
+                    if (MultiplayerLocationChecks.TryMarkBossCompensation(player, act))
+                        ApplyMultiplayerBossCompensation(player, settings, act);
+                }
+            }
+        }
+
+        private static void QueueFloorCheck(Player player, int floor)
+        {
+            string locationName = $"{player.APName()} Reached Floor {floor}";
+            LogUtility.Debug($"Attempting to record floor check: {locationName}");
+            MultiplayerLocationChecks.QueueCheck(player, locationName);
+        }
+
+        private static void ApplyMultiplayerBossCompensation(
+            Player player,
+            ArchipelagoSettings settings,
+            int act)
+        {
+            // IMPORTANT: The APWorld intentionally retains the singleplayer location counts.
+            // Multiplayer automatically contributes missing card, combat-gold, and potion checks
+            // at the Act 1/2 bosses, plus Relic 10 at the Act 3 boss, so every replica advances
+            // the same numbered cursors at deterministic boundaries.
+            if (act is 1 or 2)
+            {
+                QueueSyntheticCardCheck(player, settings);
+
+                if (settings.GoldSanity)
+                {
+                    int goldNumber = MultiplayerLocationChecks.IncrementGoldRewards(player);
+                    if (goldNumber <= ArchipelagoProgress._maxGoldRewards)
+                    {
+                        MultiplayerLocationChecks.QueueCheck(
+                            player,
+                            $"{player.APName()} Combat Gold {goldNumber}"
+                        );
+                    }
+                }
+
+                if (settings.PotionSanity)
+                {
+                    int potionNumber = MultiplayerLocationChecks.IncrementPotionRewards(player);
+                    if (potionNumber <= ArchipelagoProgress._maxPotionRewards)
+                    {
+                        MultiplayerLocationChecks.QueueCheck(
+                            player,
+                            $"{player.APName()} Potion Drop {potionNumber}"
+                        );
+                    }
+                }
+
+                MultiplayerLocationChecks.PublishLocalProgress(player);
+                return;
+            }
+
+            if (act == 3)
+            {
+                // Relic attempts also authorize and bank incoming relic rewards. This is only an
+                // outgoing location replacement, so send the final Act 3 check without touching
+                // RelicRewardsAttempted or BankedRelicRewards.
+                MultiplayerLocationChecks.QueueCheck(
+                    player,
+                    $"{player.APName()} Relic {ArchipelagoProgress._maxRelicRewards}"
+                );
+            }
+        }
+
+        private static void QueueSyntheticCardCheck(
+            Player player,
+            ArchipelagoSettings settings)
+        {
+            int attempt = MultiplayerLocationChecks.IncrementCardRewards(player);
+            if (!settings.ShouldShuffleAllCards && attempt % 2 == 0)
+                attempt = MultiplayerLocationChecks.IncrementCardRewards(player);
+
+            int rewardNumber = settings.ShouldShuffleAllCards
+                ? attempt
+                : (attempt + 1) / 2;
+            int maximum = settings.ShouldShuffleAllCards
+                ? ArchipelagoProgress._maxCardRewards
+                : ArchipelagoProgress._maxCardRewards / 2;
+            if (rewardNumber <= maximum)
+            {
+                MultiplayerLocationChecks.QueueCheck(
+                    player,
+                    $"{player.APName()} Card Reward {rewardNumber}"
+                );
             }
         }
     }

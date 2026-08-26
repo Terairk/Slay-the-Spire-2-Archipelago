@@ -28,6 +28,8 @@ public sealed class ApProgressDelta
     public int? BossRewardsDistributed { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? GoldRedeemed { get; set; }
+    public HashSet<int> MultiplayerBossCompensatedActsAdded { get; set; } = new();
+    public HashSet<int> MultiplayerBossCompensatedActsRemoved { get; set; } = new();
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ApProgressiveStarterState? StarterCard { get; set; }
@@ -69,6 +71,8 @@ public sealed class ApProgressDelta
         || PotionRewardsAttempted.HasValue
         || BossRewardsDistributed.HasValue
         || GoldRedeemed.HasValue
+        || MultiplayerBossCompensatedActsAdded.Count > 0
+        || MultiplayerBossCompensatedActsRemoved.Count > 0
         || StarterCard != null
         || StarterRelic != null
         || RelicChoiceAssignmentUpserts.Count > 0
@@ -181,6 +185,10 @@ public sealed class ApProgressDelta
             .Except(before.PendingLocationChecks).ToHashSet();
         delta.PendingLocationChecksRemoved = before.PendingLocationChecks
             .Except(after.PendingLocationChecks).ToHashSet();
+        delta.MultiplayerBossCompensatedActsAdded = after.MultiplayerBossCompensatedActs
+            .Except(before.MultiplayerBossCompensatedActs).ToHashSet();
+        delta.MultiplayerBossCompensatedActsRemoved = before.MultiplayerBossCompensatedActs
+            .Except(after.MultiplayerBossCompensatedActs).ToHashSet();
         delta.CheckedCampfireLocationIdsAdded = after.CheckedCampfireLocationIds
             .Except(before.CheckedCampfireLocationIds).ToHashSet();
         delta.CheckedCampfireLocationIdsRemoved = before.CheckedCampfireLocationIds
@@ -235,6 +243,12 @@ public sealed class ApProgressDelta
                 result.UsedItems.Add(item);
         result.PendingLocationChecks.ExceptWith(PendingLocationChecksRemoved);
         result.PendingLocationChecks.UnionWith(PendingLocationChecksAdded);
+        result.MultiplayerBossCompensatedActs.ExceptWith(
+            MultiplayerBossCompensatedActsRemoved
+        );
+        result.MultiplayerBossCompensatedActs.UnionWith(
+            MultiplayerBossCompensatedActsAdded
+        );
         if (Ascensions != null)
             result.Ascensions = Ascensions.Distinct().OrderBy(level => level).ToList();
         return result;
@@ -278,6 +292,9 @@ public sealed class ApProgressDelta
         ProgressiveStarterRelicUpgradedId = source.ProgressiveStarterRelicUpgradedId,
         ProgressiveStarterRelicTier = source.ProgressiveStarterRelicTier,
         PendingLocationChecks = new HashSet<long>(source.PendingLocationChecks),
+        MultiplayerBossCompensatedActs = new HashSet<int>(
+            source.MultiplayerBossCompensatedActs
+        ),
         Ascensions = source.Ascensions.ToList(),
     };
 

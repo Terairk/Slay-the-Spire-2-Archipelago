@@ -132,6 +132,12 @@ namespace StS2AP.Models
         public int BossRewardsDistributed { get; set; } = 0;
 
         /// <summary>
+        /// One-based acts whose structurally missing multiplayer checks were already supplied at
+        /// boss entry. Persisting this prevents boss-room reloads from advancing reward counters twice.
+        /// </summary>
+        public HashSet<int> MultiplayerBossCompensatedActs { get; set; } = new();
+
+        /// <summary>
         /// Campfiresanity locations already present in the AP slot or queued by this client.
         /// Location IDs are deterministic across STS replicas and are the canonical identity.
         /// </summary>
@@ -377,6 +383,7 @@ namespace StS2AP.Models
             RelicRewardsAvailableAnytimeForRun = RelicRewardUtility.EffectiveAvailableAnytime;
             GoldRewardsAttempted = 0;
             PotionRewardsAttempted = 0;
+            MultiplayerBossCompensatedActs.Clear();
             CheckedCampfireLocationIds.Clear();
             ShopSlotsChecked.Clear();
             RelicChoiceAssignments.Clear();
@@ -681,6 +688,9 @@ namespace StS2AP.Models
                 GoldRewardsAttempted = GoldRewardsAttempted,
                 PotionRewardsAttempted = PotionRewardsAttempted,
                 BossRewardsDistributed = BossRewardsDistributed,
+                MultiplayerBossCompensatedActs = new HashSet<int>(
+                    MultiplayerBossCompensatedActs
+                ),
                 UsedItems = new List<int>(UsedItems),
                 GoldRedeemed = GoldRedeemed,
                 RelicChoiceAssignments = RelicChoiceAssignments.Select(kv =>
@@ -771,6 +781,9 @@ namespace StS2AP.Models
                 GoldRewardsAttempted = saveData.GoldRewardsAttempted,
                 PotionRewardsAttempted = saveData.PotionRewardsAttempted,
                 BossRewardsDistributed = saveData.BossRewardsDistributed,
+                MultiplayerBossCompensatedActs = new HashSet<int>(
+                    saveData.MultiplayerBossCompensatedActs
+                ),
                 UsedItems = new List<int>(saveData.UsedItems),
                 GoldRedeemed = saveData.GoldRedeemed,
                 RelicChoiceAssignments = saveData.RelicChoiceAssignments.Select(kv =>

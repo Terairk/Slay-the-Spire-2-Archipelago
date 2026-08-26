@@ -27,6 +27,8 @@ public sealed class ApRunProgressState
     public int PotionRewardsAttempted { get; set; }
     [JsonPropertyName("boss_rewards_distributed")]
     public int BossRewardsDistributed { get; set; }
+    [JsonPropertyName("multiplayer_boss_compensated_acts")]
+    public HashSet<int> MultiplayerBossCompensatedActs { get; set; } = new();
     [JsonPropertyName("relic_choice_assignments")]
     public Dictionary<int, List<string>> RelicChoiceAssignments { get; set; } = new();
     [JsonPropertyName("ancient_relic_choice_assignments")]
