@@ -29,22 +29,8 @@ namespace StS2AP.Patches
     public static class Patches_MainMenuBehavior
     {
         private static NMainMenuTextButton? _singleplayerButton;
-        private static NMainMenuTextButton? _multiplayerButton;
         private static NMainMenuTextButton? _connectButton;
         private static Label? _connectionStatusLabel;
-
-        /// <summary>Refreshes the opt-in multiplayer button after the local setting changes.</summary>
-        public static void RefreshMultiplayerButton()
-        {
-            if (_multiplayerButton == null || !GodotObject.IsInstanceValid(_multiplayerButton))
-                return;
-
-            _multiplayerButton.Visible = MultiplayerSupport.ExperimentalSettingEnabled;
-            if (_multiplayerButton.Visible)
-                _multiplayerButton.Enable();
-            else
-                _multiplayerButton.Disable();
-        }
 
         public static void RefreshConnectionPresentation()
         {
@@ -210,7 +196,6 @@ namespace StS2AP.Patches
                 var multiplayerButton = __instance.GetNode<NMainMenuTextButton>(
                     MultiplayerButtonPath
                 );
-                _multiplayerButton = multiplayerButton;
                 var abandonRunButton = __instance.GetNode<NMainMenuTextButton>(
                     MainMenuButtonsPath + "/AbandonRunButton"
                 );
@@ -226,7 +211,7 @@ namespace StS2AP.Patches
 
                 // Tweak the visibility of all Main Menu buttons for the overhaul
                 singleplayerButton.Visible = true;
-                multiplayerButton.Visible = MultiplayerSupport.ExperimentalSettingEnabled;
+                multiplayerButton.Visible = true;
                 continueButton.Visible = false;
                 abandonRunButton.Visible = false;
                 compendiumButton.Visible = false;
@@ -234,10 +219,7 @@ namespace StS2AP.Patches
                 openProfileScreenButton.Visible = false;
 
                 // Some buttons need this additional Enable()/Disable() call I'm honestly still not sure why this worked
-                if (multiplayerButton.Visible)
-                    multiplayerButton.Enable();
-                else
-                    multiplayerButton.Disable();
+                multiplayerButton.Enable();
                 timelineButton.Disable();
                 compendiumButton.Disable();
 

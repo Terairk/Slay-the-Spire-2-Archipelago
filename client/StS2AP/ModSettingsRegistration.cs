@@ -38,7 +38,6 @@ public static class ModSettingsRegistration
     private const string RelicRewards_AvailableAnytimeId = "relic_rewards_available_anytime";
 
     // Experimental multiplayer
-    private const string Multiplayer_EnableId = "enable_experimental_multiplayer";
     private const string Multiplayer_GuestRewardModeId = "multiplayer_guest_reward_mode";
     private const string Multiplayer_SharedSlotCheckScopeId = "multiplayer_shared_slot_check_scope";
 
@@ -144,22 +143,6 @@ public static class ModSettingsRegistration
                 )
             )
             .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
-            .AddToggle(
-                Multiplayer_EnableId,
-                ModSettingsText.Literal("Enable Experimental Multiplayer"),
-                CreateBinding(
-                    static settings => settings.EnableExperimentalMultiplayer,
-                    static (settings, value) =>
-                    {
-                        settings.EnableExperimentalMultiplayer = value;
-                        Patches.Patches_MainMenuBehavior.RefreshMultiplayerButton();
-                    }
-                ),
-                ModSettingsText.Literal(
-                    "Shows the Multiplayer button. Every peer must use a compatible mod version."
-                )
-            )
-            .ConfigureEntryMenu(Multiplayer_EnableId, ModSettingsMenuCapabilities.None)
             .AddChoice(
                 Multiplayer_GuestRewardModeId,
                 ModSettingsText.Literal("Disconnected Player Rewards"),

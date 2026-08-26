@@ -60,7 +60,6 @@ public static class MultiplayerSupport
     private static readonly Dictionary<int, IndexedItemInfo> DeferredItems = new();
 
     private static NCharacterSelectScreen? _observedStartLobbyScreen;
-    private static bool _experimentalEnabledForRun;
     private static bool _claimInvalidationNoticeShown;
     private static bool _apHistoryPrepared;
     private static string? _deferredSessionKey;
@@ -82,8 +81,7 @@ public static class MultiplayerSupport
 
     public static bool IsRealMultiplayerRun { get; private set; }
 
-    public static bool IsExperimentalMultiplayerRun =>
-        IsRealMultiplayerRun && _experimentalEnabledForRun;
+    public static bool IsExperimentalMultiplayerRun => IsRealMultiplayerRun;
 
     public static bool IsLocalGuest => IsRealMultiplayerRun
         ? _activeParticipation == ApParticipationKind.VanillaGuest
@@ -109,9 +107,6 @@ public static class MultiplayerSupport
             && RunManager.Instance.NetService.Type == NetGameType.Host;
 
     public static bool ClaimsInvalidated { get; private set; }
-
-    public static bool ExperimentalSettingEnabled =>
-        ArchipelagoClient.LocalSettings.Value.EnableExperimentalMultiplayer;
 
     /// <summary>
     /// True while the player is entering multiplayer or is already in a real multiplayer run.
@@ -236,10 +231,7 @@ public static class MultiplayerSupport
         if (IsLocalGuest)
             return false;
 
-        bool profileEnabled = IsRealMultiplayerRun
-            ? _experimentalEnabledForRun
-            : ExperimentalSettingEnabled;
-        return profileEnabled && EnabledExperimentalFeatures.Contains(feature);
+        return EnabledExperimentalFeatures.Contains(feature);
     }
 
     /// <summary>
@@ -267,10 +259,7 @@ public static class MultiplayerSupport
     {
         if (!IsMultiplayerScope)
             return true;
-        bool profileEnabled = IsRealMultiplayerRun
-            ? _experimentalEnabledForRun
-            : ExperimentalSettingEnabled;
-        return profileEnabled && EnabledExperimentalFeatures.Contains(feature);
+        return EnabledExperimentalFeatures.Contains(feature);
     }
 
     public static MultiplayerFeature GetFeatureForItem(IndexedItemInfo indexedItem)
@@ -775,22 +764,12 @@ public static class MultiplayerSupport
 
         IsRealMultiplayerRun =
             RunManager.Instance.NetService.Type != NetGameType.Singleplayer;
-        _experimentalEnabledForRun = ExperimentalSettingEnabled;
         PendingDestination = IsRealMultiplayerRun
             ? ApPlayDestination.Multiplayer
             : ApPlayDestination.Singleplayer;
 
         if (!IsRealMultiplayerRun)
             return null;
-
-        if (!_experimentalEnabledForRun)
-        {
-            LogUtility.Warn(
-                "A multiplayer run launched without the experimental AP setting; "
-                    + "AP multiplayer binding remains disabled"
-            );
-            return null;
-        }
 
         Player? localPlayer;
         try
@@ -864,8 +843,8 @@ public static class MultiplayerSupport
         }
 
         LogUtility.Info(
-            $"Experimental AP multiplayer launched: enabled={_experimentalEnabledForRun}, "
-                + $"netType={RunManager.Instance.NetService.Type}, localNetId={localPlayer.NetId}, "
+            $"Experimental AP multiplayer launched: netType={RunManager.Instance.NetService.Type}, "
+                + $"localNetId={localPlayer.NetId}, "
                 + $"players=[{string.Join(",", runState.Players.Select(p => p.NetId))}]"
         );
         return localPlayer;
@@ -1056,7 +1035,6 @@ public static class MultiplayerSupport
     public static void EndRun()
     {
         IsRealMultiplayerRun = false;
-        _experimentalEnabledForRun = false;
         _activeParticipation = null;
         ClaimsInvalidated = false;
         _claimInvalidationNoticeShown = false;

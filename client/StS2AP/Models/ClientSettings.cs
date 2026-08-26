@@ -17,11 +17,6 @@ namespace StS2AP.Models
         #region Experimental Multiplayer
 
         /// <summary>
-        /// Exposes the unsupported multiplayer feature.
-        /// </summary>
-        public bool EnableExperimentalMultiplayer { get; set; } = false;
-
-        /// <summary>
         /// Participation used when this process enters multiplayer without its own AP connection.
         /// Values: "VanillaGuest" or "APGuest". The resolved value is frozen in lobby run data.
         /// </summary>

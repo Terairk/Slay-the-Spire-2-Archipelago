@@ -95,15 +95,6 @@ internal static class ApFastMpLaunchController
             return true;
         }
 
-        if (!MultiplayerSupport.ExperimentalSettingEnabled)
-        {
-            Fail(
-                "Enable Experimental Multiplayer in Archipelago Settings before using -apFastmp, "
-                    + "then restart this game process."
-            );
-            return true;
-        }
-
         string? server = NormalizeOptionalArgument(CommandLineHelper.GetValue(ServerArgument));
         string? slot = NormalizeOptionalArgument(CommandLineHelper.GetValue(SlotArgument));
 
