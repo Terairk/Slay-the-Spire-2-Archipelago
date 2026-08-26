@@ -9,73 +9,135 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 using STS2RitsuLib.Networking.ManagedActions;
+using STS2RitsuLib.Networking.Sidecar;
 
 namespace StS2AP.Utils;
 
 /// <summary>
-/// Owns multiplayer DeathLink action synchronization, replicated HP mutation, and
-/// individual-death authority. An own-slot process requests a RitsuLib managed action owned by
-/// its local player. The native action queue orders and executes that action on every replica.
+/// Relays external DeathLinks to the native host, admits them one at a time at an idle native
+/// action boundary, and makes the host the sole authority for outgoing multiplayer DeathLinks.
 /// </summary>
 public static class DeathLinkMultiplayer
 {
-    private const int SchemaVersion = 1;
-    private const string DamageActionKey = "death_link_damage_v1";
+    private const int SchemaVersion = 2;
+    private const string InboundRequestMessageKey = "death_link_inbound_request_v2";
+    private const string CombatActionKey = "death_link_combat_damage_v2";
+    private const string NonCombatActionKey = "death_link_noncombat_damage_v2";
+    private const string OutboundInstructionMessageKey = "death_link_outbound_instruction_v2";
     private static readonly TimeSpan EchoFallbackWindow = TimeSpan.FromSeconds(6);
     private static readonly object StateLock = new();
+
+    private static readonly Queue<DeathLinkInboundRequestMessage> PendingInbound = new();
+    private static readonly HashSet<Guid> AcceptedInboundEvents = new();
+    private static readonly HashSet<Guid> HandledInboundEvents = new();
+    private static readonly HashSet<Guid> HandledOutboundInstructions = new();
     private static readonly HashSet<ulong> ActiveInboundDeaths = new();
     private static readonly Dictionary<ulong, DateTime> RecentInboundLethalDamage = new();
 
+    private static readonly RitsuLibSidecarJsonSerializer<DeathLinkInboundRequestMessage>
+        InboundRequestSerializer = new();
+    private static readonly RitsuLibSidecarMessageDescriptor<DeathLinkInboundRequestMessage>
+        InboundRequestDescriptor = new(
+            ModEntry.ModId,
+            InboundRequestMessageKey,
+            InboundRequestSerializer.Serialize,
+            InboundRequestSerializer.Deserialize,
+            Required: true
+        );
+    private static readonly RitsuLibSidecarJsonSerializer<DeathLinkSendInstructionMessage>
+        OutboundInstructionSerializer = new();
+    private static readonly RitsuLibSidecarMessageDescriptor<DeathLinkSendInstructionMessage>
+        OutboundInstructionDescriptor = new(
+            ModEntry.ModId,
+            OutboundInstructionMessageKey,
+            OutboundInstructionSerializer.Serialize,
+            OutboundInstructionSerializer.Deserialize,
+            Required: true
+        );
+
     private static readonly RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage>
-        DamageActionDescriptor = new(
+        CombatActionDescriptor = new(
             ModuleId: ModEntry.ModId,
-            ActionKey: DamageActionKey,
+            ActionKey: CombatActionKey,
             Serialize: static message => JsonSerializer.SerializeToUtf8Bytes(message),
             Deserialize: DeserializeActionMessage,
             Execute: ExecuteDamageAction,
-            ActionType: GameActionType.Any
+            ActionType: GameActionType.CombatPlayPhaseOnly
+        );
+    private static readonly RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage>
+        NonCombatActionDescriptor = new(
+            ModuleId: ModEntry.ModId,
+            ActionKey: NonCombatActionKey,
+            Serialize: static message => JsonSerializer.SerializeToUtf8Bytes(message),
+            Deserialize: DeserializeActionMessage,
+            Execute: ExecuteDamageAction,
+            ActionType: GameActionType.NonCombat
         );
 
-    private static bool _initialized;
+    private static IDisposable? _inboundRequestSubscription;
+    private static IDisposable? _outboundInstructionSubscription;
+    private static SceneTree? _sceneTree;
+    private static bool _processFrameHooked;
+    private static Guid? _inboundActionInFlight;
 
     public static void Initialize()
     {
-        if (_initialized)
+        if (_inboundRequestSubscription != null)
             return;
 
-        RitsuLibManagedNetActions.Register(DamageActionDescriptor);
-        _initialized = true;
+        _inboundRequestSubscription = RitsuLibSidecarTypedMessageRegistry.Subscribe(
+            InboundRequestDescriptor,
+            OnInboundRequested
+        );
+        _outboundInstructionSubscription = RitsuLibSidecarTypedMessageRegistry.Subscribe(
+            OutboundInstructionDescriptor,
+            OnOutboundInstructionReceived
+        );
+        RitsuLibManagedNetActions.Register(CombatActionDescriptor);
+        RitsuLibManagedNetActions.Register(NonCombatActionDescriptor);
     }
 
     public static void EndRun()
     {
         lock (StateLock)
         {
+            PendingInbound.Clear();
+            AcceptedInboundEvents.Clear();
+            HandledInboundEvents.Clear();
+            HandledOutboundInstructions.Clear();
             ActiveInboundDeaths.Clear();
             RecentInboundLethalDamage.Clear();
+            _inboundActionInFlight = null;
         }
+        UnhookProcessFrame();
     }
 
     /// <summary>
-    /// Routes one AP SDK DeathLink callback into an owner-authored managed action. Only an own-slot
-    /// process has an AP SDK callback; AP Guests are added when the host slot's action executes.
+    /// Relays one AP SDK callback to the native host. The callback belongs only to the local
+    /// own-slot player; AP Guests share the host slot and are selected by the host later.
     /// </summary>
     public static void Receive(DeathLink info)
     {
         string source = info.Source ?? string.Empty;
         string? cause = info.Cause;
-        Callable.From(() => RequestDamageAction(source, cause)).CallDeferred();
+        Callable.From(() => SubmitInboundOnMainThread(source, cause)).CallDeferred();
     }
 
-    /// <summary>Handles an actual, death-prevention-approved player death on every replica.</summary>
+    /// <summary>
+    /// Observes a death only after base-game death prevention has completed. Every replica sees
+    /// this callback, but only the native host is allowed to authorize an AP-side send.
+    /// </summary>
     public static void PlayerDied(Player player)
     {
         if (!MultiplayerSupport.IsRealMultiplayerRun
             || !MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
-            || !ArchipelagoClient.IsConnected
+            || RunManager.Instance.NetService.Type != NetGameType.Host
             || player.RunState is not RunState runState
             || runState.CurrentRoom?.IsVictoryRoom == true
-            || !IsDeathLinkWriter(player, runState, out ApParticipationKind participation)
+            || !ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
+            || shared.RunId == Guid.Empty
+            || !ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState playerState)
+            || playerState.Participation == ApParticipationKind.VanillaGuest
             || !ApPlayerContextResolver.TryGetRewardSettings(
                 player,
                 out ArchipelagoSettings settings
@@ -95,94 +157,314 @@ public static class DeathLinkMultiplayer
 
         string floorCause = $"Act {runState.CurrentActIndex + 1} Floor {runState.ActFloor}";
         string characterName = player.Character.Id.Entry;
-        string cause = participation == ApParticipationKind.ApGuest
-            ? $"{ArchipelagoClient.PlayerName}'s AP Guest ({characterName}) was Slain on {floorCause}"
-            : $"{ArchipelagoClient.PlayerName} ({characterName}) was Slain on {floorCause}";
+        Guid eventId = Guid.NewGuid();
+        ulong hostNetId = RunManager.Instance.NetService.NetId;
 
-        ArchipelagoClient.DeathLinkController.SendDeathLink(
-            new DeathLink(ArchipelagoClient.PlayerName, cause)
-        );
+        if (playerState.Participation == ApParticipationKind.ApGuest
+            || player.NetId == hostNetId)
+        {
+            SendLocalAuthorizedDeathLink(
+                eventId,
+                player.NetId,
+                characterName,
+                floorCause,
+                playerState.Participation
+            );
+            return;
+        }
+
+        var instruction = new DeathLinkSendInstructionMessage
+        {
+            RunId = shared.RunId,
+            EventId = eventId,
+            OwnerNetId = player.NetId,
+            CharacterName = characterName,
+            FloorCause = floorCause,
+        };
+
+        bool sent;
+        try
+        {
+            sent = RitsuLibSidecarTypedMessageRegistry.SendToPeer(
+                RunManager.Instance.NetService,
+                player.NetId,
+                OutboundInstructionDescriptor,
+                instruction
+            );
+        }
+        catch (Exception ex)
+        {
+            LogUtility.Error(
+                $"Discarded host-authorized DeathLink {eventId} for AP owner "
+                    + $"{player.NetId}: {ex.Message}"
+            );
+            return;
+        }
+
+        if (!sent)
+        {
+            LogUtility.Warn(
+                $"Discarded host-authorized DeathLink {eventId} for unavailable AP owner "
+                    + $"{player.NetId}."
+            );
+            return;
+        }
+
+        LogUtility.Info($"Host authorized DeathLink {eventId} for AP owner {player.NetId}.");
+    }
+
+    private static void SubmitInboundOnMainThread(string source, string? cause)
+    {
+        if (!TryGetLocalOwnSlotContext(
+                out _,
+                out ApRunSharedState shared,
+                out Player owner,
+                out _
+            )
+            || source.Length > 1024
+            || cause?.Length > 2048)
+        {
+            LogUtility.Warn("Ignored multiplayer DeathLink without a valid local own-slot run owner.");
+            return;
+        }
+
+        var request = new DeathLinkInboundRequestMessage
+        {
+            RunId = shared.RunId,
+            EventId = Guid.NewGuid(),
+            OwnerNetId = owner.NetId,
+            Source = source,
+            Cause = cause,
+        };
+
+        INetGameService netService = RunManager.Instance.NetService;
+        if (netService.Type == NetGameType.Host)
+        {
+            AcceptInboundRequest(request, owner.NetId);
+            return;
+        }
+
+        bool sent;
+        try
+        {
+            sent = RitsuLibSidecarTypedMessageRegistry.SendToHost(
+                netService,
+                InboundRequestDescriptor,
+                request
+            );
+        }
+        catch (Exception ex)
+        {
+            LogUtility.Error(
+                $"Discarded incoming DeathLink {request.EventId}; it could not reach the host: "
+                    + ex.Message
+            );
+            return;
+        }
+
+        if (!sent)
+        {
+            LogUtility.Warn(
+                $"Discarded incoming DeathLink {request.EventId}; the host relay was unavailable."
+            );
+            return;
+        }
+
         LogUtility.Info(
-            $"Sent individual-player DeathLink for {player.NetId} ({participation})."
+            $"Relayed incoming DeathLink {request.EventId} for AP owner {owner.NetId} to the host."
         );
     }
 
-    private static void RequestDamageAction(string source, string? cause)
+    private static void OnInboundRequested(
+        RitsuLibSidecarTypedDispatchContext<DeathLinkInboundRequestMessage> context)
     {
-        if (!MultiplayerSupport.IsRealMultiplayerRun
-            || !MultiplayerSupport.IsLocalOwnApSlot
-            || source.Length > 1024
-            || cause?.Length > 2048
-            || GameUtility.CurrentPlayer is not Player owner
-            || !MultiplayerLocationChecks.IsLocalProgressOwner(owner)
-            || owner.RunState is not RunState runState
-            || !ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-            || shared.RunId == Guid.Empty
-            || !ApRunData.TryGetPlayerState(runState, owner.NetId, out ApPlayerRunState ownerState)
-            || ownerState.Participation != ApParticipationKind.OwnApSlot
-            || ownerState.SlotSettings is not ArchipelagoSettings ownerSettings
-            || !ownerSettings.IsDeathLinkEnabled)
+        bool posted = RitsuLibSidecarGodotMainLoopScheduling.TryPostToMainLoop(
+            () => AcceptInboundRequest(context.Message, context.SenderNetId)
+        );
+        if (!posted)
         {
-            LogUtility.Warn("Ignored multiplayer DeathLink without a local own-slot run owner.");
+            LogUtility.Error(
+                $"Discarded incoming DeathLink {context.Message.EventId}; the host main loop "
+                    + "was unavailable."
+            );
+        }
+    }
+
+    private static void AcceptInboundRequest(
+        DeathLinkInboundRequestMessage request,
+        ulong senderNetId)
+    {
+        if (RunManager.Instance.NetService.Type != NetGameType.Host
+            || senderNetId != request.OwnerNetId
+            || !TryValidateInboundRequest(request, out _, out _, out _))
+        {
+            LogUtility.Warn(
+                $"Rejected multiplayer DeathLink request {request.EventId} from {senderNetId}."
+            );
+            return;
+        }
+
+        lock (StateLock)
+        {
+            // This is transport idempotency for one relayed event, not gameplay coalescing.
+            if (!AcceptedInboundEvents.Add(request.EventId))
+                return;
+            PendingInbound.Enqueue(request);
+        }
+
+        LogUtility.Info(
+            $"Host queued incoming DeathLink {request.EventId} for AP owner "
+                + $"{request.OwnerNetId}."
+        );
+        if (!EnsureProcessFrameHook())
+        {
+            LogUtility.Error(
+                $"Incoming DeathLink {request.EventId} is pending, but the Godot process-frame "
+                    + "signal is unavailable."
+            );
+            return;
+        }
+        ProcessPendingInbound();
+    }
+
+    private static void ProcessPendingInbound()
+    {
+        if (RunManager.Instance.NetService.Type != NetGameType.Host)
+            return;
+
+        DeathLinkInboundRequestMessage request;
+        lock (StateLock)
+        {
+            if (_inboundActionInFlight.HasValue || PendingInbound.Count == 0)
+            {
+                if (!_inboundActionInFlight.HasValue)
+                    UnhookProcessFrame();
+                return;
+            }
+            request = PendingInbound.Peek();
+        }
+
+        if (!TryValidateInboundRequest(
+                request,
+                out RunState runState,
+                out Player slotOwner,
+                out ArchipelagoSettings settings
+            ))
+        {
+            lock (StateLock)
+                PendingInbound.Dequeue();
+            LogUtility.Warn(
+                $"Consumed stale incoming DeathLink {request.EventId} before admission."
+            );
+            ProcessPendingInbound();
+            return;
+        }
+
+        if (!TryGetSafeActionDescriptor(
+                out RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage> descriptor
+            ))
+        {
             return;
         }
 
         var message = new DeathLinkActionMessage
         {
-            RunId = shared.RunId,
-            EventId = Guid.NewGuid(),
-            Source = source,
-            Cause = cause,
+            RunId = request.RunId,
+            EventId = request.EventId,
+            SlotOwnerNetId = request.OwnerNetId,
+            DamagePercent = settings.DeathLinkDamagePercent,
+            Source = request.Source,
+            Cause = request.Cause,
+            Targets = BuildTargetPlans(runState, slotOwner, settings.DeathLinkDamagePercent),
         };
 
-        ManagedActionRequestScheduler.RequestOrDefer(
-            message.EventId,
-            $"DeathLink {message.EventId}",
-            () => RitsuLibManagedNetActions.Request(
+        lock (StateLock)
+            _inboundActionInFlight = request.EventId;
+
+        bool requested;
+        try
+        {
+            requested = RitsuLibManagedNetActions.Request(
                 RunManager.Instance,
-                DamageActionDescriptor,
+                descriptor,
                 message,
-                owner.NetId
-            ),
-            () => IsCurrentRequest(message),
-            () => LogUtility.Info(
-                $"Requested managed DeathLink {message.EventId} for AP owner {owner.NetId}."
-            ),
-            reason =>
-            {
-                LogUtility.Error(reason);
-                NotificationUtility.ShowRawText("Could not synchronize the received DeathLink.");
-            },
-            canRequest: IsSafeRequestBoundary
+                RunManager.Instance.NetService.NetId
+            );
+        }
+        catch (Exception ex)
+        {
+            lock (StateLock)
+                _inboundActionInFlight = null;
+            LogUtility.Error($"Could not admit incoming DeathLink {request.EventId}: {ex.Message}");
+            return;
+        }
+
+        if (!requested)
+        {
+            lock (StateLock)
+                _inboundActionInFlight = null;
+            return;
+        }
+
+        lock (StateLock)
+            PendingInbound.Dequeue();
+
+        LogUtility.Info(
+            $"Host admitted incoming DeathLink {request.EventId} as a "
+                + $"{descriptor.ActionType} action."
         );
     }
 
-    private static bool IsCurrentRequest(DeathLinkActionMessage message) =>
-        MultiplayerSupport.IsRealMultiplayerRun
-        && MultiplayerSupport.IsLocalOwnApSlot
-        && MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
-        && RunManager.Instance.DebugOnlyGetState() is RunState runState
-        && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-        && shared.RunId == message.RunId;
-
-    /// <summary>
-    /// Keeps the managed action out of the native queues while combat setup, enemy actions,
-    /// end-turn processing, another action, or a player choice is active. ActionQueueSet.IsEmpty
-    /// remains false while an action is suspended for a player choice.
-    /// </summary>
-    private static bool IsSafeRequestBoundary()
+    private static bool TryGetSafeActionDescriptor(
+        out RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage> descriptor)
     {
+        descriptor = null!;
         CombatManager combat = CombatManager.Instance;
-        if (combat.IsStarting || combat.IsEnding)
+        if (combat.IsStarting
+            || combat.IsEnding
+            || RunManager.Instance.ActionExecutor.CurrentlyRunningAction != null
+            || !RunManager.Instance.ActionQueueSet.IsEmpty)
+        {
             return false;
+        }
 
-        ActionSynchronizerCombatState combatState =
-            RunManager.Instance.ActionQueueSynchronizer.CombatState;
-        bool phaseIsSafe = combatState == ActionSynchronizerCombatState.NotInCombat
-            || combatState == ActionSynchronizerCombatState.PlayPhase && combat.IsInProgress;
-        return phaseIsSafe
-            && RunManager.Instance.ActionExecutor.CurrentlyRunningAction == null
-            && RunManager.Instance.ActionQueueSet.IsEmpty;
+        switch (RunManager.Instance.ActionQueueSynchronizer.CombatState)
+        {
+            case ActionSynchronizerCombatState.PlayPhase when combat.IsInProgress:
+                descriptor = CombatActionDescriptor;
+                return true;
+            case ActionSynchronizerCombatState.NotInCombat when !combat.IsInProgress:
+                descriptor = NonCombatActionDescriptor;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static List<DeathLinkActionMessage.TargetPlan> BuildTargetPlans(
+        RunState runState,
+        Player slotOwner,
+        int damagePercent)
+    {
+        var plans = new List<DeathLinkActionMessage.TargetPlan>();
+        foreach (ulong targetNetId in GetExpectedTargets(runState, slotOwner.NetId))
+        {
+            Player target = runState.GetPlayer(targetNetId)
+                ?? throw new InvalidOperationException(
+                    $"DeathLink target {targetNetId} was absent from the host run."
+                );
+            int damage = Mathf.RoundToInt(
+                target.Creature.MaxHp * (damagePercent / 100.0f)
+            );
+            plans.Add(new DeathLinkActionMessage.TargetPlan
+            {
+                NetId = targetNetId,
+                NewHp = target.Creature.IsDead
+                    ? 0
+                    : Math.Max(0, target.Creature.CurrentHp - damage),
+            });
+        }
+        return plans;
     }
 
     private static DeathLinkActionMessage DeserializeActionMessage(ReadOnlySpan<byte> bytes)
@@ -202,157 +484,144 @@ public static class DeathLinkMultiplayer
         RitsuLibManagedNetActionContext<DeathLinkActionMessage> context)
     {
         DeathLinkActionMessage message = context.Message;
-        Player owner = context.Player;
-        if (!TryValidateAction(message, owner, out RunState runState, out ArchipelagoSettings settings))
-        {
-            LogUtility.Warn(
-                $"Ignored invalid managed DeathLink {message.EventId} owned by {owner.NetId}."
-            );
-            return;
-        }
-
-        // The request was authored at an idle boundary, but a client-authored request still has
-        // to travel through the host. If end-turn wins that race, Any keeps the action from being
-        // canceled and this guard moves the mutation to the next safe replicated phase.
-        if (!await WaitForSafeExecutionBoundary(message, owner))
-            return;
-        if (!TryValidateAction(message, owner, out runState, out settings))
-        {
-            LogUtility.Warn(
-                $"Managed DeathLink {message.EventId} became stale while waiting to execute."
-            );
-            return;
-        }
-
-        IReadOnlyList<ulong> targetNetIds = GetExpectedTargets(runState, owner.NetId);
-        var plans = new List<(Player Target, int NewHp)>();
-        foreach (ulong targetNetId in targetNetIds.Order())
-        {
-            Player target = runState.GetPlayer(targetNetId)
-                ?? throw new InvalidOperationException(
-                    $"DeathLink target {targetNetId} was absent from the run."
-                );
-            if (target.Creature.IsDead)
-                continue;
-
-            if (LocalContext.IsMe(target))
-            {
-                string cause = message.Cause ?? $"{message.Source} died";
-                NotificationUtility.ShowDeathLink(new DeathLink(message.Source, cause));
-            }
-
-            int damage = Mathf.RoundToInt(
-                target.Creature.MaxHp * (settings.DeathLinkDamagePercent / 100.0f)
-            );
-            int newHp = Math.Max(0, target.Creature.CurrentHp - damage);
-            plans.Add((target, newHp));
-        }
-
-        // Mark the complete AP-slot event as causal before applying its first target. A death hook
-        // from one target may affect another target before the sequential recipe reaches it, and
-        // that secondary death must not echo the same incoming DeathLink.
-        lock (StateLock)
-        {
-            foreach ((Player target, int newHp) in plans)
-            {
-                ActiveInboundDeaths.Add(target.NetId);
-                if (newHp == 0)
-                    RecentInboundLethalDamage[target.NetId] = DateTime.UtcNow;
-            }
-        }
-
+        bool hostOwnsAdmission = RunManager.Instance.NetService.Type == NetGameType.Host;
         try
         {
-            foreach ((Player target, int newHp) in plans)
+            if (!TryValidateAction(message, context.Player, out RunState runState))
             {
-                LogUtility.Info(
-                    $"Applying managed DeathLink {message.EventId} to {target.NetId}: "
-                        + $"{target.Creature.CurrentHp}->{newHp} HP."
+                LogUtility.Warn(
+                    $"Consumed invalid managed DeathLink {message.EventId} owned by "
+                        + $"{context.Player.NetId}."
                 );
-                await CreatureCmd.SetCurrentHp(target.Creature, newHp);
+                return;
+            }
+
+            lock (StateLock)
+            {
+                if (!HandledInboundEvents.Add(message.EventId))
+                    return;
+            }
+
+            var plans = new List<(Player Target, int NewHp)>();
+            foreach (DeathLinkActionMessage.TargetPlan plan in message.Targets.OrderBy(
+                         target => target.NetId
+                     ))
+            {
+                Player target = runState.GetPlayer(plan.NetId)
+                    ?? throw new InvalidOperationException(
+                        $"DeathLink target {plan.NetId} was absent from the run."
+                    );
+                if (target.Creature.IsDead)
+                {
+                    LogUtility.Info(
+                        $"Consumed managed DeathLink {message.EventId} for already-dead target "
+                            + $"{target.NetId}."
+                    );
+                    continue;
+                }
+
+                int localExpectedDamage = Mathf.RoundToInt(
+                    target.Creature.MaxHp * (message.DamagePercent / 100.0f)
+                );
+                int localExpectedHp = Math.Max(
+                    0,
+                    target.Creature.CurrentHp - localExpectedDamage
+                );
+                if (localExpectedHp != plan.NewHp)
+                {
+                    LogUtility.Warn(
+                        $"DeathLink {message.EventId} observed pre-application HP divergence for "
+                            + $"{target.NetId}: host={plan.NewHp}, local={localExpectedHp}; applying "
+                            + "the host value."
+                    );
+                }
+
+                if (LocalContext.IsMe(target))
+                {
+                    string cause = message.Cause ?? $"{message.Source} died";
+                    try
+                    {
+                        NotificationUtility.ShowDeathLink(new DeathLink(message.Source, cause));
+                    }
+                    catch (Exception ex)
+                    {
+                        // Presentation is secondary to the host-authored HP mutation.
+                        LogUtility.Error(
+                            $"Could not show DeathLink {message.EventId} notification: "
+                                + ex.Message
+                        );
+                    }
+                }
+                plans.Add((target, plan.NewHp));
+            }
+
+            // Mark every target before changing the first one. A death callback can synchronously
+            // affect another target, and all deaths caused by this incoming event must be silent.
+            lock (StateLock)
+            {
+                foreach ((Player target, int newHp) in plans)
+                {
+                    ActiveInboundDeaths.Add(target.NetId);
+                    if (newHp == 0)
+                        RecentInboundLethalDamage[target.NetId] = DateTime.UtcNow;
+                }
+            }
+
+            try
+            {
+                foreach ((Player target, int newHp) in plans)
+                {
+                    LogUtility.Info(
+                        $"Applying host-ordered DeathLink {message.EventId} to {target.NetId}: "
+                            + $"{target.Creature.CurrentHp}->{newHp} HP."
+                    );
+                    await CreatureCmd.SetCurrentHp(target.Creature, newHp);
+                }
+            }
+            finally
+            {
+                lock (StateLock)
+                {
+                    foreach ((Player target, _) in plans)
+                    {
+                        ActiveInboundDeaths.Remove(target.NetId);
+                        if (!target.Creature.IsDead)
+                            RecentInboundLethalDamage.Remove(target.NetId);
+                    }
+                }
             }
         }
         finally
         {
-            lock (StateLock)
-            {
-                foreach ((Player target, _) in plans)
-                {
-                    ActiveInboundDeaths.Remove(target.NetId);
-                    if (!target.Creature.IsDead)
-                        RecentInboundLethalDamage.Remove(target.NetId);
-                }
-            }
+            if (hostOwnsAdmission)
+                CompleteInboundAdmission(message.EventId);
         }
     }
 
-    private static async Task<bool> WaitForSafeExecutionBoundary(
-        DeathLinkActionMessage message,
-        Player owner)
-    {
-        bool loggedWait = false;
-        while (TryValidateAction(message, owner, out _, out _))
-        {
-            CombatManager combat = CombatManager.Instance;
-            ActionSynchronizerCombatState combatState =
-                RunManager.Instance.ActionQueueSynchronizer.CombatState;
-            bool phaseIsSafe =
-                combatState == ActionSynchronizerCombatState.NotInCombat && !combat.IsStarting
-                || combatState == ActionSynchronizerCombatState.PlayPhase
-                    && combat.IsInProgress
-                    && !combat.IsEnding;
-            if (phaseIsSafe)
-                return true;
-
-            if (!loggedWait)
-            {
-                LogUtility.Info(
-                    $"Managed DeathLink {message.EventId} is waiting to execute from "
-                        + $"combat state {combatState}."
-                );
-                loggedWait = true;
-            }
-
-            if (Engine.GetMainLoop() is not SceneTree sceneTree)
-            {
-                LogUtility.Error(
-                    $"Managed DeathLink {message.EventId} could not wait for a safe phase."
-                );
-                return false;
-            }
-
-            await sceneTree.ToSignal(sceneTree, SceneTree.SignalName.ProcessFrame);
-        }
-
-        LogUtility.Warn(
-            $"Managed DeathLink {message.EventId} became stale before a safe phase was reached."
-        );
-        return false;
-    }
-
-    private static bool TryValidateAction(
-        DeathLinkActionMessage message,
-        Player owner,
+    private static bool TryValidateInboundRequest(
+        DeathLinkInboundRequestMessage request,
         out RunState runState,
+        out Player owner,
         out ArchipelagoSettings settings)
     {
         runState = null!;
+        owner = null!;
         settings = null!;
         if (!MultiplayerSupport.IsRealMultiplayerRun
             || !MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
-            || message.SchemaVersion != SchemaVersion
-            || message.RunId == Guid.Empty
-            || message.EventId == Guid.Empty
-            || message.Source is null
-            || message.Source.Length > 1024
-            || message.Cause?.Length > 2048
+            || request.SchemaVersion != SchemaVersion
+            || request.RunId == Guid.Empty
+            || request.EventId == Guid.Empty
+            || request.Source is null
+            || request.Source.Length > 1024
+            || request.Cause?.Length > 2048
             || RunManager.Instance.DebugOnlyGetState() is not RunState current
             || !ApRunData.TryGetSharedState(current, out ApRunSharedState shared)
-            || shared.RunId != message.RunId
-            || current.GetPlayer(owner.NetId) is not Player currentOwner
+            || shared.RunId != request.RunId
+            || current.GetPlayer(request.OwnerNetId) is not Player currentOwner
             || !ApRunData.TryGetPlayerState(
                 current,
-                currentOwner.NetId,
+                request.OwnerNetId,
                 out ApPlayerRunState ownerState
             )
             || ownerState.Participation != ApParticipationKind.OwnApSlot
@@ -364,6 +633,99 @@ public static class DeathLinkMultiplayer
         }
 
         runState = current;
+        owner = currentOwner;
+        settings = ownerSettings;
+        return true;
+    }
+
+    private static bool TryValidateAction(
+        DeathLinkActionMessage message,
+        Player actionOwner,
+        out RunState runState)
+    {
+        runState = null!;
+        if (!BetaMainCompatibility.TryGetHostNetId(
+                RunManager.Instance.NetService,
+                out ulong hostNetId
+            )
+            || actionOwner.NetId != hostNetId
+            || message.SchemaVersion != SchemaVersion
+            || message.RunId == Guid.Empty
+            || message.EventId == Guid.Empty
+            || message.Source is null
+            || message.Source.Length > 1024
+            || message.Cause?.Length > 2048
+            || message.DamagePercent is < 0 or > 100
+            || message.Targets is null
+            || RunManager.Instance.DebugOnlyGetState() is not RunState current
+            || !ApRunData.TryGetSharedState(current, out ApRunSharedState shared)
+            || shared.RunId != message.RunId
+            || current.GetPlayer(message.SlotOwnerNetId) is not Player slotOwner
+            || !ApRunData.TryGetPlayerState(
+                current,
+                message.SlotOwnerNetId,
+                out ApPlayerRunState ownerState
+            )
+            || ownerState.Participation != ApParticipationKind.OwnApSlot
+            || ownerState.SlotSettings is not ArchipelagoSettings settings
+            || !settings.IsDeathLinkEnabled
+            || settings.DeathLinkDamagePercent != message.DamagePercent)
+        {
+            return false;
+        }
+
+        ulong[] expectedTargets = GetExpectedTargets(current, slotOwner.NetId).Order().ToArray();
+        ulong[] actualTargets = message.Targets.Select(target => target.NetId).Order().ToArray();
+        if (!expectedTargets.SequenceEqual(actualTargets)
+            || actualTargets.Distinct().Count() != actualTargets.Length)
+        {
+            return false;
+        }
+
+        foreach (DeathLinkActionMessage.TargetPlan plan in message.Targets)
+        {
+            Player? target = current.GetPlayer(plan.NetId);
+            if (target == null || plan.NewHp < 0 || plan.NewHp > target.Creature.MaxHp)
+                return false;
+        }
+
+        runState = current;
+        return true;
+    }
+
+    private static bool TryGetLocalOwnSlotContext(
+        out RunState runState,
+        out ApRunSharedState shared,
+        out Player owner,
+        out ArchipelagoSettings settings)
+    {
+        runState = null!;
+        shared = null!;
+        owner = null!;
+        settings = null!;
+        if (!MultiplayerSupport.IsRealMultiplayerRun
+            || !MultiplayerSupport.IsLocalOwnApSlot
+            || !MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
+            || GameUtility.CurrentPlayer is not Player localOwner
+            || !MultiplayerLocationChecks.IsLocalProgressOwner(localOwner)
+            || localOwner.RunState is not RunState current
+            || !ApRunData.TryGetSharedState(current, out ApRunSharedState currentShared)
+            || currentShared.RunId == Guid.Empty
+            || !ApRunData.TryGetPlayerState(
+                current,
+                localOwner.NetId,
+                out ApPlayerRunState ownerState
+            )
+            || ownerState.Participation != ApParticipationKind.OwnApSlot
+            || ownerState.SlotSettings is not ArchipelagoSettings ownerSettings
+            || !ownerSettings.IsDeathLinkEnabled)
+        {
+            return false;
+        }
+
+        runState = current;
+        shared = currentShared;
+        owner = localOwner;
         settings = ownerSettings;
         return true;
     }
@@ -392,31 +754,114 @@ public static class DeathLinkMultiplayer
             .ToArray();
     }
 
-    private static bool IsDeathLinkWriter(
-        Player player,
-        RunState runState,
-        out ApParticipationKind participation)
+    private static void OnOutboundInstructionReceived(
+        RitsuLibSidecarTypedDispatchContext<DeathLinkSendInstructionMessage> context)
     {
-        participation = ApParticipationKind.VanillaGuest;
-        if (!ApRunData.TryGetPlayerState(
+        bool posted = RitsuLibSidecarGodotMainLoopScheduling.TryPostToMainLoop(
+            () => ExecuteOutboundInstruction(context.Message, context.SenderNetId)
+        );
+        if (!posted)
+        {
+            LogUtility.Error(
+                $"Discarded host-authorized DeathLink {context.Message.EventId}; the local "
+                    + "main loop was unavailable."
+            );
+        }
+    }
+
+    private static void ExecuteOutboundInstruction(
+        DeathLinkSendInstructionMessage message,
+        ulong senderNetId)
+    {
+        if (!TryValidateOutboundInstruction(message, senderNetId))
+        {
+            LogUtility.Warn(
+                $"Rejected host-authorized DeathLink instruction {message.EventId} from "
+                    + $"{senderNetId}."
+            );
+            return;
+        }
+
+        lock (StateLock)
+        {
+            if (!HandledOutboundInstructions.Add(message.EventId))
+                return;
+        }
+
+        SendLocalAuthorizedDeathLink(
+            message.EventId,
+            message.OwnerNetId,
+            message.CharacterName,
+            message.FloorCause,
+            ApParticipationKind.OwnApSlot
+        );
+    }
+
+    private static bool TryValidateOutboundInstruction(
+        DeathLinkSendInstructionMessage message,
+        ulong senderNetId)
+    {
+        INetGameService netService = RunManager.Instance.NetService;
+        return netService.Type == NetGameType.Client
+            && BetaMainCompatibility.TryGetHostNetId(netService, out ulong hostNetId)
+            && senderNetId == hostNetId
+            && message.SchemaVersion == SchemaVersion
+            && message.RunId != Guid.Empty
+            && message.EventId != Guid.Empty
+            && message.OwnerNetId == netService.NetId
+            && !string.IsNullOrEmpty(message.CharacterName)
+            && message.CharacterName.Length <= 1024
+            && !string.IsNullOrEmpty(message.FloorCause)
+            && message.FloorCause.Length <= 1024
+            && RunManager.Instance.DebugOnlyGetState() is RunState runState
+            && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
+            && shared.RunId == message.RunId
+            && ApRunData.TryGetPlayerState(
                 runState,
-                player.NetId,
-                out ApPlayerRunState state
-            ))
+                message.OwnerNetId,
+                out ApPlayerRunState ownerState
+            )
+            && ownerState.Participation == ApParticipationKind.OwnApSlot
+            && ownerState.SlotSettings?.IsDeathLinkEnabled == true;
+    }
+
+    private static void SendLocalAuthorizedDeathLink(
+        Guid eventId,
+        ulong playerNetId,
+        string characterName,
+        string floorCause,
+        ApParticipationKind participation)
+    {
+        if (!ArchipelagoClient.IsConnected)
         {
-            return false;
+            LogUtility.Warn(
+                $"Discarded host-authorized DeathLink {eventId} for {playerNetId}; that AP "
+                    + "connection is unavailable."
+            );
+            return;
         }
 
-        participation = state.Participation;
-        if (participation == ApParticipationKind.OwnApSlot)
+        string apPlayerName = ArchipelagoClient.PlayerName ?? "AP player";
+        string cause = participation == ApParticipationKind.ApGuest
+            ? $"{apPlayerName}'s AP Guest ({characterName}) was Slain on {floorCause}"
+            : $"{apPlayerName} ({characterName}) was Slain on {floorCause}";
+        try
         {
-            return MultiplayerSupport.IsLocalOwnApSlot
-                && MultiplayerLocationChecks.IsLocalProgressOwner(player);
+            ArchipelagoClient.DeathLinkController.SendDeathLink(
+                new DeathLink(apPlayerName, cause)
+            );
+            LogUtility.Info(
+                $"Sent host-authorized DeathLink {eventId} for player {playerNetId} "
+                    + $"({participation})."
+            );
         }
-
-        return participation == ApParticipationKind.ApGuest
-            && MultiplayerSupport.IsLocalOwnApSlot
-            && RunManager.Instance.NetService.Type == NetGameType.Host;
+        catch (Exception ex)
+        {
+            LogUtility.Error(
+                $"Discarded host-authorized DeathLink {eventId} for {playerNetId}: "
+                    + ex.Message
+            );
+        }
     }
 
     private static bool ShouldSuppressOutgoing(ulong playerNetId, out string reason)
@@ -443,5 +888,42 @@ public static class DeathLinkMultiplayer
 
         reason = string.Empty;
         return false;
+    }
+
+    private static void CompleteInboundAdmission(Guid eventId)
+    {
+        bool hasPending;
+        lock (StateLock)
+        {
+            if (_inboundActionInFlight == eventId)
+                _inboundActionInFlight = null;
+            hasPending = PendingInbound.Count > 0;
+        }
+
+        if (hasPending)
+            EnsureProcessFrameHook();
+        else
+            UnhookProcessFrame();
+    }
+
+    private static bool EnsureProcessFrameHook()
+    {
+        if (_processFrameHooked)
+            return true;
+        if (Engine.GetMainLoop() is not SceneTree sceneTree)
+            return false;
+
+        _sceneTree = sceneTree;
+        _sceneTree.ProcessFrame += ProcessPendingInbound;
+        _processFrameHooked = true;
+        return true;
+    }
+
+    private static void UnhookProcessFrame()
+    {
+        if (_processFrameHooked && _sceneTree != null)
+            _sceneTree.ProcessFrame -= ProcessPendingInbound;
+        _sceneTree = null;
+        _processFrameHooked = false;
     }
 }
