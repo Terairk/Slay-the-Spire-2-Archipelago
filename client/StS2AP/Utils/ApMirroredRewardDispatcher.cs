@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Rewards;
@@ -55,6 +56,92 @@ public static class ApMirroredRewardDispatcher
         LastAttempts = new();
     private static readonly HashSet<(ulong OwnerNetId, Guid MenuId)> ActiveRemoteMenus = new();
 
+    /*
+     * FUTURE ARCHITECTURE: REPLICA-WIDE AP CARD-REWARD MATERIALIZATION
+     *
+     * Why the current AP path is different from a native card reward
+     * ---------------------------------------------------------------
+     * A native RewardsSet is generated independently on every multiplayer process. Each replica
+     * calls CardReward.Populate, which rolls the same cards from synchronized state, runs the same
+     * card-reward hooks, and invokes the same AfterModifyingCardRewardOptions callbacks. MegaCrit
+     * then synchronizes only the owning player's selection. Generation-time mutations therefore
+     * happen naturally on every copy of the run.
+     *
+     * An AP Card Reward has additional authority and persistence requirements. It represents an
+     * external Archipelago receipt, its stable identity is the received item index, and its choices
+     * must survive skipping the menu, reopening it, saving, loading, and reconnecting. The current
+     * implementation consequently lets the receipt owner call GetOrAssignCardReward, persists the
+     * resulting final cards, and sends those already-modified cards to the other replicas. Remote
+     * replicas construct a manually populated CardReward and go directly to BeginRewardsSet.
+     *
+     * That produces identical visible cards, but it does not reproduce invisible side effects of
+     * card-reward materialization. A hook may mutate a saved relic counter, consume a one-shot relic,
+     * advance player or shared RNG, or perform another run-state mutation from
+     * AfterModifyingCardRewardOptions. Silken Tress exposed this distinction: the owner serialized
+     * Glam-enchanted cards, while only the owner's relic transitioned to its used state.
+     *
+     * Proposed general solution
+     * -------------------------
+     * Replace owner-only final-card materialization with a two-phase, required synchronized flow:
+     *
+     * 1. The receipt owner builds a materialization intent identified by run ID, owner Net ID,
+     *    AP slot ID, received item index, rarity, assigned act, and every CardCreationOptions field
+     *    which can affect hook behavior.
+     *
+     * 2. The owner rolls only the base card choices. Post-generation modification hooks must be
+     *    disabled for this step, while pool, rarity, duplicate filtering, and native upgrade-roll
+     *    behavior continue to use the authoritative owner's player RNG. The intent carries the
+     *    serialized pre-hook cards rather than the final cards.
+     *
+     * 3. The intent also carries the authoritative owner's relevant player-RNG cursor after the
+     *    base roll. Before applying hooks, remote replicas validate or align their copy of that
+     *    player's RNG. Shared RunState RNG must begin at an identical counter on every replica;
+     *    disagreement is a materialization failure, not something to hide by accepting whichever
+     *    result arrived first.
+     *
+     * 4. A required, location-targeted synchronized handler reconstructs the same pre-hook cards on
+     *    every replica. That handler calls Hook.TryModifyCardRewardOptions and then awaits
+     *    Hook.AfterModifyingCardRewardOptions on every process exactly once. This is the stage where
+     *    Silken Tress, Silver Crucible, Wing Charm-like RNG use, and future stateful modifiers must
+     *    advance in lockstep.
+     *
+     * 5. Each replica serializes its final card results and computes a compact materialization hash.
+     *    The owner-authored result remains authoritative, but every replica must match it before the
+     *    native RewardsSet begins. A mismatch should invalidate further AP claims with useful run,
+     *    owner, item-index, modifier, RNG-counter, and card-result diagnostics. Do not compensate by
+     *    skipping hooks, advancing counters blindly, or suppressing the next checksum failure.
+     *
+     * 6. Only after synchronized materialization succeeds does the owner persist the final stable
+     *    CardAssignment and publish AP progress. Every replica then constructs the native reward from
+     *    that agreed assignment and enters RewardsSetSynchronizer.BeginRewardsSet. Selection and AP
+     *    receipt consumption continue to use the existing native synchronized boundaries.
+     *
+     * 7. Reopening an existing assignment must not materialize it again. The persisted assignment
+     *    needs an explicit materialized schema/version marker so the menu can distinguish a completed
+     *    assignment from a new receipt. Save/load and reconnect restore the final cards and already
+     *    committed modifier state; they do not replay the hook transaction.
+     *
+     * Important implementation constraints
+     * ------------------------------------
+     * - Do not run hooks first on the owner and then again inside the synchronized phase.
+     * - Do not send already-modified cards as the synchronized hook input; that can double upgrades,
+     *   enchantments, modifier provenance, and RNG consumption.
+     * - Preserve received-item-index identity and the existing no-reroll-on-reopen guarantee.
+     * - Keep player RNG owner-authoritative, but keep shared RunState RNG host-authoritative and equal
+     *   on all replicas before and after the hook phase.
+     * - The synchronized handler must run on the Godot main thread because hooks can touch mutable
+     *   models, signals, and UI-adjacent state.
+     * - The protocol should fail closed before offering the AP reward if any required replica cannot
+     *   reconstruct or validate the materialization. It must not roll back or duplicate an AP item
+     *   which has already crossed its established consumption boundary.
+     * - Arbitrary third-party hooks may still be nondeterministic or depend on unsynchronized external
+     *   state. The final-result hash and diagnostics define the supported boundary; they cannot make
+     *   an inherently nondeterministic hook safe.
+     *
+     * The current ConsumedSilkenTress marker is deliberately a narrow compatibility fix, not the
+     * intended universal protocol. Keep it until the two-phase transaction is implemented and proven
+     * across host-owned and guest-owned rewards, skipped/reopened menus, save/load, and reconnect.
+     */
     [ThreadStatic]
     private static ulong? _buildingCardRewardOwner;
 
@@ -271,6 +358,8 @@ public static class ApMirroredRewardDispatcher
                 bool rare = receipt.Item.GetCharacterSpecificItemID() == ItemTable.APItem.RareCardReward;
                 spec.IsRareCardReward = rare;
                 spec.CardRewardActIndex = rare ? null : GameUtility.GetCardRewardActIndex(itemIndex, player);
+                SilkenTress? silkenTress = player.GetRelic<SilkenTress>();
+                bool silkenTressWasUsed = silkenTress?.IsUsedUp ?? false;
                 _buildingCardRewardOwner = player.NetId;
                 try
                 {
@@ -282,6 +371,16 @@ public static class ApMirroredRewardDispatcher
                 finally
                 {
                     _buildingCardRewardOwner = null;
+                }
+                spec.ConsumedSilkenTress = silkenTress != null
+                    && !silkenTressWasUsed
+                    && silkenTress.IsUsedUp;
+                if (spec.ConsumedSilkenTress)
+                {
+                    LogUtility.Debug(
+                        $"AP card assignment {spec.GrantId} consumed Silken Tress for "
+                            + $"player {player.NetId}"
+                    );
                 }
                 break;
             }
@@ -435,7 +534,7 @@ public static class ApMirroredRewardDispatcher
         RitsuLibSidecarSyncMessageContext<ApRewardMenuSpec> context)
     {
         ApRewardMenuSpec menu = context.Message;
-        if (menu.SchemaVersion != 1 || context.SenderNetId != menu.OwnerNetId)
+        if (menu.SchemaVersion != 2 || context.SenderNetId != menu.OwnerNetId)
             throw new InvalidOperationException("Invalid AP reward-menu owner or schema.");
 
         if (RunManager.Instance.NetService.Type == NetGameType.Host)
@@ -467,10 +566,25 @@ public static class ApMirroredRewardDispatcher
             throw new InvalidOperationException("AP reward menu did not match its owner's slot.");
         }
 
+        if (menu.Rewards.Count(reward => reward.ConsumedSilkenTress) > 1)
+        {
+            throw new InvalidOperationException(
+                "AP reward menu consumed Silken Tress more than once."
+            );
+        }
+
         foreach (ApMirroredRewardSpec reward in menu.Rewards)
         {
+            if (reward.SchemaVersion != 2)
+                throw new InvalidOperationException("Invalid AP reward-menu entry schema.");
             if (reward.OwnerNetId != menu.OwnerNetId || reward.ApSlotId != menu.ApSlotId)
                 throw new InvalidOperationException("AP reward-menu entry had mismatched ownership.");
+            if (reward.ConsumedSilkenTress && reward.Kind != ApMirroredRewardKind.Card)
+            {
+                throw new InvalidOperationException(
+                    "Only an AP card assignment can consume Silken Tress."
+                );
+            }
             if (ApRunData.IsReceiptUsed(runState, menu.OwnerNetId, reward.ReceivedItemIndex))
                 throw new InvalidOperationException($"AP receipt {reward.GrantId} was already consumed.");
 
@@ -538,6 +652,7 @@ public static class ApMirroredRewardDispatcher
             Player owner = runState.GetPlayer(menu.OwnerNetId)
                 ?? throw new InvalidOperationException($"Player {menu.OwnerNetId} is not in the run.");
             RewardsSet set = BuildRewardsSet(menu, owner);
+            await ApplyMirroredMaterializationEffects(menu, owner);
             await RunManager.Instance.RewardsSetSynchronizer.BeginRewardsSet(set);
             sidecarCompletion.SetResult();
         }
@@ -552,6 +667,40 @@ public static class ApMirroredRewardDispatcher
         {
             ActiveRemoteMenus.Remove(key);
         }
+    }
+
+    private static async Task ApplyMirroredMaterializationEffects(
+        ApRewardMenuSpec menu,
+        Player owner)
+    {
+        ApMirroredRewardSpec? consumingReward = menu.Rewards.SingleOrDefault(
+            reward => reward.ConsumedSilkenTress
+        );
+        if (consumingReward == null)
+            return;
+
+        SilkenTress silkenTress = owner.GetRelic<SilkenTress>()
+            ?? throw new InvalidOperationException(
+                $"AP card assignment {consumingReward.GrantId} consumed Silken Tress, "
+                    + $"but player {owner.NetId} does not own it on this replica."
+            );
+        if (silkenTress.IsUsedUp)
+            return;
+
+        await silkenTress.AfterModifyingCardRewardOptions();
+        silkenTress.InvokeExecutionFinished();
+        if (!silkenTress.IsUsedUp)
+        {
+            throw new InvalidOperationException(
+                $"Could not mirror Silken Tress consumption for AP card assignment "
+                    + $"{consumingReward.GrantId}."
+            );
+        }
+
+        LogUtility.Debug(
+            $"Mirrored Silken Tress consumption for AP card assignment "
+                + $"{consumingReward.GrantId} on player {owner.NetId}"
+        );
     }
 
     private static async void ObserveOwnerCompletion(ApRewardMenuSpec menu, Task completion)

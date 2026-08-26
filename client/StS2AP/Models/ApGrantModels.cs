@@ -35,7 +35,7 @@ public enum ApMirroredRewardKind
 /// </summary>
 public sealed class ApMirroredRewardSpec
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
 
     public int ApSlotId { get; set; }
     public int ReceivedItemIndex { get; set; }
@@ -66,6 +66,13 @@ public sealed class ApMirroredRewardSpec
     // CONFIRM: future reroll support as I don't think driftwood works for AP card rewards
     public bool CardCanReroll { get; set; }
 
+    /// <summary>
+    /// The owner consumed Silken Tress while materializing this stable card assignment.
+    /// Remote replicas receive the already-modified cards, so they use this marker to mirror
+    /// the relic's one-shot state transition without applying card modifiers a second time.
+    /// </summary>
+    public bool ConsumedSilkenTress { get; set; }
+
     // CONFIRM: the datatype of serialized models, why string?
     public List<string> SerializedModels { get; set; } = new();
 
@@ -88,7 +95,7 @@ public sealed class ApMenuGoldSpec
 /// </summary>
 public sealed class ApRewardMenuSpec
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public Guid RunId { get; set; }
     public Guid MenuId { get; set; } = Guid.NewGuid();
     public int ApSlotId { get; set; }
