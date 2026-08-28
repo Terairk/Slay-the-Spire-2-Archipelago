@@ -4,8 +4,9 @@
 
 .DESCRIPTION
   Starts one native fastmp host and one native fastmp client with distinct
-  client IDs and AP slot names. Steam is disabled so each client ID receives an
-  independent StS2 account root, including RitsuLib settings and AP gold state.
+  client IDs. AP slot names may be the same or different. Steam is disabled so
+  each client ID receives an independent StS2 account root, including RitsuLib
+  settings and AP gold state.
   Native lobby rows are labeled with the corresponding AP slot and launch role.
   Each process also writes a separate log under logs\multiplayer.
 
@@ -36,6 +37,9 @@
 
 .EXAMPLE
   .\scripts\test_multiplayer_local.ps1 -ApServer localhost:38281 -HostSlot Alice -ClientSlot Bob
+
+.EXAMPLE
+  .\scripts\test_multiplayer_local.ps1 -ApServer localhost:38281 -HostSlot Alice -ClientSlot Alice
 #>
 
 #Requires -Version 5.1
@@ -188,13 +192,6 @@ function Start-Sts2Process {
 if ($HostClientId -eq $ClientClientId) {
     throw "HostClientId and ClientClientId must be different."
 }
-if (-not $SettingsOnly -and [string]::Equals(
-        $HostSlot,
-        $ClientSlot,
-        [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "HostSlot and ClientSlot must be different AP slots."
-}
-
 $ResolvedExePath = Resolve-Sts2Executable
 $LogDirectory = Join-Path $RepoRoot "logs\multiplayer"
 New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null

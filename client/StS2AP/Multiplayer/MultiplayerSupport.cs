@@ -88,11 +88,6 @@ public static class MultiplayerSupport
         : PendingDestination == ApPlayDestination.Multiplayer
             && PendingParticipation == ApParticipationKind.VanillaGuest;
 
-    public static bool IsLocalApGuest => IsRealMultiplayerRun
-        ? _activeParticipation == ApParticipationKind.ApGuest
-        : PendingDestination == ApPlayDestination.Multiplayer
-            && PendingParticipation == ApParticipationKind.ApGuest;
-
     public static bool IsLocalOwnApSlot => IsRealMultiplayerRun
         ? _activeParticipation == ApParticipationKind.OwnApSlot
         : PendingDestination == ApPlayDestination.Multiplayer
@@ -101,10 +96,9 @@ public static class MultiplayerSupport
     public static bool IsLocalApParticipant =>
         !IsLocalGuest && (IsRealMultiplayerRun || PendingDestination == ApPlayDestination.Multiplayer);
 
-    public static bool UsesFrozenHostSettings => IsLocalApGuest
-        || IsRealMultiplayerRun
-            && IsLocalOwnApSlot
-            && RunManager.Instance.NetService.Type == NetGameType.Host;
+    public static bool UsesFrozenHostSettings => IsRealMultiplayerRun
+        && IsLocalOwnApSlot
+        && RunManager.Instance.NetService.Type == NetGameType.Host;
 
     public static bool ClaimsInvalidated { get; private set; }
 
@@ -126,17 +120,6 @@ public static class MultiplayerSupport
     public static int? PreparedApSlotId => _preparedSessionIdentity?.ApSlotId;
 
     public static bool InitialItemsLoaded => _apHistoryPrepared;
-
-    public static bool HostReceiptCatalogReady => ApReceiptRelay.GuestCatalogReady;
-
-    public static SharedSlotCheckScope ConfiguredSharedSlotCheckScope =>
-        string.Equals(
-            ArchipelagoClient.LocalSettings.Value.SharedSlotCheckScope,
-            "AllAPParticipants",
-            StringComparison.Ordinal
-        )
-            ? SharedSlotCheckScope.AllApParticipants
-            : SharedSlotCheckScope.HostCharacterOnly;
 
     /// <summary>
     /// Exposes only the currently displayed start lobby for read-only diagnostics. This is not
@@ -178,22 +161,13 @@ public static class MultiplayerSupport
     {
         PendingDestination = ApPlayDestination.None;
         PendingParticipation = ApParticipationKind.VanillaGuest;
-        ApReceiptRelay.ResetGuestCatalog();
     }
 
     public static void BeginMultiplayerEntry()
     {
         PendingParticipation = ArchipelagoClient.IsConnected
             ? ApParticipationKind.OwnApSlot
-            : string.Equals(
-                ArchipelagoClient.LocalSettings.Value.GuestRewardMode,
-                "APGuest",
-                StringComparison.Ordinal
-            )
-                ? ApParticipationKind.ApGuest
-                : ApParticipationKind.VanillaGuest;
-        if (PendingParticipation == ApParticipationKind.ApGuest)
-            ApReceiptRelay.ResetGuestCatalog();
+            : ApParticipationKind.VanillaGuest;
         SelectDestination(ApPlayDestination.Multiplayer);
     }
 
@@ -235,7 +209,7 @@ public static class MultiplayerSupport
     }
 
     /// <summary>
-    /// Shop inventories are local presentation state. Own-slot players and AP Guests apply
+    /// Shop inventories are local presentation state. Directly connected AP players apply
     /// their AP source's slot unlocks only to the locally displayed inventory; Vanilla Guests
     /// and remote inventory replicas remain native.
     /// </summary>
@@ -245,7 +219,7 @@ public static class MultiplayerSupport
 
     /// <summary>
     /// An AP-check page is shown only to the process that can write checks for its local player.
-    /// AP Guests use the host slot's unlocks but never receive a competing shared-slot page.
+    /// Players sharing an AP slot each use their own connection and local shop page.
     /// </summary>
     public static bool ShouldShowLocalShopChecks(Player player) =>
         ShouldApplyLocalShopUnlocks(player)
@@ -506,26 +480,6 @@ public static class MultiplayerSupport
         return true;
     }
 
-    public static bool PrepareApGuestSession(
-        string roomSeed,
-        int apTeamId,
-        int apSlotId,
-        ArchipelagoSettings hostSettings,
-        IReadOnlyList<ItemInfo> receivedItems,
-        out string reason)
-    {
-        // The fixed STS host, not any AP identity previously used by this process, owns an
-        // AP Guest's receipt source. Clear a stale pre-lobby identity, but never weaken the
-        // identity lock after a run has actually bound this Net ID.
-        if (!IsRealMultiplayerRun)
-            _preparedSessionIdentity = null;
-        if (!ValidateApSessionIdentity(roomSeed, apTeamId, apSlotId, out reason))
-            return false;
-        ArchipelagoClient.UseMultiplayerHostSettings(hostSettings);
-        ArchipelagoClient.RebuildUnlockedCharactersFromSettings();
-        return PrepareApSession(roomSeed, apTeamId, apSlotId, receivedItems, out reason);
-    }
-
     public static void OnApDisconnected()
     {
         _apHistoryPrepared = false;
@@ -535,7 +489,7 @@ public static class MultiplayerSupport
 
     public static bool CanEnterMultiplayerLobby(out string reason)
     {
-        if (PendingParticipation is ApParticipationKind.VanillaGuest or ApParticipationKind.ApGuest)
+        if (PendingParticipation == ApParticipationKind.VanillaGuest)
         {
             reason = string.Empty;
             return true;
@@ -590,13 +544,6 @@ public static class MultiplayerSupport
             return true;
         }
 
-        if (PendingParticipation == ApParticipationKind.ApGuest
-            && !HostReceiptCatalogReady)
-        {
-            reason = "Waiting for the host's AP settings and received-item catalog.";
-            return false;
-        }
-
         if (!ArchipelagoClient.Settings.Characters.ContainsKey(character.Id.Entry))
         {
             reason = $"Character {character.Id.Entry} is not configured for this AP slot.";
@@ -641,20 +588,9 @@ public static class MultiplayerSupport
             return;
 
         _observedStartLobbyScreen = screen;
-        if (PendingParticipation == ApParticipationKind.ApGuest
-            && !HostReceiptCatalogReady)
-        {
-            ApReceiptRelay.RequestSnapshot(screen.Lobby.NetService);
-        }
         ApRunData.StageLocalPlayer(screen.Lobby);
         RefreshObservedStartLobby();
     }
-
-    internal static void NotifyApGuestCatalogInstalled() =>
-        Callable.From(RefreshObservedStartLobby).CallDeferred();
-
-    internal static void NotifyApGuestCatalogInvalidated() =>
-        Callable.From(RefreshObservedStartLobby).CallDeferred();
 
     public static void StopObservingStartLobby(NCharacterSelectScreen screen)
     {
@@ -673,9 +609,8 @@ public static class MultiplayerSupport
 
         try
         {
-            // A shared-slot AP Guest initially opens this screen with every AP character
-            // locked. The host catalog is installed later on the Godot main thread, so refresh
-            // visibility/unlocks before re-evaluating readiness.
+            // Receipts can unlock characters while this screen is open; refresh the local
+            // slot's visibility/unlocks before re-evaluating readiness.
             Patches_UnlockCharacters.OverrideCharacterSelectMenuOptions
                 .RefreshForCurrentParticipation(screen);
             ApRunData.StageLocalPlayer(screen.Lobby);
@@ -813,35 +748,6 @@ public static class MultiplayerSupport
             ArchipelagoClient.UseMultiplayerHostSettings(hostShared.HostSettings);
         }
 
-        if (_activeParticipation == ApParticipationKind.ApGuest)
-        {
-            if (!ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-                || shared.HostSettings == null
-                || !BetaMainCompatibility.TryGetHostNetId(
-                    RunManager.Instance.NetService,
-                    out ulong hostNetId
-                )
-                || !ApRunData.TryGetPlayerState(runState, hostNetId, out ApPlayerRunState hostState)
-                || hostState.ApRoomSeed == null
-                || hostState.ApTeamId == null
-                || hostState.ApSlotId == null)
-            {
-                ClaimsInvalidated = true;
-                LogUtility.Error("AP Guest launched without frozen host settings/source identity.");
-                return localPlayer;
-            }
-
-            ArchipelagoClient.UseMultiplayerHostSettings(shared.HostSettings);
-            _preparedSessionIdentity = new ApSessionIdentity(
-                hostState.ApRoomSeed,
-                hostState.ApTeamId.Value,
-                hostState.ApSlotId.Value
-            );
-            _preparedReceivedItems = ApReceiptRelay.GetGuestItems();
-            if (!HostReceiptCatalogReady)
-                ApReceiptRelay.RequestSnapshot(RunManager.Instance.NetService);
-        }
-
         LogUtility.Info(
             $"Experimental AP multiplayer launched: netType={RunManager.Instance.NetService.Type}, "
                 + $"localNetId={localPlayer.NetId}, "
@@ -854,6 +760,12 @@ public static class MultiplayerSupport
         ApPlayerRunState savedState,
         out string reason)
     {
+        if (savedState.SchemaVersion != ApRunData.RunSchemaVersion)
+        {
+            reason = "This multiplayer save uses an unsupported schema. Start a new campaign.";
+            return false;
+        }
+
         if (savedState.Participation != PendingParticipation)
         {
             reason = $"saved participation is {savedState.Participation}, but this process "
@@ -927,16 +839,6 @@ public static class MultiplayerSupport
             return false;
         }
 
-        if (IsLocalOwnApSlot)
-        {
-            _preparedReceivedItems = receivedItems.ToArray();
-            ApReceiptRelay.ReplaceHostCatalog(
-                identity.RoomSeed,
-                identity.ApTeamId,
-                identity.ApSlotId,
-                receivedItems
-            );
-        }
         return true;
     }
 
@@ -1042,6 +944,7 @@ public static class MultiplayerSupport
         ManagedActionRequestScheduler.EndRun();
         ApGrantDispatcher.EndRun();
         ApMirroredRewardDispatcher.EndRun();
+        RelicReceiptMultiplayer.EndRun();
         ProgressiveStarterMultiplayer.EndRun();
         AscensionMultiplayer.EndRun();
         AncientMultiplayer.EndRun();
@@ -1063,12 +966,6 @@ public static class MultiplayerSupport
         if (!IsFeatureEnabled(MultiplayerFeature.GoldRewards))
         {
             reason = "Gold rewards are not enabled for this multiplayer profile.";
-            return false;
-        }
-
-        if (IsLocalApGuest && !HostReceiptCatalogReady)
-        {
-            reason = "Waiting for a complete host AP receipt catalog.";
             return false;
         }
 
@@ -1116,11 +1013,6 @@ public static class MultiplayerSupport
         if (!IsFeatureEnabled(feature))
         {
             reason = $"{feature} is not enabled for this multiplayer profile.";
-            return false;
-        }
-        if (IsLocalApGuest && !HostReceiptCatalogReady)
-        {
-            reason = "Waiting for a complete host AP receipt catalog.";
             return false;
         }
         if (ClaimsInvalidated)

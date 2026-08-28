@@ -37,10 +37,6 @@ public static class ModSettingsRegistration
     private const string RelicRewards_OverrideId = "override_relic_rewards_available_anytime";
     private const string RelicRewards_AvailableAnytimeId = "relic_rewards_available_anytime";
 
-    // Experimental multiplayer
-    private const string Multiplayer_GuestRewardModeId = "multiplayer_guest_reward_mode";
-    private const string Multiplayer_SharedSlotCheckScopeId = "multiplayer_shared_slot_check_scope";
-
     #endregion
 
     #region Handle Hotkeys
@@ -138,47 +134,18 @@ public static class ModSettingsRegistration
             .WithDescription(
                 ModSettingsText.Literal(
                     "Unsupported development preview. Multiplayer AP progress is saved by the "
-                        + "STS host. Disconnected players may use vanilla rewards or follow the "
-                        + "host's AP slot."
+                        + "STS host."
                 )
             )
             .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
-            .AddChoice(
-                Multiplayer_GuestRewardModeId,
-                ModSettingsText.Literal("Disconnected Player Rewards"),
-                CreateBinding(
-                    static settings => settings.GuestRewardMode,
-                    static (settings, value) => settings.GuestRewardMode = value
-                ),
-                options: new[]
-                {
-                    new ModSettingsChoiceOption<string>("VanillaGuest", ModSettingsText.Literal("Vanilla Guest")),
-                    new ModSettingsChoiceOption<string>("APGuest", ModSettingsText.Literal("AP Guest")),
-                },
-                description: ModSettingsText.Literal(
-                    "AP Guests follow the STS host's AP settings and receipts without opening an AP connection."
-                ),
-                presentation: ModSettingsChoicePresentation.Dropdown
-            )
-            .ConfigureEntryMenu(Multiplayer_GuestRewardModeId, ModSettingsMenuCapabilities.None)
-            .AddChoice(
-                Multiplayer_SharedSlotCheckScopeId,
-                ModSettingsText.Literal("Shared Slot Checks"),
-                CreateBinding(
-                    static settings => settings.SharedSlotCheckScope,
-                    static (settings, value) => settings.SharedSlotCheckScope = value
-                ),
-                options: new[]
-                {
-                    new ModSettingsChoiceOption<string>("HostCharacterOnly", ModSettingsText.Literal("Host Character Only")),
-                    new ModSettingsChoiceOption<string>("AllAPParticipants", ModSettingsText.Literal("Host + AP Guests")),
-                },
-                description: ModSettingsText.Literal(
-                    "Controls which character-specific checks the host sends for a shared AP slot."
-                ),
-                presentation: ModSettingsChoicePresentation.Dropdown
-            )
-            .ConfigureEntryMenu(Multiplayer_SharedSlotCheckScopeId, ModSettingsMenuCapabilities.None);
+            .AddInfoCard(
+                "ap-multiplayer-connections",
+                ModSettingsText.Literal("AP Connections"),
+                ModSettingsText.Literal(
+                    "Connect to the host's AP slot to share its rewards, or use a separate AP slot. "
+                        + "Players entering without an AP connection use vanilla rewards."
+                )
+            );
     }
 
     private static void ConfigureModdedCharactersSection(ModSettingsSectionBuilder section)

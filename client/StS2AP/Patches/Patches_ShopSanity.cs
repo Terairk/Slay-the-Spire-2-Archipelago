@@ -249,14 +249,6 @@ namespace StS2AP.Patches
                 return true;
             }
 
-            if (playerState.Participation == ApParticipationKind.ApGuest
-                && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-                && shared.HostSettings != null)
-            {
-                settings = shared.HostSettings;
-                return true;
-            }
-
             LogUtility.Error(
                 $"ShopSanity: no usable AP shop settings for local player {player.NetId}; "
                     + "leaving this shop visit untouched."
@@ -687,16 +679,13 @@ namespace StS2AP.Patches
         internal static bool IsApSlot(MerchantEntry entry) => TryGetApLocationId(entry, out _);
 
         /// <summary>
-        /// Resolves the complete multiplayer check set before gold is committed. The visible
-        /// host location is required; shared-slot AP Guest character expansions are best-effort
-        /// and deduplicated by location ID.
+        /// Validates the local shop check before gold is committed. Concurrent purchases from
+        /// another connection to the same slot are left to AP's location deduplication.
         /// </summary>
-        private static bool TryPrepareMultiplayerShopChecks(
+        private static bool CanPurchaseMultiplayerCheck(
             Player player,
-            ShopCheckTarget hostTarget,
-            out List<ShopCheckTarget> targets)
+            ShopCheckTarget target)
         {
-            targets = new List<ShopCheckTarget>();
             if (!MultiplayerLocationChecks.IsCheckWriter(player))
             {
                 LogUtility.Error(
@@ -704,74 +693,29 @@ namespace StS2AP.Patches
                 );
                 return false;
             }
-            if (ArchipelagoClient.CheckedLocations.Contains(hostTarget.LocationId))
+            if (ArchipelagoClient.CheckedLocations.Contains(target.LocationId))
             {
                 LogUtility.Warn(
-                    $"ShopSanity: backing location {hostTarget.LocationId} was already checked; "
+                    $"ShopSanity: backing location {target.LocationId} was already checked; "
                         + "rejecting the stale purchase."
                 );
                 return false;
             }
 
-            var seen = new HashSet<long> { hostTarget.LocationId };
-            targets.Add(hostTarget);
-
-            if (player.RunState is not RunState runState)
-                return true;
-
-            foreach (long characterOffset in
-                ApRunData.GetSharedSlotApGuestCharacterOffsets(runState))
-            {
-                long guestLocationId = (hostTarget.LocationId % 10000L)
-                    + (10000L * (characterOffset - 1));
-                if (!seen.Add(guestLocationId)
-                    || ArchipelagoClient.CheckedLocations.Contains(guestLocationId))
-                {
-                    continue;
-                }
-                if (!ArchipelagoClient.ScoutedLocations.TryGetValue(
-                    guestLocationId,
-                    out ScoutedItemInfo guestInfo))
-                {
-                    LogUtility.Warn(
-                        "ShopSanity: skipping unresolved shared-slot expansion for character "
-                            + $"offset {characterOffset} (location {guestLocationId})."
-                    );
-                    continue;
-                }
-
-                targets.Add(new ShopCheckTarget(guestLocationId, guestInfo.LocationName));
-            }
-
             return true;
         }
 
-        private static void SendShopChecks(
+        private static void SendShopCheck(
             Player player,
-            ShopCheckTarget hostTarget,
-            IReadOnlyList<ShopCheckTarget>? multiplayerTargets)
+            ShopCheckTarget target)
         {
             if (!MultiplayerSupport.IsRealMultiplayerRun)
             {
-                GameUtility.SendCheck(hostTarget.LocationId);
+                GameUtility.SendCheck(target.LocationId);
                 return;
             }
 
-            foreach (ShopCheckTarget target in multiplayerTargets ?? Array.Empty<ShopCheckTarget>())
-            {
-                bool queued = MultiplayerLocationChecks.QueueCheck(
-                    player,
-                    target.LocationName,
-                    target.LocationId
-                );
-                if (queued && target.LocationId != hostTarget.LocationId)
-                {
-                    LogUtility.Info(
-                        $"ShopSanity: expanded purchase to {target.LocationName} "
-                            + $"({target.LocationId})."
-                    );
-                }
-            }
+            MultiplayerLocationChecks.QueueCheck(player, target.LocationName, target.LocationId);
         }
 
         /// <summary>
@@ -834,18 +778,11 @@ namespace StS2AP.Patches
                     return false;
                 }
 
-                List<ShopCheckTarget>? multiplayerTargets = null;
-                if (MultiplayerSupport.IsRealMultiplayerRun)
+                if (MultiplayerSupport.IsRealMultiplayerRun
+                    && !CanPurchaseMultiplayerCheck(player, target))
                 {
-                    if (!TryPrepareMultiplayerShopChecks(
-                        player,
-                        target,
-                        out List<ShopCheckTarget> preparedTargets))
-                    {
-                        entry.InvokePurchaseFailed(PurchaseStatus.FailureOutOfStock);
-                        return false;
-                    }
-                    multiplayerTargets = preparedTargets;
+                    entry.InvokePurchaseFailed(PurchaseStatus.FailureOutOfStock);
+                    return false;
                 }
 
                 int goldSpent = 0;
@@ -858,7 +795,7 @@ namespace StS2AP.Patches
                 }
 
                 LogUtility.Info($"ShopSanity: sending check for location {target.LocationId}");
-                SendShopChecks(player, target, multiplayerTargets);
+                SendShopCheck(player, target);
                 MarkShopSlotChecked(target);
 
                 // AP checks are single-use even when The Courier would refill vanilla entries.

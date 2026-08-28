@@ -4,7 +4,16 @@
 - **Owners:** Unassigned
 - **Reviewers:** Unassigned
 - **Target release:** Unassigned
-- **Last updated:** 2026-08-20
+- **Last updated:** 2026-08-28
+
+## Current amendment: direct AP connections
+
+[ADR 005](adr/005-direct-ap-connections.md) supersedes the participation, receipt
+relay, check forwarding, and DeathLink target-expansion design below. All AP players
+now connect directly, including those sharing the host's slot; Vanilla Guest is the
+only disconnected-entry mode. Host-owned per-player saves and native action ordering
+remain. Existing saves are unsupported. The original sections below are retained
+as historical design context, not the current guest implementation contract.
 
 ## 1. Summary
 

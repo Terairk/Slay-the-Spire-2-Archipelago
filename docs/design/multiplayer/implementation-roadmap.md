@@ -1,5 +1,7 @@
 # Multiplayer implementation roadmap
 
+> Updated participation contract: [ADR 005](adr/005-direct-ap-connections.md) supersedes the guest receipt relay, shared-check scope, and guest routing described below. Every AP participant now connects directly; host-owned per-player progress remains.
+
 - **Status:** Draft
 - **Depends on:** [Multiplayer synchronization RFC](multiplayer-sync-rfc.md)
 

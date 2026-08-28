@@ -12,7 +12,7 @@ public sealed class DeathLinkActionMessage
         public int NewHp { get; set; }
     }
 
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
     public Guid RunId { get; set; }
     public Guid EventId { get; set; }
     public ulong SlotOwnerNetId { get; set; }

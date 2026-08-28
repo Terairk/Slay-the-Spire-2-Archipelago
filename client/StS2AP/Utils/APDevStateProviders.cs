@@ -220,8 +220,7 @@ public static class ApDevStateProviders
         long BulkNonCompletedTransfers,
         long BulkRetransmittedFrames,
         long BulkAcknowledgedOutboundBytes,
-        long BulkCommittedInboundBytes,
-        ApReceiptRelay.FullSnapshotDiagnostics ReceiptSnapshot
+        long BulkCommittedInboundBytes
     );
 
     private sealed class MultiplayerProvider : IApDevStateProvider
@@ -265,8 +264,7 @@ public static class ApDevStateProviders
                 RitsuLibSidecarTrafficCounters.BulkNonCompletedTransfers,
                 RitsuLibSidecarTrafficCounters.BulkRetransmittedFrames,
                 RitsuLibSidecarTrafficCounters.BulkAcknowledgedOutboundBytes,
-                RitsuLibSidecarTrafficCounters.BulkCommittedInboundBytes,
-                ApReceiptRelay.CaptureFullSnapshotDiagnostics()
+                RitsuLibSidecarTrafficCounters.BulkCommittedInboundBytes
             );
         }
 
@@ -286,7 +284,6 @@ public static class ApDevStateProviders
                 $"routedQueue frames={state.RoutedQueuedFrames} wireBytes={state.RoutedQueuedWireBytes}",
                 $"routedDrops rejected={state.RoutedQueueRejectedFrames} realtimeEvicted={state.RoutedRealtimeEvictedFrames} expired={state.RoutedExpiredFrames} staleSession={state.RoutedStaleSessionFrames} disposed={state.RoutedDisposedFrames} transportFailed={state.RoutedTransportFailedFrames}",
                 $"bulk activeInbound={state.BulkActiveInboundStreams} activeOutbound={state.BulkActiveOutboundStreams} completed={state.BulkCompletedTransfers} nonCompleted={state.BulkNonCompletedTransfers} retransmittedFrames={state.BulkRetransmittedFrames} acknowledgedOutboundBytes={state.BulkAcknowledgedOutboundBytes} committedInboundBytes={state.BulkCommittedInboundBytes}",
-                $"receiptSnapshot revision={state.ReceiptSnapshot.Revision} items={state.ReceiptSnapshot.ItemCount} payloadBytes={state.ReceiptSnapshot.PayloadBytes} largestPayloadBytes={state.ReceiptSnapshot.LargestPayloadBytes}",
             });
         }
 
@@ -378,7 +375,6 @@ public static class ApDevStateProviders
                 string identity = state.Participation switch
                 {
                     ApParticipationKind.VanillaGuest => "vanilla-guest",
-                    ApParticipationKind.ApGuest => "host-slot",
                     _ => state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null
                         ? "incomplete"
                         : $"room={Quote(state.ApRoomSeed)} team={state.ApTeamId} slot={state.ApSlotId}",
@@ -439,7 +435,6 @@ public static class ApDevStateProviders
         string HostNetId,
         string RunId,
         string HostSettingsFrozen,
-        string SharedSlotCheckScope,
         IReadOnlyList<string> Players
     );
 
@@ -470,7 +465,6 @@ public static class ApDevStateProviders
                 string identity = state.Participation switch
                 {
                     ApParticipationKind.VanillaGuest => "vanilla-guest",
-                    ApParticipationKind.ApGuest => "host-slot",
                     _ => state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null
                         ? "incomplete"
                         : $"room={Quote(state.ApRoomSeed)} team={state.ApTeamId} slot={state.ApSlotId}",
@@ -487,7 +481,6 @@ public static class ApDevStateProviders
                 hostNetId,
                 FormatRunId(shared.RunId),
                 YesNo(shared.HostSettings != null),
-                shared.SharedSlotCheckScope.ToString(),
                 players
             );
         }
@@ -500,7 +493,6 @@ public static class ApDevStateProviders
                 "AP canonical run data",
                 $"role={state.Role} localNetId={state.LocalNetId} hostNetId={state.HostNetId}",
                 $"runId={state.RunId} hostSettingsFrozen={state.HostSettingsFrozen}",
-                $"sharedSlotCheckScope={state.SharedSlotCheckScope}",
                 $"players=[{string.Join("; ", state.Players)}]",
             });
         }

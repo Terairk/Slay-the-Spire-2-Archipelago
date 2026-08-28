@@ -1,20 +1,18 @@
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Utils;
 
 namespace StS2AP.Multiplayer;
 
 /// <summary>
-/// Resolves the AP identity that governs one STS player. Reward behavior and character-specific
-/// location checks are deliberately separate: AP Guests always inherit the fixed host's settings
-/// and receipts, while the shared-slot check scope only controls whether their checks are sent.
+/// Resolves one STS player's direct AP connection and progress. Several players may connect
+/// to the same slot, but their reward consumption remains keyed by their individual Net IDs.
 /// </summary>
 public static class ApPlayerContextResolver
 {
     public static bool IsVanillaGuest(Player player) =>
         MultiplayerSupport.IsRealMultiplayerRun
-        && TryGetPlayerState(player, out _, out ApPlayerRunState state)
+        && TryGetPlayerState(player, out ApPlayerRunState state)
         && state.Participation == ApParticipationKind.VanillaGuest;
 
     public static bool TryGetRewardSettings(
@@ -28,21 +26,13 @@ public static class ApPlayerContextResolver
         }
 
         settings = null!;
-        if (!TryGetPlayerState(player, out RunState runState, out ApPlayerRunState state))
+        if (!TryGetPlayerState(player, out ApPlayerRunState state))
             return false;
 
         if (state.Participation == ApParticipationKind.OwnApSlot
             && state.SlotSettings != null)
         {
             settings = state.SlotSettings;
-            return true;
-        }
-
-        if (state.Participation == ApParticipationKind.ApGuest
-            && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-            && shared.HostSettings != null)
-        {
-            settings = shared.HostSettings;
             return true;
         }
 
@@ -119,19 +109,13 @@ public static class ApPlayerContextResolver
     {
         if (!MultiplayerSupport.IsRealMultiplayerRun)
             return true;
-        if (!TryGetPlayerState(player, out RunState runState, out ApPlayerRunState state))
+        if (!TryGetPlayerState(player, out ApPlayerRunState state))
             return false;
-        if (state.Participation == ApParticipationKind.OwnApSlot)
-            return true;
-
-        return state.Participation == ApParticipationKind.ApGuest
-            && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-            && shared.SharedSlotCheckScope == SharedSlotCheckScope.AllApParticipants;
+        return state.Participation == ApParticipationKind.OwnApSlot;
     }
 
     /// <summary>
-    /// Resolves the canonical run-data record whose receipts govern this player. Own-slot players
-    /// use their own record; AP Guests use the fixed host's record regardless of shared-check scope.
+    /// Resolves the player's canonical run-data record, even when another player uses the same slot.
     /// </summary>
     internal static bool TryGetRewardProgressSource(
         Player player,
@@ -140,7 +124,7 @@ public static class ApPlayerContextResolver
     {
         source = null!;
         reason = string.Empty;
-        if (!TryGetPlayerState(player, out RunState runState, out ApPlayerRunState state))
+        if (!TryGetPlayerState(player, out ApPlayerRunState state))
         {
             reason = $"no canonical AP run state exists for player {player.NetId}";
             return false;
@@ -152,61 +136,14 @@ public static class ApPlayerContextResolver
             return true;
         }
 
-        if (state.Participation != ApParticipationKind.ApGuest)
-        {
-            reason = $"player {player.NetId} is a Vanilla Guest";
-            return false;
-        }
-
-        if (!BetaMainCompatibility.TryGetHostNetId(
-                RunManager.Instance.NetService,
-                out ulong hostNetId
-            )
-            || !ApRunData.TryGetPlayerState(
-                runState,
-                hostNetId,
-                out ApPlayerRunState hostState
-            )
-            || hostState.Participation != ApParticipationKind.OwnApSlot)
-        {
-            reason = $"the fixed host has no AP reward state for player {player.NetId}";
-            return false;
-        }
-
-        source = hostState;
-        return true;
-    }
-
-    internal static bool TryGetRewardProgressSourceNetId(
-        Player player,
-        out ulong sourceNetId)
-    {
-        sourceNetId = 0;
-        if (!MultiplayerSupport.IsRealMultiplayerRun
-            || !TryGetPlayerState(player, out _, out ApPlayerRunState state))
-        {
-            return false;
-        }
-
-        if (state.Participation == ApParticipationKind.OwnApSlot)
-        {
-            sourceNetId = player.NetId;
-            return true;
-        }
-
-        return state.Participation == ApParticipationKind.ApGuest
-            && BetaMainCompatibility.TryGetHostNetId(
-                RunManager.Instance.NetService,
-                out sourceNetId
-            );
+        reason = $"player {player.NetId} has no direct AP connection";
+        return false;
     }
 
     private static bool TryGetPlayerState(
         Player player,
-        out RunState runState,
         out ApPlayerRunState state)
     {
-        runState = null!;
         state = null!;
         if (player.RunState is not RunState playerRunState
             || !ApRunData.TryGetPlayerState(
@@ -218,7 +155,6 @@ public static class ApPlayerContextResolver
             return false;
         }
 
-        runState = playerRunState;
         state = playerState;
         return true;
     }

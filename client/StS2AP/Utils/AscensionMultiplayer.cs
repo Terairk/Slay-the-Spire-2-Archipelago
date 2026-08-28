@@ -575,7 +575,7 @@ public static class AscensionMultiplayer
     {
         var configured = shared.ConfiguredAscensions.ToHashSet();
         var current = shared.CurrentAscensions.ToHashSet();
-        bool valid = shared.SchemaVersion == 7
+        bool valid = shared.SchemaVersion == ApRunData.RunSchemaVersion
             && shared.RunId != Guid.Empty
             && shared.HostSettings != null
             && shared.AscensionStateInitialized

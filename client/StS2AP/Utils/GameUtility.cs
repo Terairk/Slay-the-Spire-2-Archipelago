@@ -706,22 +706,6 @@ namespace StS2AP.Utils
             }
             if(includeUnrecognizedChars)
             {
-                if (locationId != -1
-                    && MultiplayerSupport.IsRealMultiplayerRun
-                    && RunManager.Instance.DebugOnlyGetState() is RunState runState)
-                {
-                    foreach (long characterOffset in
-                        ApRunData.GetSharedSlotApGuestCharacterOffsets(runState))
-                    {
-                        long sharedLocationId = (locationId % 10000L)
-                            + (10000L * (characterOffset - 1));
-                        LogUtility.Info(
-                            $"Sending shared-slot location for AP Guest character offset "
-                                + $"{characterOffset}: {locationId} -> {sharedLocationId}"
-                        );
-                        SendCheck(sharedLocationId, false);
-                    }
-                }
                 foreach(var otherChar in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
                 {
                     // - 1 because locations are offset from items by 1

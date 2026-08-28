@@ -110,7 +110,7 @@ namespace StS2AP
         /// </summary>
         public static ArchipelagoSettings Settings { get; private set; }
 
-        /// <summary>Installs the fixed host's frozen settings on an AP Guest process.</summary>
+        /// <summary>Restores the fixed host's frozen settings on its own process.</summary>
         internal static void UseMultiplayerHostSettings(ArchipelagoSettings settings)
         {
             ArgumentNullException.ThrowIfNull(settings);
@@ -384,7 +384,11 @@ namespace StS2AP
             DeathLinkController.OnDeathLinkReceived += deathLinkInfo =>
             {
                 Callable
-                    .From(() => DeathLinkUtility.OnDeathLinkReceived(deathLinkInfo))
+                    .From(() =>
+                    {
+                        if (ReferenceEquals(Session, connectionSession))
+                            DeathLinkUtility.OnDeathLinkReceived(deathLinkInfo);
+                    })
                     .CallDeferred();
             };
 
@@ -818,13 +822,6 @@ namespace StS2AP
             Patches_ItemProcessor.ClearQueue();
             Index = receivedItems.Count;
             Patches_ItemProcessor.LastIndexHandled = Index;
-            ApReceiptRelay.ReplaceHostCatalog(
-                Seed,
-                Session.ConnectionInfo.Team,
-                Session.ConnectionInfo.Slot,
-                receivedItems
-            );
-            ApReceiptRelay.PublishCurrentRunSnapshot();
             MultiplayerSupport.RestoreFrozenHostSettingsForActiveRun();
             AscensionMultiplayer.QueueReconnectReconciliation();
             return true;

@@ -40,8 +40,7 @@ namespace StS2AP.Patches
             }
 
             // Reaching the Ancient is the location boundary. Every process observes it, but the
-            // existing writer guard means only an own-slot process or the fixed host for an
-            // eligible AP Guest can mutate an Archipelago slot.
+            // existing writer guard means only the player's own connection writes their check.
             foreach (var player in runState.Players)
                 SendAncientCheck(player);
         }

@@ -207,11 +207,16 @@ public static class ApMirroredRewardDispatcher
         ApRewardMenuSpec spec;
         try
         {
-            spec = BuildOwnerMenuSpec(player, runState);
+            var approvedRelics = await RelicReceiptMultiplayer.ApproveMenu(
+                player, RelicRewardUtility.GetMenuReservationCandidates(player));
+            if (MultiplayerSupport.IsRealMultiplayerRun && !ArchipelagoRewardUI.CanBuildMenuAfterAwait())
+                return false;
+            spec = BuildOwnerMenuSpec(player, runState, approvedRelics);
         }
         catch (Exception ex)
         {
             LogUtility.Error($"Could not build native AP reward menu: {ex}");
+            NotificationUtility.ShowRawText("Could not prepare AP rewards. Try opening the menu again.");
             return false;
         }
 
@@ -242,7 +247,7 @@ public static class ApMirroredRewardDispatcher
         return true;
     }
 
-    private static ApRewardMenuSpec BuildOwnerMenuSpec(Player player, RunState runState)
+    private static ApRewardMenuSpec BuildOwnerMenuSpec(Player player, RunState runState, IReadOnlySet<int>? approvedRelics)
     {
         Guid runId = Guid.Empty;
         if (MultiplayerSupport.IsRealMultiplayerRun)
@@ -264,7 +269,7 @@ public static class ApMirroredRewardDispatcher
             OwnerNetId = player.NetId,
         };
 
-        RelicRewardUtility.ReconcileBankedRewards(player);
+        RelicRewardUtility.ReconcileBankedRewards(player, approvedRelics);
 
         ApGoldClaim? gold = ApGrantDispatcher.MaterializeGoldClaim();
         if (gold != null)
@@ -294,6 +299,9 @@ public static class ApMirroredRewardDispatcher
                 {
                     continue;
                 }
+
+                if (kind == ApMirroredRewardKind.Relic && approvedRelics != null
+                    && !approvedRelics.Contains(receipt.Index)) continue;
 
                 menu.Rewards.Add(BuildAssignedSpec(receipt, player, apSlotId, kind));
                 continue;
@@ -507,6 +515,7 @@ public static class ApMirroredRewardDispatcher
         Player player)
     {
         RelicModel relic = DeserializeRelic(spec.SerializedModels.Single());
+        RelicReceiptMultiplayer.RecordMenuAssignment(player, spec.ReceivedItemIndex, spec.SerializedModels.Single());
         StandardRelicPool.ReserveChoice(player, relic);
         return new ApNativeRelicReward(
             relic,
@@ -536,9 +545,6 @@ public static class ApMirroredRewardDispatcher
         ApRewardMenuSpec menu = context.Message;
         if (menu.SchemaVersion != 2 || context.SenderNetId != menu.OwnerNetId)
             throw new InvalidOperationException("Invalid AP reward-menu owner or schema.");
-
-        if (RunManager.Instance.NetService.Type == NetGameType.Host)
-            ValidateMenuOnHost(menu);
 
         var completion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously
@@ -587,35 +593,10 @@ public static class ApMirroredRewardDispatcher
             }
             if (ApRunData.IsReceiptUsed(runState, menu.OwnerNetId, reward.ReceivedItemIndex))
                 throw new InvalidOperationException($"AP receipt {reward.GrantId} was already consumed.");
-
-            if (ownerState.Participation == ApParticipationKind.ApGuest)
-            {
-                if (!ApReceiptRelay.TryGetHostReceipt(
-                        reward.ReceivedItemIndex,
-                        out ItemInfo hostReceipt
-                    ))
-                {
-                    throw new InvalidOperationException(
-                        $"AP Guest reward {reward.GrantId} was absent from the host receipt catalog."
-                    );
-                }
-
-                var indexedHostReceipt = new IndexedItemInfo(
-                    hostReceipt,
-                    reward.ReceivedItemIndex
-                );
-                bool hasNativeKind = TryGetMirroredKind(
-                    indexedHostReceipt,
-                    out ApMirroredRewardKind hostKind
-                );
-                if (reward.Kind != ApMirroredRewardKind.Unavailable
-                    && (!hasNativeKind || hostKind != reward.Kind))
-                {
-                    throw new InvalidOperationException(
-                        $"AP Guest reward {reward.GrantId} did not match the host receipt kind."
-                    );
-                }
-            }
+            if (reward.Kind == ApMirroredRewardKind.Relic
+                && !RelicReceiptMultiplayer.State(runState).CanUseMenu(
+                    menu.OwnerNetId, reward.ReceivedItemIndex))
+                throw new InvalidOperationException($"AP relic {reward.GrantId} has no host menu reservation.");
         }
     }
 
@@ -651,6 +632,10 @@ public static class ApMirroredRewardDispatcher
                 throw new InvalidOperationException("No matching player exists for the AP reward menu.");
             Player owner = runState.GetPlayer(menu.OwnerNetId)
                 ?? throw new InvalidOperationException($"Player {menu.OwnerNetId} is not in the run.");
+            if (RunManager.Instance.NetService.Type == NetGameType.Host)
+                ValidateMenuOnHost(menu);
+            await RelicReceiptMultiplayer.WaitForMenuReservations(owner,
+                menu.Rewards.Where(r => r.Kind == ApMirroredRewardKind.Relic).Select(r => r.ReceivedItemIndex));
             RewardsSet set = BuildRewardsSet(menu, owner);
             await ApplyMirroredMaterializationEffects(menu, owner);
             await RunManager.Instance.RewardsSetSynchronizer.BeginRewardsSet(set);
@@ -659,9 +644,8 @@ public static class ApMirroredRewardDispatcher
         catch (Exception ex)
         {
             sidecarCompletion.SetException(ex);
-            MultiplayerSupport.InvalidateRunClaims(
-                $"remote AP reward menu {menu.MenuId} failed"
-            );
+            if (MultiplayerSupport.IsRealMultiplayerRun && TryGetCurrentMenuOwner(menu, out _, out _))
+                MultiplayerSupport.InvalidateRunClaims($"remote AP reward menu {menu.MenuId} failed");
         }
         finally
         {
@@ -938,7 +922,11 @@ public static class ApMirroredRewardDispatcher
 
         protected override async Task<bool> OnSelect()
         {
+            if (_kind == ApMirroredRewardKind.Relic && !RelicReceiptMultiplayer.CanUseMenu(Player, _itemIndex))
+                throw new InvalidOperationException($"AP relic receipt {Player.NetId}:{_itemIndex} is not approved for this menu.");
             bool applied = await base.OnSelect();
+            if (applied && _kind == ApMirroredRewardKind.Relic)
+                RelicReceiptMultiplayer.ConsumeMenu(Player, _itemIndex);
             if (applied && LocalContext.IsMe(Player))
                 CommitDiscreteReward(_itemIndex, _kind);
             return applied;

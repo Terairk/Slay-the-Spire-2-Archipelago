@@ -1,5 +1,7 @@
 # ADR 003: Use MegaCrit synchronizers before custom transport
 
+> Updated participation contract: [ADR 005](005-direct-ap-connections.md) supersedes the guest receipt relay, shared-check scope, and guest routing described below. Every AP participant now connects directly; host-owned per-player progress remains.
+
 - **Status:** Proposed
 - **Date:** 2026-08-20
 

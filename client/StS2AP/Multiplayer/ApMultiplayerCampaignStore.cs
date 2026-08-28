@@ -14,22 +14,20 @@ using StS2AP.Models;
 using StS2AP.Persistence;
 using StS2AP.Utils;
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace StS2AP.Multiplayer;
 
 /// <summary>
-/// Keeps AP multiplayer checkpoints in a local campaign bank while leaving MegaCrit's
+/// Keeps floor recovery and AP checkpoint saves in a local campaign bank while leaving MegaCrit's
 /// current_run_mp.save as the one active save consumed by the native load lobby.
 /// </summary>
 public static class ApMultiplayerCampaignStore
 {
-    private const int MetadataSchemaVersion = 1;
+    private const int MetadataSchemaVersion = 2;
     private const string CampaignRootName = "ArchipelagoMultiplayerCampaigns";
     private const string MetadataFileName = "metadata.json";
-    private const string PayloadFileName = "multiplayer_run.save";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -39,6 +37,7 @@ public static class ApMultiplayerCampaignStore
     };
 
     private static string? _selectedCampaignId;
+    private static readonly SemaphoreSlim SaveLock = new(1, 1);
 
     public static bool IsStartingNewCampaign { get; private set; }
 
@@ -47,6 +46,21 @@ public static class ApMultiplayerCampaignStore
         Active,
         Completed,
         Archived,
+    }
+
+    internal enum SaveKind
+    {
+        FloorRecovery,
+        ApCheckpoint,
+    }
+
+    internal sealed class CampaignSnapshot
+    {
+        public string FileName { get; set; } = string.Empty;
+        public string Sha256 { get; set; } = string.Empty;
+        public DateTimeOffset SavedAtUtc { get; set; }
+        public int Act { get; set; }
+        public int CompletedFloorCount { get; set; }
     }
 
     internal sealed class CampaignMetadata
@@ -67,7 +81,8 @@ public static class ApMultiplayerCampaignStore
         public DateTimeOffset LastSavedAtUtc { get; set; }
         public int Act { get; set; }
         public int CompletedFloorCount { get; set; }
-        public string PayloadSha256 { get; set; } = string.Empty;
+        public CampaignSnapshot? FloorRecovery { get; set; }
+        public CampaignSnapshot? ApCheckpoint { get; set; }
     }
 
     internal sealed class CampaignRosterEntry
@@ -150,7 +165,7 @@ public static class ApMultiplayerCampaignStore
         return metadata != null;
     }
 
-    internal static void ActivateCampaign(CampaignMetadata metadata)
+    internal static void ActivateCampaign(CampaignMetadata metadata, SaveKind kind)
     {
         string? validationError = ValidateStoredCampaign(metadata, requirePayload: true);
         if (validationError != null)
@@ -160,11 +175,16 @@ public static class ApMultiplayerCampaignStore
         if (!IsCurrentApIdentity(metadata))
             throw new InvalidOperationException("This campaign belongs to a different Archipelago slot.");
 
-        AtomicCopy(GetPayloadPath(metadata.CampaignId), GetActiveSavePath());
+        string? saveError = GetSnapshotError(metadata, kind);
+        if (saveError != null)
+            throw new InvalidDataException(saveError);
+        CampaignSnapshot snapshot = GetSnapshot(metadata, kind)!;
+        AtomicCopy(GetSnapshotPath(metadata.CampaignId, snapshot), GetActiveSavePath());
         _selectedCampaignId = metadata.CampaignId;
         IsStartingNewCampaign = false;
         LogUtility.Info(
             $"Activated AP multiplayer campaign {metadata.CampaignId}: "
+                + $"kind={kind}, act={snapshot.Act}, floors={snapshot.CompletedFloorCount}, "
                 + $"character={metadata.HostCharacterId}, runId={metadata.RunId}"
         );
     }
@@ -282,26 +302,49 @@ public static class ApMultiplayerCampaignStore
         };
 
         Directory.CreateDirectory(GetCampaignDirectory(campaignId));
-        AtomicCopy(activeSavePath, GetPayloadPath(campaignId));
-        metadata.PayloadSha256 = ComputeSha256(GetPayloadPath(campaignId));
+        metadata.ApCheckpoint = StoreSnapshot(campaignId, activeSavePath, now,
+            metadata.Act, metadata.CompletedFloorCount);
         WriteMetadata(metadata);
         LogUtility.Info($"Imported existing multiplayer host save as AP campaign {campaignId}");
     }
 
-    internal static async Task SyncAfterCheckpoint(Task vanillaSaveTask)
+    internal static async Task SaveHostSnapshot(
+        RunSaveManager saves, SerializableRun snapshot, bool isApCheckpoint)
     {
-        await vanillaSaveTask;
+        CampaignMetadata? captured = null;
         try
         {
-            SyncCurrentCheckpoint();
+            captured = CaptureSaveMetadata(snapshot);
         }
         catch (Exception ex)
         {
-            LogUtility.Error($"Failed to update AP multiplayer campaign checkpoint: {ex}");
-            Callable.From(() => NotificationUtility.ShowRawText(
-                "The game saved, but the AP multiplayer campaign copy could not be updated."
-            )).CallDeferred();
+            LogCampaignSaveFailure(ex);
         }
+
+        // Event saves can overlap travel saves. Keep the native write and its campaign copy
+        // together so a later floor cannot be mistaken for an earlier AP checkpoint.
+        await SaveLock.WaitAsync();
+        try
+        {
+            await saves.SaveRun(snapshot, isMultiplayer: true);
+            if (captured != null)
+            {
+                try { SyncSavedSnapshot(captured, isApCheckpoint); }
+                catch (Exception ex) { LogCampaignSaveFailure(ex); }
+            }
+        }
+        finally
+        {
+            SaveLock.Release();
+        }
+    }
+
+    private static void LogCampaignSaveFailure(Exception ex)
+    {
+        LogUtility.Error($"Failed to update AP multiplayer campaign saves: {ex}");
+        Callable.From(() => NotificationUtility.ShowRawText(
+            "The AP campaign copy could not be updated. Check the log; the native save is kept separately."
+        )).CallDeferred();
     }
 
     internal static void MarkCurrentCampaignCompleted()
@@ -353,7 +396,7 @@ public static class ApMultiplayerCampaignStore
         return false;
     }
 
-    private static void SyncCurrentCheckpoint()
+    private static CampaignMetadata CaptureSaveMetadata(SerializableRun snapshot)
     {
         if (RunManager.Instance.NetService.Type != NetGameType.Host
             || RunManager.Instance.DebugOnlyGetState() is not RunState runState
@@ -368,24 +411,12 @@ public static class ApMultiplayerCampaignStore
         Player host = runState.Players.FirstOrDefault(player => player.NetId == hostNetId)
             ?? throw new InvalidOperationException("The host player is not present in the run snapshot.");
         string characterId = host.getInternalName();
-        List<CampaignRosterEntry> roster = BuildRuntimeRoster(runState);
-
-        ReadSaveResult<SerializableRun> read = SaveManager.Instance
-            .LoadAndCanonicalizeMultiplayerRunSave(PlatformUtil.GetLocalPlayerId(GetVanillaPlatform()));
-        if (!read.Success || read.SaveData == null)
-            throw new InvalidDataException($"MegaCrit's multiplayer checkpoint could not be read: {read.Status}");
 
         CampaignMetadata? selected = null;
         if (!string.IsNullOrWhiteSpace(_selectedCampaignId))
         {
-            try
-            {
-                selected = ReadMetadata(_selectedCampaignId);
-            }
-            catch (Exception)
-            {
-                selected = null;
-            }
+            // Do not replace unreadable metadata with a new record and lose its other save slot.
+            selected = ReadMetadata(_selectedCampaignId);
         }
 
         string campaignId = selected != null
@@ -394,53 +425,72 @@ public static class ApMultiplayerCampaignStore
             && selected.RunId == shared.RunId
                 ? selected.CampaignId
                 : shared.RunId.ToString("N");
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+        return new CampaignMetadata
+        {
+            CampaignId = campaignId,
+            RunId = shared.RunId,
+            ApRoomSeed = roomSeed,
+            ApTeamId = teamId,
+            ApSlotId = slotId,
+            ApSlotName = ArchipelagoClient.PlayerName ?? string.Empty,
+            HostCharacterId = characterId,
+            HostCharacterOffset = GameUtility.CurrentConfig?.CharOffset ?? TryGetCharacterOffset(characterId),
+            HostNetId = hostNetId,
+            Roster = BuildRuntimeRoster(runState),
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            LastSavedAtUtc = DateTimeOffset.UtcNow,
+            Act = snapshot.CurrentActIndex + 1,
+            CompletedFloorCount = snapshot.MapPointHistory?.Sum(act => act.Count) ?? 0,
+        };
+    }
 
+    private static void SyncSavedSnapshot(CampaignMetadata metadata, bool isApCheckpoint)
+    {
+        string campaignId = metadata.CampaignId;
+        CampaignMetadata? previous = File.Exists(GetMetadataPath(campaignId))
+            ? ReadMetadata(campaignId) : null;
+        if (previous != null)
+        {
+            if (previous.RunId != metadata.RunId
+                || previous.ApRoomSeed != metadata.ApRoomSeed
+                || previous.ApTeamId != metadata.ApTeamId || previous.ApSlotId != metadata.ApSlotId)
+                throw new InvalidDataException("The saved campaign identity changed during the native save.");
+            // An asynchronous save completing after run cleanup must not reactivate history.
+            if (previous.Status != CampaignStatus.Active)
+                return;
+            metadata.CreatedAtUtc = previous.CreatedAtUtc;
+            metadata.ApCheckpoint = previous.ApCheckpoint;
+        }
+        CampaignSnapshot? previousRecovery = previous?.FloorRecovery;
+        CampaignSnapshot? previousCheckpoint = previous?.ApCheckpoint;
+
+        Directory.CreateDirectory(GetCampaignDirectory(campaignId));
+        CampaignSnapshot snapshot = StoreSnapshot(campaignId, GetActiveSavePath(), metadata.LastSavedAtUtc,
+            metadata.Act, metadata.CompletedFloorCount);
+        metadata.FloorRecovery = snapshot;
+        if (isApCheckpoint)
+            metadata.ApCheckpoint = snapshot;
+        WriteMetadata(metadata);
+        DeleteSupersededSnapshot(metadata, previousRecovery);
+        DeleteSupersededSnapshot(metadata, previousCheckpoint);
         foreach (CampaignMetadata conflict in ListCampaigns()
             .Where(entry => entry.IsUsable && entry.Metadata != null)
             .Select(entry => entry.Metadata!)
-            .Where(metadata =>
-                metadata.Status == CampaignStatus.Active
-                && !string.Equals(metadata.CampaignId, campaignId, StringComparison.Ordinal)
-                && IsCurrentApIdentity(metadata)
-                && HasSameRoster(metadata.Roster, roster)))
+            .Where(other => other.Status == CampaignStatus.Active
+                && other.CampaignId != campaignId
+                && other.ApRoomSeed == metadata.ApRoomSeed
+                && other.ApTeamId == metadata.ApTeamId && other.ApSlotId == metadata.ApSlotId
+                && HasSameRoster(other.Roster, metadata.Roster)))
         {
             conflict.Status = CampaignStatus.Archived;
             WriteMetadata(conflict);
         }
-
-        var metadata = selected != null && string.Equals(selected.CampaignId, campaignId, StringComparison.Ordinal)
-            ? selected
-            : new CampaignMetadata
-            {
-                CampaignId = campaignId,
-                CreatedAtUtc = now,
-            };
-        metadata.SchemaVersion = MetadataSchemaVersion;
-        metadata.RunId = shared.RunId;
-        metadata.Status = CampaignStatus.Active;
-        metadata.ApRoomSeed = roomSeed;
-        metadata.ApTeamId = teamId;
-        metadata.ApSlotId = slotId;
-        metadata.ApSlotName = ArchipelagoClient.PlayerName ?? string.Empty;
-        metadata.HostCharacterId = characterId;
-        metadata.HostCharacterOffset = GameUtility.CurrentConfig?.CharOffset
-            ?? TryGetCharacterOffset(characterId);
-        metadata.HostNetId = hostNetId;
-        metadata.Roster = roster;
-        metadata.LastSavedAtUtc = now;
-        metadata.Act = read.SaveData.CurrentActIndex + 1;
-        metadata.CompletedFloorCount = read.SaveData.MapPointHistory?.Sum(act => act.Count) ?? 0;
-
-        Directory.CreateDirectory(GetCampaignDirectory(campaignId));
-        AtomicCopy(GetActiveSavePath(), GetPayloadPath(campaignId));
-        metadata.PayloadSha256 = ComputeSha256(GetPayloadPath(campaignId));
-        WriteMetadata(metadata);
         _selectedCampaignId = campaignId;
         IsStartingNewCampaign = false;
         LogUtility.Info(
-            $"Updated AP multiplayer campaign {campaignId}: character={characterId}, "
-                + $"act={metadata.Act}, floors={metadata.CompletedFloorCount}, roster={metadata.Roster.Count}"
+            $"Updated AP multiplayer campaign {campaignId}: character={metadata.HostCharacterId}, "
+                + $"act={metadata.Act}, floors={metadata.CompletedFloorCount}, roster={metadata.Roster.Count}, "
+                + $"floorRecovery=updated, apCheckpoint={(isApCheckpoint ? "updated" : "preserved")}"
         );
     }
 
@@ -557,16 +607,11 @@ public static class ApMultiplayerCampaignStore
             || string.IsNullOrWhiteSpace(metadata.HostCharacterId)
             || metadata.Roster is not { Count: > 0 })
             return "Campaign identity metadata is incomplete.";
-        if (requirePayload && !File.Exists(GetPayloadPath(metadata.CampaignId)))
-            return "Campaign checkpoint file is missing.";
         if (requirePayload
-            && !string.IsNullOrWhiteSpace(metadata.PayloadSha256)
-            && !string.Equals(
-                metadata.PayloadSha256,
-                ComputeSha256(GetPayloadPath(metadata.CampaignId)),
-                StringComparison.OrdinalIgnoreCase))
+            && GetSnapshotError(metadata, SaveKind.FloorRecovery) is string recoveryError
+            && GetSnapshotError(metadata, SaveKind.ApCheckpoint) is string checkpointError)
         {
-            return "Campaign checkpoint checksum does not match its metadata.";
+            return $"Floor recovery: {recoveryError} AP checkpoint: {checkpointError}";
         }
         return null;
     }
@@ -579,6 +624,8 @@ public static class ApMultiplayerCampaignStore
             ?? throw new InvalidDataException("Campaign metadata was empty.");
         if (!string.Equals(metadata.CampaignId, campaignId, StringComparison.Ordinal))
             throw new InvalidDataException("Campaign directory and metadata IDs do not match.");
+        if (metadata.SchemaVersion != MetadataSchemaVersion)
+            throw new InvalidDataException($"Unsupported campaign metadata schema {metadata.SchemaVersion}.");
         return metadata;
     }
 
@@ -616,8 +663,56 @@ public static class ApMultiplayerCampaignStore
     private static string GetMetadataPath(string campaignId) =>
         Path.Combine(GetCampaignDirectory(campaignId), MetadataFileName);
 
-    private static string GetPayloadPath(string campaignId) =>
-        Path.Combine(GetCampaignDirectory(campaignId), PayloadFileName);
+    internal static CampaignSnapshot? GetSnapshot(CampaignMetadata metadata, SaveKind kind) =>
+        kind == SaveKind.FloorRecovery ? metadata.FloorRecovery : metadata.ApCheckpoint;
+
+    internal static string? GetSnapshotError(CampaignMetadata metadata, SaveKind kind)
+    {
+        CampaignSnapshot? snapshot = GetSnapshot(metadata, kind);
+        if (snapshot == null)
+            return "No save has been recorded yet.";
+        try
+        {
+            return CampaignSaveFiles.Verify(GetCampaignDirectory(metadata.CampaignId),
+                snapshot.FileName, snapshot.Sha256);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return ex.Message;
+        }
+    }
+
+    private static string GetSnapshotPath(string campaignId, CampaignSnapshot snapshot) =>
+        CampaignSaveFiles.GetPath(GetCampaignDirectory(campaignId), snapshot.FileName, snapshot.Sha256);
+
+    private static CampaignSnapshot StoreSnapshot(
+        string campaignId, string source, DateTimeOffset savedAt, int act, int floors)
+    {
+        var stored = CampaignSaveFiles.Store(GetCampaignDirectory(campaignId), source);
+        return new CampaignSnapshot
+        {
+            FileName = stored.FileName,
+            Sha256 = stored.Hash,
+            SavedAtUtc = savedAt,
+            Act = act,
+            CompletedFloorCount = floors,
+        };
+    }
+
+    private static void DeleteSupersededSnapshot(CampaignMetadata metadata, CampaignSnapshot? old)
+    {
+        if (old == null || old.FileName == metadata.FloorRecovery?.FileName
+            || old.FileName == metadata.ApCheckpoint?.FileName)
+            return;
+        try
+        {
+            File.Delete(GetSnapshotPath(metadata.CampaignId, old));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            LogUtility.Warn($"Could not remove superseded campaign save: {ex.Message}");
+        }
+    }
 
     private static void ValidateCampaignId(string campaignId)
     {
@@ -695,12 +790,6 @@ public static class ApMultiplayerCampaignStore
         string activeSavePath = GetActiveSavePath();
         if (File.Exists(activeSavePath))
             File.Delete(activeSavePath);
-    }
-
-    private static string ComputeSha256(string path)
-    {
-        using FileStream stream = File.OpenRead(path);
-        return Convert.ToHexString(SHA256.HashData(stream));
     }
 
     private static string? ReadModelId(object target, string memberName)

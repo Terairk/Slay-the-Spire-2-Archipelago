@@ -31,13 +31,9 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(RunSaveManager), nameof(RunSaveManager.SaveRun), new[] { typeof(AbstractRoom) })]
         public static class SaveRun
         {
-            [ThreadStatic]
-            private static bool _syncMultiplayerCampaignAfterSave;
-
             [HarmonyPrefix]
-            public static bool replaceSave(AbstractRoom? preFinishedRoom, ref Task __result)
+            public static bool replaceSave(RunSaveManager __instance, AbstractRoom? preFinishedRoom, ref Task __result)
             {
-                _syncMultiplayerCampaignAfterSave = false;
                 if (MultiplayerSupport.IsRealMultiplayerRun)
                 {
                     // MegaCrit owns the multiplayer save and RitsuLib embeds the authoritative
@@ -45,22 +41,19 @@ namespace StS2AP.Patches
                     if (RunManager.Instance.NetService.Type
                         == MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Host)
                     {
-                        if (!TryGetCheckpointEligibility(
-                            preFinishedRoom,
-                            out _,
-                            out _,
-                            out string multiplayerCheckpointReason))
+                        if (!RunManager.Instance.ShouldSave)
                         {
-                            LogUtility.Info(
-                                $"Skipping multiplayer AP checkpoint: {multiplayerCheckpointReason}"
-                            );
                             __result = Task.CompletedTask;
                             return false;
                         }
 
                         ApRunData.CaptureLocalHostProgressBeforeSave();
-                        _syncMultiplayerCampaignAfterSave = true;
-                        return true;
+                        // Every native floor save updates recovery. Only an eligible AP boundary
+                        // also advances the separate checkpoint; carry that decision across await.
+                        bool isApCheckpoint = TryGetCheckpointEligibility(preFinishedRoom, out _, out _, out _);
+                        SerializableRun snapshot = RunManager.Instance.ToSave(preFinishedRoom);
+                        __result = ApMultiplayerCampaignStore.SaveHostSnapshot(__instance, snapshot, isApCheckpoint);
+                        return false;
                     }
 
                     __result = Task.CompletedTask;
@@ -93,15 +86,6 @@ namespace StS2AP.Patches
                 SerializableRun saveMe = RunManager.Instance.ToSave(preFinishedRoom);
                 __result = asyncSave(saveMe, isBossAutosave || isTreasureAutosave);
                 return false;
-            }
-
-            [HarmonyPostfix]
-            public static void SyncMultiplayerCampaign(ref Task __result)
-            {
-                bool shouldSync = _syncMultiplayerCampaignAfterSave;
-                _syncMultiplayerCampaignAfterSave = false;
-                if (shouldSync)
-                    __result = ApMultiplayerCampaignStore.SyncAfterCheckpoint(__result);
             }
 
             private static bool TryGetCheckpointEligibility(

@@ -109,8 +109,7 @@ namespace StS2AP.Utils
         // EXPLAIN: the RecordAndSendMultiplayer vs ReconcileAndSendMultiplayer
         private static void RecordAndSendMultiplayer(long locationId)
         {
-            // A shared-slot AP Guest never submits checks. When All AP Participants is enabled,
-            // the connected host derives those checks from the host-owned player roster.
+            // Only this player's direct AP connection submits their checks.
             if (!MultiplayerSupport.IsLocalOwnApSlot)
                 return;
 

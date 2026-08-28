@@ -93,6 +93,10 @@ public static class ArchipelagoRewardUI
         }).CallDeferred();
     }
 
+    internal static bool CanBuildMenuAfterAwait() =>
+        !RunManager.Instance.NetService.IsGameLoading
+        && !TryBlockMultiplayerCombatOpen() && !TryBlockNativeChoiceOpen();
+
     private static async Task OpenOnMainThread()
     {
         bool opened = false;

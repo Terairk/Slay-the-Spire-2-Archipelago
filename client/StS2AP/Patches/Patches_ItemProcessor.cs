@@ -98,10 +98,6 @@ namespace StS2AP.Patches
         /// <param name="index">The index of the item in the Archipelago Multiworld</param>
         private static void ProcessItem(IndexedItemInfo indexedInfo, bool liveDelivery = true)
         {
-            // EXPLAIN: these changes for me
-            if (liveDelivery)
-                ApReceiptRelay.PublishLiveReceipt(indexedInfo);
-
             // AP_MP: This is the receipt-level fail-closed gate for unconverted features.
             if (MultiplayerSupport.ShouldDeferItem(indexedInfo))
             {

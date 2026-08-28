@@ -132,17 +132,33 @@ public sealed partial class ApMultiplayerCampaignPicker : Control, IScreenContex
 
         foreach (ApMultiplayerCampaignStore.CampaignMetadata campaign in active)
         {
+            list.AddChild(CreateLabel(FormatCampaignSummary(campaign), 19));
             var row = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-            Button resume = CreateButton(FormatCampaignSummary(campaign), primary: true);
-            resume.TooltipText = FormatCampaignDetails(campaign);
-            resume.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            resume.Pressed += () => ContinueCampaign(campaign);
-            row.AddChild(resume);
+            row.AddChild(CreateResumeButton(campaign, ApMultiplayerCampaignStore.SaveKind.FloorRecovery));
+            row.AddChild(CreateResumeButton(campaign, ApMultiplayerCampaignStore.SaveKind.ApCheckpoint));
             Button abandon = CreateButton("Abandon");
             abandon.Pressed += () => ShowAbandonChoices(campaign);
             row.AddChild(abandon);
             list.AddChild(row);
         }
+    }
+
+    private Button CreateResumeButton(
+        ApMultiplayerCampaignStore.CampaignMetadata campaign,
+        ApMultiplayerCampaignStore.SaveKind kind)
+    {
+        bool recovery = kind == ApMultiplayerCampaignStore.SaveKind.FloorRecovery;
+        string label = recovery ? "Floor Recovery" : "AP Checkpoint";
+        var snapshot = ApMultiplayerCampaignStore.GetSnapshot(campaign, kind);
+        string? error = ApMultiplayerCampaignStore.GetSnapshotError(campaign, kind);
+        Button button = CreateButton(snapshot == null ? label :
+            $"{label} — Act {snapshot.Act}, Floor {snapshot.CompletedFloorCount}", primary: recovery);
+        button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        button.Disabled = error != null;
+        button.TooltipText = error ?? $"Saved: {snapshot!.SavedAtUtc.ToLocalTime():g}\n"
+            + (recovery ? "Latest native floor save." : "Last eligible AP checkpoint; later floor saves do not replace it.");
+        button.Pressed += () => ContinueCampaign(campaign, kind);
+        return button;
     }
 
     private void AddHistorySection(
@@ -232,11 +248,13 @@ public sealed partial class ApMultiplayerCampaignPicker : Control, IScreenContex
         ApMultiplayerCampaignFlow.ResumeNewCampaign(_hostSubmenu, _gameMode);
     }
 
-    private void ContinueCampaign(ApMultiplayerCampaignStore.CampaignMetadata campaign)
+    private void ContinueCampaign(
+        ApMultiplayerCampaignStore.CampaignMetadata campaign,
+        ApMultiplayerCampaignStore.SaveKind kind)
     {
         try
         {
-            ApMultiplayerCampaignStore.ActivateCampaign(campaign);
+            ApMultiplayerCampaignStore.ActivateCampaign(campaign, kind);
             ReadSaveResult<SerializableRun> read = SaveManager.Instance
                 .LoadAndCanonicalizeMultiplayerRunSave(
                     PlatformUtil.GetLocalPlayerId(GetVanillaPlatform())
@@ -261,7 +279,7 @@ public sealed partial class ApMultiplayerCampaignPicker : Control, IScreenContex
     {
         ShowChoiceOverlay(
             "Abandon Campaign",
-            "Archive keeps this checkpoint as view-only history. Delete Permanently removes it from this machine.",
+            "Archive keeps both saves as view-only history. Delete Permanently removes the campaign from this machine.",
             ("Archive", false, () =>
             {
                 ApMultiplayerCampaignStore.ArchiveCampaign(campaign.CampaignId);
@@ -279,7 +297,7 @@ public sealed partial class ApMultiplayerCampaignPicker : Control, IScreenContex
     {
         ShowChoiceOverlay(
             "Delete Campaign Permanently?",
-            "This removes the local campaign checkpoint and cannot be undone.",
+            "This removes both local campaign saves and cannot be undone.",
             ("Delete Permanently", true, () =>
             {
                 ApMultiplayerCampaignStore.DeleteCampaign(campaign.CampaignId);

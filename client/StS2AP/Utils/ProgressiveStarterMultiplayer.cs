@@ -56,9 +56,7 @@ public static class ProgressiveStarterMultiplayer
     public static void EndRun() => PendingSpecifications.Clear();
 
     /// <summary>
-    /// Enqueues one initialization projection for every player governed by this process's AP
-    /// slot. The fixed host additionally owns its AP Guests; a non-host own-slot process owns only
-    /// its local player.
+    /// Enqueues the local player's initialization projection from this process's AP connection.
     /// </summary>
     public static void BeginRun(RunState runState, Player localPlayer)
     {
@@ -73,8 +71,7 @@ public static class ProgressiveStarterMultiplayer
         try
         {
             var targets = new List<ApProgressiveStarterActionMessage.Target>();
-            foreach (Player player in GetAuthoredPlayers(runState, localPlayer))
-                AddInitializationTargets(player, targets);
+            AddInitializationTargets(localPlayer, targets);
 
             if (targets.Count == 0)
                 return;
@@ -123,27 +120,22 @@ public static class ProgressiveStarterMultiplayer
 
         try
         {
-            var targets = new List<ApProgressiveStarterActionMessage.Target>();
-            foreach (Player player in GetAuthoredPlayers(runState, localPlayer))
-            {
-                long? playerOffset = player.GetCharacterOffset();
-                if (playerOffset != characterOffset || !IsEnabledFor(player, kind))
-                    continue;
+            if (localPlayer.GetCharacterOffset() != characterOffset || !IsEnabledFor(localPlayer, kind))
+                return;
 
-                ApProgressiveStarterKindState specification = GetOrCaptureSpecification(player, kind);
-                targets.Add(new ApProgressiveStarterActionMessage.Target
+            ApProgressiveStarterKindState specification = GetOrCaptureSpecification(localPlayer, kind);
+            var targets = new List<ApProgressiveStarterActionMessage.Target>
+            {
+                new()
                 {
-                    PlayerNetId = player.NetId,
+                    PlayerNetId = localPlayer.NetId,
                     Kind = kind,
                     TargetTier = specification.Supported
                         ? (ProgressiveStarterTier)receivedCount
                         : ProgressiveStarterTier.Unsupported,
                     Specification = Clone(specification),
-                });
-            }
-
-            if (targets.Count == 0)
-                return;
+                },
+            };
 
             var message = new ApProgressiveStarterActionMessage
             {
@@ -154,7 +146,7 @@ public static class ProgressiveStarterMultiplayer
                 ReceivedItemIndex = receivedItemIndex,
                 CharacterOffset = characterOffset,
                 Reason = ApProgressiveStarterActionMessage.ActionReason.LiveReceipt,
-                Targets = targets.OrderBy(target => target.PlayerNetId).ToList(),
+                Targets = targets,
             };
 
             Request(message, localPlayer, $"receipt {receivedItemIndex}");
@@ -205,26 +197,6 @@ public static class ProgressiveStarterMultiplayer
                     : ProgressiveStarterTier.Unsupported,
                 Specification = Clone(specification),
             });
-        }
-    }
-
-    private static IEnumerable<Player> GetAuthoredPlayers(RunState runState, Player owner)
-    {
-        bool ownerIsHost = RunManager.Instance.NetService.Type == NetGameType.Host;
-        foreach (Player player in runState.Players.OrderBy(player => player.NetId))
-        {
-            if (!ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState state))
-                continue;
-
-            if (player.NetId == owner.NetId
-                && state.Participation == ApParticipationKind.OwnApSlot)
-            {
-                yield return player;
-            }
-            else if (ownerIsHost && state.Participation == ApParticipationKind.ApGuest)
-            {
-                yield return player;
-            }
         }
     }
 
@@ -510,10 +482,6 @@ public static class ProgressiveStarterMultiplayer
             return false;
         }
 
-        bool ownerIsHost = BetaMainCompatibility.TryGetHostNetId(
-                RunManager.Instance.NetService,
-                out ulong hostNetId
-            ) && owner.NetId == hostNetId;
         var identities = new HashSet<(ulong, ApProgressiveStarterActionMessage.StarterKind)>();
         foreach (ApProgressiveStarterActionMessage.Target target in message.Targets)
         {
@@ -524,11 +492,8 @@ public static class ProgressiveStarterMultiplayer
                     target.PlayerNetId,
                     out ApPlayerRunState targetState
                 )
-                || (target.PlayerNetId != owner.NetId
-                    && (!ownerIsHost
-                        || targetState.Participation != ApParticipationKind.ApGuest))
-                || (target.PlayerNetId == owner.NetId
-                    && targetState.Participation != ApParticipationKind.OwnApSlot)
+                || target.PlayerNetId != owner.NetId
+                || targetState.Participation != ApParticipationKind.OwnApSlot
                 || !IsEnabledFor(player, target.Kind)
                 || target.TargetTier is < ProgressiveStarterTier.Unsupported
                     or > ProgressiveStarterTier.Upgraded

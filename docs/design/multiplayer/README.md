@@ -1,5 +1,15 @@
 # Multiplayer design documents
 
+## Current participation decision
+
+[ADR 005: Direct AP connections](adr/005-direct-ap-connections.md) replaces AP Guest
+participation and its relay/check-routing design. Every AP participant connects
+directly, optionally to the same slot as the host. Vanilla guests remain supported.
+It includes the current behavior, code mapping, and required runtime test matrix.
+
+The older documents below retain historical design details. ADR 005 takes precedence
+where they describe guest receipt relays, shared check scopes, or save compatibility.
+
 These documents define the proposed architecture for adding Slay the Spire 2
 multiplayer support to the Archipelago client. They are design inputs, not a
 claim that multiplayer currently works.

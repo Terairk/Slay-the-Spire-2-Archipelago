@@ -48,12 +48,12 @@ namespace StS2AP
                 );
                 ArchipelagoReward.Initialize();
                 ApRunData.Initialize();
-                ApReceiptRelay.Initialize();
             }
             ModSettingsRegistration.Register();
 
             // Initialize Utilities
             ApMirroredRewardDispatcher.Initialize();
+            RelicReceiptMultiplayer.Initialize();
             ProgressiveStarterMultiplayer.Initialize();
             AscensionMultiplayer.Initialize();
             DeathLinkUtility.Initialize();

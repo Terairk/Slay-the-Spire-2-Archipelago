@@ -1,6 +1,6 @@
 # ADR 001: Give each STS player one AP reward source
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 005](005-direct-ap-connections.md)
 - **Date:** 2026-08-20
 
 ## Context

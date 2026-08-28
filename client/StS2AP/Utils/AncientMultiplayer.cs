@@ -105,29 +105,18 @@ public static class AncientMultiplayer
             return;
         }
 
-        // AP Guests consume the fixed host's receipts, so one confirmed host update refreshes the
-        // future Ancient snapshot for both the host and every AP Guest. A guest's own progress
-        // record is not a reward source and therefore does not affect Ancient availability.
-        foreach (Player player in runState.Players)
+        if (!ApRunData.TryGetPlayerState(runState, ownerNetId, out ApPlayerRunState state)
+            || state.Participation != ApParticipationKind.OwnApSlot
+            || (ConfirmedByOwner.TryGetValue(ownerNetId, out ConfirmedProgress? existing)
+                && revision < existing.Revision))
         {
-            if (!ApPlayerContextResolver.TryGetRewardProgressSourceNetId(
-                    player,
-                    out ulong sourceNetId
-                )
-                || sourceNetId != ownerNetId
-                || (ConfirmedByOwner.TryGetValue(
-                    player.NetId,
-                    out ConfirmedProgress? existing
-                ) && revision < existing.Revision))
-            {
-                continue;
-            }
-
-            ConfirmedByOwner[player.NetId] = new ConfirmedProgress(
-                revision,
-                new Dictionary<long, int>(progress.ProgressiveAncients)
-            );
+            return;
         }
+
+        ConfirmedByOwner[ownerNetId] = new ConfirmedProgress(
+            revision,
+            new Dictionary<long, int>(progress.ProgressiveAncients)
+        );
     }
 
     public static bool TryGetFrozenContext(

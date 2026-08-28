@@ -1,5 +1,7 @@
 # Multiplayer developer-console requirements
 
+> Updated participation contract: [ADR 005](adr/005-direct-ap-connections.md) supersedes the guest receipt relay, shared-check scope, and guest routing described below. Every AP participant now connects directly; host-owned per-player progress remains.
+
 - **Status:** Existing read-only probes predate the accepted host-progress model;
   corrected providers and runtime validation pending
 - **Last updated:** 2026-08-20

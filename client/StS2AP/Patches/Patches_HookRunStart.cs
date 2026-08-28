@@ -249,10 +249,7 @@ namespace StS2AP.Patches
                 if (MultiplayerSupport.IsLocalOwnApSlot
                     && MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.PressStartCheck))
                 {
-                    if (RunManager.Instance.NetService.Type == NetGameType.Host)
-                        ApRunData.SendSharedSlotPressStartChecks(__result);
-                    else
-                        GameUtility.TrySendPressStartCheck(includeUnrecognizedCharacters: false);
+                    GameUtility.TrySendPressStartCheck(includeUnrecognizedCharacters: false);
                 }
 
                 LogUtility.Info(

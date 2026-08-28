@@ -1,6 +1,5 @@
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
 using StS2AP.Models;
@@ -9,9 +8,9 @@ using StS2AP.Utils;
 namespace StS2AP.Multiplayer;
 
 /// <summary>
-/// Resolves the AP slot which owns a player's location checks. Own-slot players use their
-/// staged settings and local AP connection; AP Guests use the fixed host's frozen settings and
-/// check writer. Vanilla guests keep native behavior.
+/// Resolves the AP slot which owns a player's location checks. Each AP participant uses their
+/// staged settings and local AP connection, including when sharing a slot. Vanilla guests keep
+/// native behavior.
 /// </summary>
 public static class MultiplayerLocationChecks
 {
@@ -48,9 +47,7 @@ public static class MultiplayerLocationChecks
     }
 
     /// <summary>
-    /// Publishes the canonical progress record that owns this player's location checks. An AP
-    /// Guest writes checks to the fixed host's AP slot, so the host player's record is the one
-    /// that must be updated for subsequent replicated construction.
+    /// Publishes the local player's canonical check progress for subsequent replicated construction.
     /// </summary>
     public static bool PublishEffectiveCheckProgress(Player player)
     {
@@ -64,21 +61,8 @@ public static class MultiplayerLocationChecks
             return false;
         }
 
-        if (state.Participation == ApParticipationKind.OwnApSlot)
-            return IsLocalProgressOwner(player) && ApRunData.PublishLocalProgress(player);
-
-        if (state.Participation != ApParticipationKind.ApGuest
-            || RunManager.Instance.NetService.Type != NetGameType.Host
-            || !BetaMainCompatibility.TryGetHostNetId(
-                RunManager.Instance.NetService,
-                out ulong hostNetId
-            )
-            || runState.GetPlayer(hostNetId) is not Player hostPlayer)
-        {
-            return false;
-        }
-
-        return ApRunData.PublishLocalProgress(hostPlayer);
+        return state.Participation == ApParticipationKind.OwnApSlot
+            && IsLocalProgressOwner(player) && ApRunData.PublishLocalProgress(player);
     }
 
     public static int IncrementCardRewards(Player player) =>
@@ -157,8 +141,7 @@ public static class MultiplayerLocationChecks
     }
 
     /// <summary>
-    /// Resolves the canonical AP-slot progress that owns location checks for a player. Own-slot
-    /// players use their Net-ID record; AP Guests use the fixed STS host's AP-slot record.
+    /// Resolves the player's Net-ID-keyed progress that owns their location checks.
     /// </summary>
     public static bool TryGetCheckProgress(
         Player player,
@@ -215,14 +198,9 @@ public static class MultiplayerLocationChecks
             return false;
         }
 
-        if (state.Participation == ApParticipationKind.OwnApSlot)
-            return MultiplayerSupport.IsLocalOwnApSlot && IsLocalProgressOwner(player);
-
-        return state.Participation == ApParticipationKind.ApGuest
+        return state.Participation == ApParticipationKind.OwnApSlot
             && MultiplayerSupport.IsLocalOwnApSlot
-            && RunManager.Instance.NetService.Type == NetGameType.Host
-            && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-            && shared.SharedSlotCheckScope == SharedSlotCheckScope.AllApParticipants;
+            && IsLocalProgressOwner(player);
     }
 
     public static long ResolveLocationId(Player player, string locationName)

@@ -21,7 +21,7 @@ namespace StS2AP.Multiplayer;
 /// </summary>
 public static class ApRunData
 {
-    private const int RunSchemaVersion = 7;
+    internal const int RunSchemaVersion = 8;
     private const string ProgressSnapshotMessageKey = "player_ap_progress_snapshot_v1";
     private const string ProgressDeltaMessageKey = "player_ap_progress_delta_v1";
     private static RunSavedData<ApRunSharedState> _sharedRun = null!;
@@ -125,7 +125,6 @@ public static class ApRunData
             ReceiptSourceReady = participation switch
             {
                 ApParticipationKind.OwnApSlot => MultiplayerSupport.InitialItemsLoaded,
-                ApParticipationKind.ApGuest => MultiplayerSupport.HostReceiptCatalogReady,
                 _ => true,
             },
             Progress = existing?.Progress ?? new ApRunProgressState(),
@@ -166,6 +165,9 @@ public static class ApRunData
     }
 
     public static ApRunSharedState GetSharedState(RunState runState) => _sharedRun.Get(runState);
+
+    public static void ModifyRelicReceipts(RunState runState, Action<ApRelicReceiptState> update) =>
+        _sharedRun.Modify(runState, state => update(state.RelicReceipts));
 
     public static bool TryGetSharedState(RunState runState, out ApRunSharedState state)
     {
@@ -326,8 +328,8 @@ public static class ApRunData
             return $"unsupported-ap-run-schema-{state.SchemaVersion}";
         if (state.Participation == ApParticipationKind.VanillaGuest)
             return null;
-        if (state.Participation == ApParticipationKind.ApGuest)
-            return state.ReceiptSourceReady ? null : "host-receipt-catalog-incomplete";
+        if (state.Participation != ApParticipationKind.OwnApSlot)
+            return "unsupported-ap-participation";
         if (state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null)
             return "incomplete-ap-identity";
         if (state.SlotSettings == null)
@@ -354,6 +356,7 @@ public static class ApRunData
         if (!state.Progress.Initialized)
             return false;
 
+        RelicReceiptMultiplayer.ReconcileProgress(runState, player, state.Progress);
         ArchipelagoClient.Progress = ArchipelagoProgress.FromRunProgressState(state.Progress, player);
         _lastPublishedLocalProgress = ArchipelagoClient.Progress.ToRunProgressState();
         return true;
@@ -470,62 +473,13 @@ public static class ApRunData
         Player? localPlayer = runState?.GetPlayer(RunManager.Instance.NetService.NetId);
         if (localPlayer != null)
             PublishLocalProgress(localPlayer);
-    }
-
-    public static void SendSharedSlotPressStartChecks(RunState runState)
-    {
-        if (RunManager.Instance.NetService.Type != NetGameType.Host
-            || !TryGetSharedState(runState, out ApRunSharedState shared))
-        {
-            return;
-        }
-
-        ulong hostNetId = RunManager.Instance.NetService.NetId;
-        foreach (Player player in runState.Players)
-        {
-            if (!TryGetPlayerState(runState, player.NetId, out ApPlayerRunState state))
-                continue;
-            bool usesHostSlot = (player.NetId == hostNetId
-                    && state.Participation == ApParticipationKind.OwnApSlot)
-                || state.Participation == ApParticipationKind.ApGuest;
-            if (!usesHostSlot)
-                continue;
-            if (player.NetId != hostNetId
-                && shared.SharedSlotCheckScope != SharedSlotCheckScope.AllApParticipants)
-            {
-                continue;
-            }
-            GameUtility.TrySendPressStartCheckFor(
-                player.Character,
-                includeUnrecognizedCharacters: false
-            );
-        }
-    }
-
-    /// <summary>
-    /// Returns the distinct character offsets whose checks the fixed host must additionally send
-    /// for AP Guests. Vanilla Guests and peers connected to their own AP slots are excluded.
-    /// </summary>
-    public static IReadOnlyList<long> GetSharedSlotApGuestCharacterOffsets(RunState runState)
-    {
-        if (RunManager.Instance.NetService.Type != NetGameType.Host
-            || !TryGetSharedState(runState, out ApRunSharedState shared)
-            || shared.SharedSlotCheckScope != SharedSlotCheckScope.AllApParticipants)
-        {
-            return Array.Empty<long>();
-        }
-
-        return runState.Players
-            .Where(player => TryGetPlayerState(
-                    runState,
-                    player.NetId,
-                    out ApPlayerRunState state
-                ) && state.Participation == ApParticipationKind.ApGuest)
-            .Select(player => player.GetCharacterOffset())
-            .Where(offset => offset.HasValue)
-            .Select(offset => offset!.Value)
-            .Distinct()
-            .ToArray();
+        if (runState != null)
+            foreach (Player player in runState.Players)
+                if (_players.TryGet(runState, player.NetId, out ApPlayerRunState state) && state.Progress.Initialized)
+                {
+                    RelicReceiptMultiplayer.ReconcileProgress(runState, player, state.Progress);
+                    _players.Set(runState, player.NetId, state);
+                }
     }
 
     /// <summary>
@@ -580,6 +534,8 @@ public static class ApRunData
                 context.Message.Progress
             );
             state.Progress = context.Message.Progress;
+            if (runState.GetPlayer(context.Message.OwnerNetId) is Player snapshotOwner)
+                RelicReceiptMultiplayer.ReconcileProgress(runState, snapshotOwner, state.Progress);
             state.ProgressRevision = context.Message.Revision;
             _players.Set(runState, context.Message.OwnerNetId, state);
             if (runState.GetPlayer(context.Message.OwnerNetId) is Player confirmedOwner)
@@ -662,6 +618,8 @@ public static class ApRunData
             ApRunProgressState updatedProgress = context.Message.Delta.ApplyToCopy(state.Progress);
             PreserveRegularCardRewardConstructionCounter(state.Progress, updatedProgress);
             state.Progress = updatedProgress;
+            if (runState.GetPlayer(context.Message.OwnerNetId) is Player deltaOwner)
+                RelicReceiptMultiplayer.ReconcileProgress(runState, deltaOwner, state.Progress);
             state.ProgressRevision = context.Message.Revision;
             _players.Set(runState, context.Message.OwnerNetId, state);
             if (runState.GetPlayer(context.Message.OwnerNetId) is Player confirmedOwner)
@@ -773,8 +731,6 @@ public static class ApRunData
         StartRunLobby lobby,
         ApParticipationKind hostParticipation)
     {
-        SharedSlotCheckScope sharedSlotCheckScope =
-            MultiplayerSupport.ConfiguredSharedSlotCheckScope;
         bool shouldStageHostSettings =
             hostParticipation == ApParticipationKind.OwnApSlot;
 
@@ -813,7 +769,6 @@ public static class ApRunData
         // that starves the native lobby network update.
         if (_sharedRun.Lobby.TryGet(lobby, out ApRunSharedState existing)
             && existing.SchemaVersion == RunSchemaVersion
-            && existing.SharedSlotCheckScope == sharedSlotCheckScope
             && (shouldStageHostSettings
                 ? existing.HostSettings != null
                 : existing.HostSettings == null)
@@ -832,7 +787,6 @@ public static class ApRunData
         _sharedRun.Lobby.Modify(lobby, state =>
         {
             state.SchemaVersion = RunSchemaVersion;
-            state.SharedSlotCheckScope = sharedSlotCheckScope;
             state.HostSettings = hostSettings;
             state.AscensionStateInitialized = ascensionStateInitialized;
             state.HostCharacterOffset = ascensionStateInitialized

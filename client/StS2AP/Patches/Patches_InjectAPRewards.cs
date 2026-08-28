@@ -224,6 +224,31 @@ namespace StS2AP.Patches
                     return;
                 }
 
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                {
+                    var run = (RunState)player.RunState;
+                    var candidate = RelicReceiptMultiplayer.GetChest(run).Candidates
+                        .Single(c => c.PlayerNetId == player.NetId);
+                    if (!candidate.GeneratesRelic
+                        || !RelicReceiptMultiplayer.MarkChestOpened(run, player.NetId))
+                        return;
+                    RelicRewardUtility.RecordFrozenChestReward(player, candidate.RewardNumber);
+                    if (!candidate.ApGated) return;
+                    MultiplayerLocationChecks.QueueCheck(player, $"{player.APName()} Relic {candidate.RewardNumber}");
+                    if (candidate.ReceiptIndex is int receiptIndex)
+                    {
+                        if (!RelicRewardUtility.TryConsumeWaitingReceiptForNaturalReward(player, receiptIndex))
+                        {
+                            MultiplayerSupport.InvalidateRunClaims("Frozen chest receipt could not be consumed.");
+                            throw new InvalidOperationException($"Chest receipt {player.NetId}:{receiptIndex} could not be consumed.");
+                        }
+                        RelicReceiptMultiplayer.ConsumeChest(player, receiptIndex);
+                    }
+                    LogUtility.Info($"Treasure AP receipt settled: room={RelicReceiptMultiplayer.RoomKey(run)}, "
+                        + $"player={player.NetId}, reward={candidate.RewardNumber}, receipt={candidate.ReceiptIndex}.");
+                    return;
+                }
+
                 // An empty chest is not an eligible relic source. Check this before
                 // recording the attempt so Silver Crucible neither sends a location
                 // nor consumes a reward number or creates a bank.
@@ -233,9 +258,6 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                bool hadWaitingReceipt = MultiplayerSupport.IsRealMultiplayerRun
-                    ? GateTreasureRelicPicker.HasNativeCandidate(player)
-                    : RelicRewardUtility.HasWaitingReceiptForNaturalReward(player);
                 if (!RelicRewardUtility.RecordEligibleReward(player, out var rewardNumber))
                     return;
 
@@ -249,19 +271,6 @@ namespace StS2AP.Patches
                     player,
                     $"{player.APName()} Relic {rewardNumber}"
                 );
-
-                if (MultiplayerSupport.IsRealMultiplayerRun)
-                {
-                    if (hadWaitingReceipt)
-                    {
-                        RelicRewardUtility.TryConsumeWaitingReceiptForNaturalReward(player);
-                    }
-                    else if (MultiplayerLocationChecks.IsLocalProgressOwner(player))
-                    {
-                        RelicRewardUtility.ReconcileBankedRewards(player);
-                    }
-                    return;
-                }
 
                 var relicPicker = RunManager.Instance.TreasureRoomRelicSynchronizer;
                 var nativeRelicExists = relicPicker.CurrentRelics?.Count > 0;
@@ -300,8 +309,8 @@ namespace StS2AP.Patches
         }
 
         /// <summary>
-        /// Decides chest ownership before the native picker pulls from its relic bag. If no receipt
-        /// is waiting, leave an empty picker for the AP check and bank recorded when the chest opens.
+        /// Singleplayer gates its native picker directly. Multiplayer rolls the native candidates
+        /// on every peer, then applies the host's frozen receipt mask before the chest can open.
         /// </summary>
         [HarmonyPatch(
             typeof(TreasureRoomRelicSynchronizer),
@@ -309,18 +318,12 @@ namespace StS2AP.Patches
         )]
         public static class GateTreasureRelicPicker
         {
-            private static readonly HashSet<ulong> PlayersWithNativeCandidate = new();
-
-            public static bool HasNativeCandidate(Player player) =>
-                PlayersWithNativeCandidate.Contains(player.NetId);
-
             [HarmonyPrefix]
             public static bool Prefix(
                 ref List<RelicModel> ____currentRelics,
                 ref PlayerVote ____predictedVote
             )
             {
-                // AP_MP: Boss relic selection waits for synchronized reward choices.
                 if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
                     MultiplayerFeature.CombatRewardLocations
                 ))
@@ -328,10 +331,11 @@ namespace StS2AP.Patches
 
                 // Multiplayer's picker is shared. Let the base game build its deterministic
                 // player-ordered candidates, then remove only the candidates whose AP source
-                // has no waiting receipt in the postfix below.
+                // was excluded by the host's entry-time decision in the postfix below.
                 if (MultiplayerSupport.IsRealMultiplayerRun)
                 {
-                    PlayersWithNativeCandidate.Clear();
+                    RelicReceiptMultiplayer.GetChest(RunManager.Instance.DebugOnlyGetState()
+                        ?? throw new InvalidOperationException("No run exists for the native chest picker."));
                     return true;
                 }
 
@@ -367,44 +371,34 @@ namespace StS2AP.Patches
                 if (!MultiplayerSupport.IsRealMultiplayerRun
                     || !MultiplayerSupport.ShouldRunReplicatedConstruction(
                         MultiplayerFeature.CombatRewardLocations)
-                    || ____currentRelics == null
                     || RunManager.Instance.DebugOnlyGetState() is not RunState runState)
                 {
                     return;
                 }
 
-                int relicIndex = 0;
-                foreach (Player player in runState.Players)
+                var decision = RelicReceiptMultiplayer.GetChest(runState);
+                var generated = decision.Candidates.Where(c => c.GeneratesRelic).ToList();
+                if (generated.Count != (____currentRelics?.Count ?? 0)
+                    || !decision.Candidates.Select(c => c.PlayerNetId).SequenceEqual(runState.Players.Select(p => p.NetId))
+                    || decision.Candidates.Where((c, i) =>
+                        c.GeneratesRelic != Hook.ShouldGenerateTreasure(runState, runState.Players[i])).Any())
                 {
-                    if (!Hook.ShouldGenerateTreasure(runState, player))
-                        continue;
-
-                    bool apOwnedCandidate =
-                        MultiplayerLocationChecks.TryGetCheckSettings(player, out _)
-                        && MultiplayerLocationChecks.GetRelicRewardsAttempted(player)
-                            < ArchipelagoProgress._maxRelicRewards;
-                    if (apOwnedCandidate
-                        && !RelicRewardUtility.HasWaitingReceiptForNaturalReward(player))
-                    {
-                        if (relicIndex >= ____currentRelics.Count)
-                        {
-                            LogUtility.Error(
-                                "Treasure relic candidates no longer match the beta player order; "
-                                    + "preserving the remaining native picker"
-                            );
-                            return;
-                        }
-                        ____currentRelics.RemoveAt(relicIndex);
-                    }
-                    else
-                    {
-                        if (apOwnedCandidate)
-                            PlayersWithNativeCandidate.Add(player.NetId);
-                        relicIndex++;
-                    }
+                    MultiplayerSupport.InvalidateRunClaims("Native treasure candidates differ from the host decision.");
+                    throw new InvalidOperationException("Native treasure candidates differ from the host decision.");
                 }
+                // Every replica rolled every native candidate first, preserving RNG and bag order.
+                // Filter only by the immutable host mask, never by this peer's live AP history.
+                RelicReceiptMultiplayer.AgreeNativeCandidates(runState,
+                    ____currentRelics?.Select(relic => relic.Id.ToString()).ToList() ?? []);
+                if (____currentRelics != null)
+                    for (int i = generated.Count - 1; i >= 0; i--)
+                        if (!generated[i].Keep) ____currentRelics.RemoveAt(i);
 
-                if (____currentRelics.Count > 0
+                LogUtility.Info(
+                    $"Treasure AP picker: act={runState.CurrentActIndex + 1}, coord={runState.CurrentMapCoord}, "
+                        + $"candidates=[{string.Join(",", ____currentRelics?.Select(relic => relic.Id.ToString()) ?? [])}]."
+                );
+                if (____currentRelics?.Count > 0
                     && ____currentRelics.Count < runState.Players.Count)
                 {
                     LogUtility.Info(
@@ -413,8 +407,9 @@ namespace StS2AP.Patches
                     );
                 }
 
-                if (____currentRelics.Count == 0)
+                if (____currentRelics?.Count == 0)
                     RunManager.Instance.TreasureRoomRelicSynchronizer.CompleteWithNoRelics();
+                RelicReceiptMultiplayer.MarkPickerReady(runState);
             }
         }
 

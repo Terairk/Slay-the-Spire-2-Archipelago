@@ -4,6 +4,5 @@ namespace StS2AP.Multiplayer;
 public enum ApParticipationKind
 {
     VanillaGuest,
-    ApGuest,
     OwnApSlot,
 }
