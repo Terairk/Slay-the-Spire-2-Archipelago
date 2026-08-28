@@ -115,7 +115,6 @@ public static class ModSettingsRegistration
                 page.WithTitle(ModSettingsText.Literal("Archipelago Settings"))
                     .WithModDisplayName(ModSettingsText.Literal("Archipelago"))
                     .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
-                    .AddSection("experimental_multiplayer", ConfigureExperimentalMultiplayerSection)
                     .AddSection("charnames", ConfigureModdedCharactersSection)
                     .AddSection("keybinds", ConfigureKeybindsSection)
                     .AddSection("notifications", ConfigureNotificationsSection)
@@ -123,29 +122,6 @@ public static class ModSettingsRegistration
                     .AddSection("deathlink", ConfigureDeathLinkSection)
         );
         RegisterHotkeys();
-    }
-
-    private static void ConfigureExperimentalMultiplayerSection(
-        ModSettingsSectionBuilder section
-    )
-    {
-        section
-            .WithTitle(ModSettingsText.Literal("Experimental Multiplayer"))
-            .WithDescription(
-                ModSettingsText.Literal(
-                    "Unsupported development preview. Multiplayer AP progress is saved by the "
-                        + "STS host."
-                )
-            )
-            .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
-            .AddInfoCard(
-                "ap-multiplayer-connections",
-                ModSettingsText.Literal("AP Connections"),
-                ModSettingsText.Literal(
-                    "Connect to the host's AP slot to share its rewards, or use a separate AP slot. "
-                        + "Players entering without an AP connection use vanilla rewards."
-                )
-            );
     }
 
     private static void ConfigureModdedCharactersSection(ModSettingsSectionBuilder section)
