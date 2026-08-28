@@ -481,6 +481,11 @@ public static class DeathLinkMultiplayer
                 synchronizerState,
                 nameof(ActionSynchronizerCombatState.NotInCombat)))
         {
+            if (NonCombatActionAdmission.CaptureState().BlockedReason is string reason)
+            {
+                blockedReason = reason;
+                return false;
+            }
             descriptor = NonCombatActionDescriptor;
             return true;
         }

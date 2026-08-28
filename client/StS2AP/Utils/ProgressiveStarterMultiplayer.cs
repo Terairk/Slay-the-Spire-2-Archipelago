@@ -19,7 +19,7 @@ namespace StS2AP.Utils;
 /// <summary>
 /// Synchronizes progressive starter transitions through MegaCrit's native action queue. The AP
 /// receipt owner authors concrete model recipes; every replica executes those recipes only in a
-/// non-combat action slot.
+/// non-combat action slot, with requests deferred until local execution is idle.
 /// </summary>
 public static class ProgressiveStarterMultiplayer
 {
@@ -400,7 +400,7 @@ public static class ProgressiveStarterMultiplayer
             () => IsCurrentRequest(message),
             () => LogUtility.Info(
                 $"Requested managed Progressive Starter {description} {message.ActionId} "
-                    + $"with {message.Targets.Count} target(s)."
+                    + $"with {message.Targets.Count} target(s) at an idle noncombat boundary."
             ),
             reason =>
             {
@@ -410,10 +410,7 @@ public static class ProgressiveStarterMultiplayer
                     "Could not synchronize a Progressive Starter item."
                 );
             },
-            canRequest: () => BetaMainCompatibility.IsActionSynchronizerCombatState(
-                RunManager.Instance.ActionQueueSynchronizer.CombatState,
-                nameof(ActionSynchronizerCombatState.NotInCombat)
-            )
+            canRequest: NonCombatActionAdmission.CreateGate($"Progressive Starter {description}")
         );
     }
 

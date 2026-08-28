@@ -3,9 +3,7 @@ using Godot;
 namespace StS2AP.Utils;
 
 /// <summary>
-/// Retains managed-action requests while RitsuLib moves its Sidecar session from the start lobby
-/// into the launched run. The native queue already exists during RunManager.Launch, but peer
-/// feature readiness can become visible one or more process frames later.
+/// Holds requests outside the native action queue until admission and network transport are ready.
 /// </summary>
 public static class ManagedActionRequestScheduler
 {

@@ -20,7 +20,7 @@ namespace StS2AP.Utils;
 /// <summary>
 /// Owns the host-authoritative multiplayer ascension set. Existing host receipts are frozen into
 /// lobby run data before native player/map construction; each live receipt becomes one ordered
-/// non-combat managed action.
+/// non-combat managed action admitted only at an idle boundary outside room transitions.
 /// </summary>
 public static class AscensionMultiplayer
 {
@@ -403,13 +403,11 @@ public static class AscensionMultiplayer
             () => IsCurrentRequest(message),
             () => LogUtility.Info(
                 $"Requested managed Ascension Down receipt {receipt.Index} "
-                    + $"({level}) as {message.ActionId}."
+                    + $"({level}) as {message.ActionId} at an idle noncombat boundary."
             ),
             reason => Fail(reason),
-            canRequest: () => BetaMainCompatibility.IsActionSynchronizerCombatState(
-                RunManager.Instance.ActionQueueSynchronizer.CombatState,
-                nameof(ActionSynchronizerCombatState.NotInCombat)
-            )
+            canRequest: NonCombatActionAdmission.CreateGate(
+                $"Ascension Down receipt {receipt.Index} ({level})")
         );
     }
 
