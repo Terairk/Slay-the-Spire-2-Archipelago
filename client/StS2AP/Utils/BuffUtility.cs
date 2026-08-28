@@ -179,7 +179,7 @@ namespace StS2AP.Utils
             }
 
             // Store the task so ProcessQueuedBuffsAsync can await it if needed.
-            _storageLoadTask = LoadFromStorageInternalAsync();
+            _storageLoadTask = LoadFromStorageInternalAsync(ArchipelagoClient.Session);
             await _storageLoadTask;
         }
 
@@ -188,21 +188,20 @@ namespace StS2AP.Utils
         /// <see cref="LoadFromStorageAsync"/> so the task can be awaited by
         /// <see cref="ProcessQueuedBuffsAsync"/> independently.
         /// </summary>
-        private static async Task LoadFromStorageInternalAsync()
+        private static async Task LoadFromStorageInternalAsync(Archipelago.MultiClient.Net.ArchipelagoSession session)
         {
             try
             {
                 /// Initialize to -1 ("nothing consumed yet") if this key has never been written.
                 /// This is a no-op if the key already holds a value.
-                ArchipelagoClient.Session.DataStorage[Scope.Slot, StorageKey].Initialize(-1);
+                session.DataStorage[Scope.Slot, StorageKey].Initialize(-1);
 
                 /// Read the stored high-water mark — the index of the most recently applied buff.
                 /// Any buff at an index <= this value is guaranteed to be already consumed.
-                var stored = await ArchipelagoClient
-                    .Session.DataStorage[Scope.Slot, StorageKey]
+                var stored = await session.DataStorage[Scope.Slot, StorageKey]
                     .GetAsync<int>();
 
-                _lastConsumedBuffIndex = stored;
+                await ApplyLoadedIndex(stored);
 
                 LogUtility.Info(
                     $"[BuffUtility] Loaded last consumed buff index: {_lastConsumedBuffIndex} (-1 means no buffs consumed yet)."
@@ -216,7 +215,21 @@ namespace StS2AP.Utils
                 LogUtility.Warn(
                     $"[BuffUtility] Failed to load last consumed buff index from DataStorage: {ex.Message}. Defaulting to -1."
                 );
-                _lastConsumedBuffIndex = -1;
+                await ApplyLoadedIndex(-1);
+            }
+
+            // Complete the load only after its main-thread publication, so combat's await
+            // cannot observe a completed task with an unpublished consumption watermark.
+            Task ApplyLoadedIndex(int index)
+            {
+                var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                Godot.Callable.From(() =>
+                {
+                    if (ReferenceEquals(ArchipelagoClient.Session, session))
+                        _lastConsumedBuffIndex = index;
+                    completion.SetResult();
+                }).CallDeferred();
+                return completion.Task;
             }
         }
 
@@ -309,6 +322,7 @@ namespace StS2AP.Utils
         /// <param name="player">The active Player instance for the current run.</param>
         public static async Task ProcessQueuedBuffsAsync(Player player)
         {
+            var progress = ArchipelagoClient.Progress;
             // AP_MP: Combat buffs require the per-owner FIFO managed-action pipeline.
             if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.CombatEffects))
                 return;
@@ -324,6 +338,9 @@ namespace StS2AP.Utils
                 );
                 await _storageLoadTask;
             }
+
+            if (!ReferenceEquals(progress, ArchipelagoClient.Progress))
+                return;
 
             if (_buffQueue.Count == 0)
                 return;
@@ -382,6 +399,8 @@ namespace StS2AP.Utils
                         $"[BuffUtility] Failed to apply buff '{buffType}' (index {itemIndex}): {ex.Message}"
                     );
                 }
+                if (!ReferenceEquals(progress, ArchipelagoClient.Progress))
+                    return;
             }
 
             // Sync the last applied buff index to DataStorage so it is persisted across sessions.
@@ -573,6 +592,12 @@ namespace StS2AP.Utils
             LogUtility.Info(
                 $"[BuffUtility] Queue cleared ({pendingCount} pending buff(s) discarded). Last consumed buff index ({_lastConsumedBuffIndex}) will be reloaded from DataStorage on next connect."
             );
+        }
+
+        internal static void ResetSlotState()
+        {
+            ClearQueue();
+            _lastConsumedBuffIndex = -1;
         }
 
         #endregion

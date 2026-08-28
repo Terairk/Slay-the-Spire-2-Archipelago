@@ -12,6 +12,35 @@ namespace StS2AP.Utils
         private static readonly object _fileLock = new();
 
         /// <summary>
+        /// Retains unsent multiplayer checks when leaving a slot after returning to the menu.
+        /// The next login replays this existing slot/seed outbox, even if no run is continued.
+        /// </summary>
+        internal static bool PreserveForSlotSwitch()
+        {
+            var checks = ArchipelagoClient.Progress.PendingLocationChecks;
+            if (checks.Count == 0)
+                return true;
+            try
+            {
+                lock (_fileLock)
+                {
+                    string path = GetPendingCheckPath()
+                        ?? throw new IOException("The pending checks have no slot/seed identity.");
+                    var pending = Load(path);
+                    pending.UnionWith(checks);
+                    Save(path, pending);
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.Error($"[AP Session] Cannot leave slot without preserving pending checks: {ex}");
+                NotificationUtility.ShowRawText("Could not preserve pending AP checks. Disconnect cancelled; see the log.");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Adds a newly earned location to the durable outbox, then attempts to send it
         /// immediately when the Archipelago socket still reports itself as connected.
         /// Checks already present in the outbox are not submitted a second time here; the

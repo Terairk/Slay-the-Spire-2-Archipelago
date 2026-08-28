@@ -115,7 +115,11 @@ public static class ApReconnectController
         if (token.IsCancellationRequested)
             return;
 
-        Callable.From(ArchipelagoClient.ConnectForAutomaticRetry).CallDeferred();
+        Callable.From(() =>
+        {
+            if (!token.IsCancellationRequested)
+                ArchipelagoClient.ConnectForAutomaticRetry();
+        }).CallDeferred();
     }
 
     private static async Task WarnAfterFiveMinutes(CancellationToken token)
@@ -135,8 +139,11 @@ public static class ApReconnectController
         LogUtility.Warn(
             "Archipelago has been disconnected for five minutes; STS gameplay remains available and AP operations stay queued"
         );
-        Callable.From(() => NotificationUtility.ShowRawText(
-            "Archipelago has been offline for five minutes. Gameplay remains available; AP checks stay queued."
-        )).CallDeferred();
+        Callable.From(() =>
+        {
+            if (!token.IsCancellationRequested)
+                NotificationUtility.ShowRawText(
+                    "Archipelago has been offline for five minutes. Gameplay remains available; AP checks stay queued.");
+        }).CallDeferred();
     }
 }

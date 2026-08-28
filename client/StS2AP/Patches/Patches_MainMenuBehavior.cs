@@ -60,19 +60,16 @@ namespace StS2AP.Patches
             if (_connectButton == null || !GodotObject.IsInstanceValid(_connectButton))
                 return;
 
-            bool canConnect = ArchipelagoClient.State == ConnectionState.Disconnected;
-            if (canConnect)
-                _connectButton.Enable();
-            else
-                _connectButton.Disable();
+            _connectButton.Enable();
 
             if (_connectButton.label != null)
             {
                 _connectButton.label.Text = ArchipelagoClient.State switch
                 {
-                    ConnectionState.Connected => "Archipelago Connected",
-                    ConnectionState.Connecting => "Connecting to Archipelago...",
-                    ConnectionState.Reconnecting => "Reconnecting to Archipelago...",
+                    ConnectionState.Connected => "Disconnect from Archipelago",
+                    ConnectionState.Connecting => "Cancel Archipelago Connection",
+                    ConnectionState.Reconnecting => "Cancel Archipelago Reconnect",
+                    _ when ArchipelagoClient.HasSlotConnection => "Disconnect from Archipelago",
                     _ => "Connect to Archipelago",
                 };
             }
@@ -80,6 +77,36 @@ namespace StS2AP.Patches
 
         private static void OnConnectionStateChanged(ConnectionState _) =>
             RefreshConnectionPresentation();
+
+        private static void OnConnectButtonPressed()
+        {
+            if (!ArchipelagoClient.CanLeaveSlot)
+                return;
+            if (!ArchipelagoClient.HasSlotConnection)
+            {
+                MultiplayerSupport.ClearPendingPlaySelection();
+                ArchipelagoConnectionUI.InjectUI();
+                ArchipelagoNotificationUI.InjectUI();
+                return;
+            }
+
+            // Bind the confirmation to this session; a late confirmation must not disconnect
+            // a replacement session after an automatic reconnect or another menu action.
+            var session = ArchipelagoClient.Session;
+            var body = new LocString("main_menu_ui", "AP_DISCONNECT.body");
+            body.Add("slot", ArchipelagoClient.PlayerName ?? "");
+            var popup = new ConfirmPopup
+            {
+                Header = new LocString("main_menu_ui", "AP_DISCONNECT.header"),
+                Body = body,
+                ButtonPressed = confirmed =>
+                {
+                    if (confirmed && ReferenceEquals(session, ArchipelagoClient.Session))
+                        ArchipelagoClient.TryLeaveSlot();
+                },
+            };
+            popup.Show();
+        }
 
         #region Clone Target References
 
@@ -293,12 +320,7 @@ namespace StS2AP.Patches
             connectButton.Name = ConnectButtonName;
             connectButton.Connect(
                 NClickableControl.SignalName.Released,
-                Callable.From<NButton>(_ =>
-                {
-                    MultiplayerSupport.ClearPendingPlaySelection();
-                    ArchipelagoConnectionUI.InjectUI();
-                    ArchipelagoNotificationUI.InjectUI();
-                })
+                Callable.From<NButton>(_ => OnConnectButtonPressed())
             );
             singleplayerButton.AddSibling(connectButton);
             buttonContainer.MoveChild(connectButton, singleplayerIndex);

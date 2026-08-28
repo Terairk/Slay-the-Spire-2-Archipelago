@@ -294,7 +294,7 @@ public static class MultiplayerSupport
         bool identityLocked =
             ApReconnectController.IsActive
             || _observedStartLobbyScreen != null
-            || IsRealMultiplayerRun;
+            || IsRealMultiplayerRun || GameUtility.IsInRun || RunManager.Instance.IsInProgress;
         if (identityLocked
             && _preparedSessionIdentity is { } expected
             && expected != candidate)
@@ -485,6 +485,19 @@ public static class MultiplayerSupport
         _apHistoryPrepared = false;
         // AP socket termination may be raised off the Godot main thread.
         Callable.From(RefreshObservedStartLobby).CallDeferred();
+    }
+
+    /// <summary>Called only after an intentional departure at the home screen.</summary>
+    internal static void ForgetApSession()
+    {
+        EndRun();
+        ClearPendingPlaySelection();
+        _observedStartLobbyScreen = null;
+        _apHistoryPrepared = false;
+        _preparedSessionIdentity = null;
+        _deferredSessionKey = null;
+        _preparedReceivedItems = Array.Empty<ItemInfo>();
+        DeferredItems.Clear();
     }
 
     public static bool CanEnterMultiplayerLobby(out string reason)
