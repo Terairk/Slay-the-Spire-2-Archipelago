@@ -62,7 +62,13 @@ public sealed class ApRestSiteModel : HookedSingletonModel
         }
         if (!canSmith)
             RemoveOption(options, "SMITH");
-        if (!canRest && !canSmith)
+
+        // Progression unlocks do not guarantee a usable action: native Smith is disabled
+        // when the deck has no upgradeable cards. Keep the existing both-locked fallback,
+        // and also provide a way out when every remaining action is disabled or absent.
+        // Do this before adding AP checks so taking a check is never required to leave.
+        bool needsFallback = (!canRest && !canSmith) || !options.Any(option => option.IsEnabled);
+        if (needsFallback)
             InsertFirst(options, new FakeRestSiteOption(player));
 
         if (ApPlayerContextResolver.HasCharacterChecks(player))
@@ -90,7 +96,7 @@ public sealed class ApRestSiteModel : HookedSingletonModel
 
         LogUtility.Info(
             $"Applied AP rest-site options for player {player.NetId}: act={currentAct}, "
-                + $"restLevel={restLevel}, smithLevel={smithLevel}"
+                + $"restLevel={restLevel}, smithLevel={smithLevel}, fallback={needsFallback}"
         );
         return true;
     }

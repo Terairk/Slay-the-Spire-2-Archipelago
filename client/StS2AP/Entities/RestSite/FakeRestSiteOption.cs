@@ -4,7 +4,7 @@ using MegaCrit.Sts2.Core.Localization;
 
 namespace StS2AP.Entities.RestSite;
 
-/// <summary>Prevents a softlock when both progressive base actions are unavailable.</summary>
+/// <summary>Provides a way out when progression locks or disabled actions leave no usable choice.</summary>
 public sealed class FakeRestSiteOption : RestSiteOption
 {
     public FakeRestSiteOption(Player owner) : base(owner) { }
