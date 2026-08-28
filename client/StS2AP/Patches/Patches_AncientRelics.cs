@@ -344,7 +344,8 @@ namespace StS2AP.Patches
                 choiceKey,
                 ancientActIndex: poolActIndex,
                 settings: settings,
-                characterOffset: characterOffset
+                characterOffset: characterOffset,
+                startOfActIndex: currentAct - 1
             );
             if (choices.Count != AncientRelicPool.ChoiceCount)
             {
