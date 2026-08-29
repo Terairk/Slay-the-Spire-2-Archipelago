@@ -1,8 +1,11 @@
 ﻿using HarmonyLib;
+using MegaCrit.Sts2.Core.Entities.CardRewardAlternatives;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
+using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Managers;
 
@@ -14,6 +17,54 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class BetaMainCompatibility
 {
+    /// <summary>
+    /// Selects the existing Skip alternative on this reward's exact picker. Public 0.107.1
+    /// returns null when the picker is removed; beta 0.111.0 throws instead, before the native
+    /// reward can synchronize its choice. Use the native selection handler on both branches.
+    /// </summary>
+    public static bool TrySkipCardRewardSelection(CardReward reward, NCardRewardSelectionScreen picker)
+    {
+        try
+        {
+            var screenField = AccessTools.Field(typeof(CardReward), "_currentlyShownScreen")
+                ?? throw new MissingFieldException(typeof(CardReward).FullName, "_currentlyShownScreen");
+            if (!ReferenceEquals(screenField.GetValue(reward), picker))
+                return false;
+
+            var completion = AccessTools.Field(typeof(NCardRewardSelectionScreen), "_completionSource")
+                ?.GetValue(picker) as TaskCompletionSource<int?>;
+            if (completion == null || completion.Task.IsCompleted)
+                return false; // No pending choice, or a selection was already accepted.
+
+            var alternatives = AccessTools.Field(typeof(NCardRewardSelectionScreen), "_extraOptions")
+                ?.GetValue(picker) as IReadOnlyList<CardRewardAlternative>
+                ?? throw new MissingFieldException(typeof(NCardRewardSelectionScreen).FullName, "_extraOptions");
+            for (int i = 0; i < alternatives.Count; i++)
+            {
+                CardRewardAlternative alternative = alternatives[i];
+                if (!string.Equals(alternative.OptionId, "Skip", StringComparison.OrdinalIgnoreCase)
+                    || Enum.GetName(alternative.AfterSelected) != "EndSelectionAndDoNotCompleteReward")
+                    continue;
+
+                var select = AccessTools.Method(typeof(NCardRewardSelectionScreen), "OnAlternateRewardSelected",
+                    new[] { typeof(int) })
+                    ?? throw new MissingMethodException(typeof(NCardRewardSelectionScreen).FullName,
+                        "OnAlternateRewardSelected");
+                select.Invoke(picker, new object[] { i });
+                LogUtility.Info($"Skipped AP card selection through native Skip for player {reward.Player.NetId}.");
+                return true;
+            }
+            // Hooks can remove Skip or replace it with a reward-consuming alternative. Do not
+            // invoke Reroll/Sacrifice/Heal or invent cancellation for a mandatory choice.
+            return false;
+        }
+        catch (Exception ex)
+        {
+            LogUtility.Error($"Could not skip AP card selection for player {reward.Player.NetId}: {ex}");
+            return false;
+        }
+    }
+
     /// <summary>
     /// Compares an action-synchronizer phase by its runtime name. Newer game versions inserted
     /// PreCombatSetup into this enum, shifting the numeric values of every later member. Direct

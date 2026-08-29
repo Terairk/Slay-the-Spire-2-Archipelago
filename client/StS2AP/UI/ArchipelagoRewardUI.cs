@@ -27,6 +27,8 @@ public static class ArchipelagoRewardUI
         "Multiplayer AP rewards can only be claimed outside combat.";
     private const string NativeChoiceBlockedMessage =
         "Finish the current card or relic selection before opening AP rewards.";
+    private const string TravelBlockedMessage =
+        "AP rewards are unavailable while traveling to another room.";
 
     private enum ReturnDestination
     {
@@ -41,6 +43,7 @@ public static class ArchipelagoRewardUI
         bool InitiallyEmpty);
 
     private static readonly Dictionary<RewardsSet, NativeMenuSession> Sessions = new();
+    private static readonly ApRewardTravelGuard Travel = new();
 
     private static NRewardsScreen? _screen;
     private static RewardsSet? _set;
@@ -56,6 +59,53 @@ public static class ArchipelagoRewardUI
 
     internal static bool IsActive =>
         _screen != null && IsOpen && ActiveScreenContext.Instance.IsCurrent(_screen);
+
+    internal static int ApLifecycleVersion => Travel.ApLifecycleVersion;
+
+    private static bool IsTravelBlocked => MultiplayerSupport.IsRealMultiplayerRun
+        && !Travel.CanOpen(Travel.ApLifecycleVersion, RunManager.Instance.NetService.IsGameLoading);
+
+    internal static int? BeginTravel()
+    {
+        if (!MultiplayerSupport.IsRealMultiplayerRun)
+            return null;
+
+        int apLifecycleVersion = Travel.BeginTravel();
+        _opening = false;
+        _returnDestination = ReturnDestination.Room;
+        try
+        {
+            if (IsOpen)
+            {
+                LogUtility.Info("Closing AP rewards at map travel start.");
+                // Use the native Skip choice before closing its parent set. Deleting the beta
+                // picker instead throws TaskCanceledException before SyncLocalChoice can run.
+                TrySkipOwnedCardPicker();
+                if (ReferenceEquals(NOverlayStack.Instance?.Peek(), _screen))
+                    Hide();
+                else
+                {
+                    // Native selection continuations may finish later in this frame. Never skip
+                    // an unrelated/nested RewardsSet from the top of the synchronizer's stack.
+                    RewardsSet? closingSet = _set;
+                    Callable.From(() =>
+                    {
+                        if (ReferenceEquals(_set, closingSet)
+                            && ReferenceEquals(NOverlayStack.Instance?.Peek(), _screen))
+                            Hide();
+                    }).CallDeferred();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Keep the input gate closed, but let the base game's travel/cleanup continue.
+            LogUtility.Error($"Could not close AP rewards at travel start: {ex}");
+        }
+        return apLifecycleVersion;
+    }
+
+    internal static void EndTravel(int apLifecycleVersion) => Travel.EndTravel(apLifecycleVersion);
 
     public static void Toggle()
     {
@@ -83,21 +133,22 @@ public static class ArchipelagoRewardUI
     {
         if (IsOpen || _opening)
             return;
-        if (TryBlockMultiplayerCombatOpen() || TryBlockNativeChoiceOpen())
+        if (TryBlockTravel() || TryBlockMultiplayerCombatOpen() || TryBlockNativeChoiceOpen())
             return;
 
         _opening = true;
+        int apLifecycleVersion = Travel.ApLifecycleVersion;
         Callable.From(() =>
         {
-            TaskHelper.RunSafely(OpenOnMainThread());
+            TaskHelper.RunSafely(OpenOnMainThread(apLifecycleVersion));
         }).CallDeferred();
     }
 
-    internal static bool CanBuildMenuAfterAwait() =>
-        !RunManager.Instance.NetService.IsGameLoading
+    internal static bool CanBuildMenuAfterAwait(int apLifecycleVersion) =>
+        Travel.CanOpen(apLifecycleVersion, RunManager.Instance.NetService.IsGameLoading)
         && !TryBlockMultiplayerCombatOpen() && !TryBlockNativeChoiceOpen();
 
-    private static async Task OpenOnMainThread()
+    private static async Task OpenOnMainThread(int apLifecycleVersion)
     {
         bool opened = false;
         bool destinationPrepared = false;
@@ -107,7 +158,8 @@ public static class ArchipelagoRewardUI
                 return;
             // ShowRewards is deferred, so combat or a native choice can begin after the click-time
             // guard. Repeat both checks before OpenMenu creates a synchronized RewardsSet.
-            if (TryBlockMultiplayerCombatOpen() || TryBlockNativeChoiceOpen())
+            if (apLifecycleVersion != Travel.ApLifecycleVersion || TryBlockTravel()
+                || TryBlockMultiplayerCombatOpen() || TryBlockNativeChoiceOpen())
                 return;
             PrepareForOpen();
             destinationPrepared = true;
@@ -119,9 +171,10 @@ public static class ArchipelagoRewardUI
         }
         finally
         {
-            if (destinationPrepared && !opened && !IsOpen)
+            if (apLifecycleVersion == Travel.ApLifecycleVersion && destinationPrepared && !opened && !IsOpen)
                 RestoreDestination(_returnDestination);
-            _opening = false;
+            if (apLifecycleVersion == Travel.ApLifecycleVersion)
+                _opening = false;
         }
     }
 
@@ -171,7 +224,8 @@ public static class ArchipelagoRewardUI
         UnregisterHotkeys();
         if (Sessions.TryGetValue(_set, out NativeMenuSession? session)
             && session.Synchronized
-            && !session.InitiallyEmpty)
+            && !session.InitiallyEmpty
+            && !RunManager.Instance.RewardsSetSynchronizer.IsRewardsSetCompleted(_set))
         {
             try
             {
@@ -203,6 +257,7 @@ public static class ArchipelagoRewardUI
 
     public static void RemoveUI()
     {
+        Travel.Reset();
         UnregisterHotkeys();
         if (_screen != null && GodotObject.IsInstanceValid(_screen))
             _screen.QueueFreeSafely();
@@ -228,6 +283,8 @@ public static class ArchipelagoRewardUI
     {
         if (button.Reward is not ApMirroredRewardDispatcher.IApNativeReward reward)
             return true;
+        if (TryBlockTravel())
+            return false;
         if (reward.CanClaim(out string reason))
             return true;
 
@@ -249,6 +306,14 @@ public static class ArchipelagoRewardUI
         }
 
         ShowBlockedMessage(MultiplayerCombatBlockedMessage, blockedByCombat: true);
+        return true;
+    }
+
+    private static bool TryBlockTravel()
+    {
+        if (!IsTravelBlocked)
+            return false;
+        ShowBlockedMessage(TravelBlockedMessage, blockedByCombat: false);
         return true;
     }
 
@@ -332,17 +397,17 @@ public static class ArchipelagoRewardUI
     private static bool TrySkipOwnedCardPicker()
     {
         if (!IsOpen
-            || NOverlayStack.Instance?.Peek() is not NCardRewardSelectionScreen picker
-            || !ActiveScreenContext.Instance.IsCurrent(picker))
+            || _set == null
+            || NOverlayStack.Instance?.Peek() is not NCardRewardSelectionScreen picker)
         {
             return false;
         }
 
-        // Removing the native picker resolves OptionSelected() with null, which is the exact
-        // CardReward skip result. Do not guess which alternative button represents Skip: relics
-        // may add other actions to the same container.
-        NOverlayStack.Instance.Remove(picker);
-        return true;
+        // Match the exact screen held by an AP card reward, not just an arbitrary top overlay.
+        foreach (CardReward reward in _set.Rewards.OfType<CardReward>())
+            if (BetaMainCompatibility.TrySkipCardRewardSelection(reward, picker))
+                return true;
+        return false;
     }
 
     private static void PrepareForOpen()
@@ -365,6 +430,8 @@ public static class ArchipelagoRewardUI
 
     private static void RestoreDestination(ReturnDestination destination)
     {
+        if (IsTravelBlocked)
+            return;
         switch (destination)
         {
             case ReturnDestination.Map:
