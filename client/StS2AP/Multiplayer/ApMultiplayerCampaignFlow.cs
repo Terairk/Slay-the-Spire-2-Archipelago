@@ -1,6 +1,7 @@
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Runs;
@@ -78,17 +79,29 @@ public static class ApMultiplayerCampaignFlow
                 if (!confirmed)
                     return;
 
+                bool archived = false;
                 try
                 {
+                    var embark = AccessTools.Method(
+                        typeof(NCharacterSelectScreen),
+                        "OnEmbarkPressed",
+                        [typeof(NButton)]
+                    ) ?? throw new MissingMethodException(
+                        typeof(NCharacterSelectScreen).FullName,
+                        "OnEmbarkPressed(NButton)"
+                    );
                     ApMultiplayerCampaignStore.ArchiveCampaign(existing.CampaignId);
-                    AccessTools.Method(typeof(NCharacterSelectScreen), "OnEmbarkPressed")
-                        ?.Invoke(screen, null);
+                    archived = true;
+                    embark.Invoke(screen, new object?[] { null });
                 }
                 catch (Exception ex)
                 {
                     LogUtility.Error($"Could not replace the existing AP campaign: {ex}");
                     NotificationUtility.ShowRawText(
-                        "The existing campaign could not be archived. The new run was not started."
+                        archived
+                            ? "The existing campaign was archived, but the new run could not be "
+                                + "started. Press Embark again to retry."
+                            : "The existing campaign could not be archived. The new run was not started."
                     );
                 }
             },
