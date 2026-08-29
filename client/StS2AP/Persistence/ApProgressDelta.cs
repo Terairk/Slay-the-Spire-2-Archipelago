@@ -345,12 +345,34 @@ public sealed class ApProgressDelta
         ApCardAssignmentState left,
         ApCardAssignmentState right) =>
         left.CanReroll == right.CanReroll
+        && left.IsRare == right.IsRare
+        && left.RewardActIndex == right.RewardActIndex
+        && left.HasBeenRevealed == right.HasBeenRevealed
+        && left.MaterializationStrategyId == right.MaterializationStrategyId
+        && left.AppliedEffects.Select(EffectKey).SequenceEqual(
+            right.AppliedEffects.Select(EffectKey)
+        )
         && left.SerializedCards.SequenceEqual(right.SerializedCards);
 
     private static ApCardAssignmentState CloneCardAssignment(ApCardAssignmentState value) => new()
     {
         CanReroll = value.CanReroll,
+        IsRare = value.IsRare,
+        RewardActIndex = value.RewardActIndex,
+        HasBeenRevealed = value.HasBeenRevealed,
+        MaterializationStrategyId = value.MaterializationStrategyId,
+        AppliedEffects = value.AppliedEffects.Select(CloneEffect).ToList(),
         SerializedCards = value.SerializedCards.ToList(),
+    };
+
+    private static string EffectKey(ApRewardEffectSpec effect) =>
+        $"{effect.EffectId}\n{effect.BeforeValue}\n{effect.AfterValue}";
+
+    private static ApRewardEffectSpec CloneEffect(ApRewardEffectSpec effect) => new()
+    {
+        EffectId = effect.EffectId,
+        BeforeValue = effect.BeforeValue,
+        AfterValue = effect.AfterValue,
     };
 
     private static void DiffDictionary<TKey, TValue>(

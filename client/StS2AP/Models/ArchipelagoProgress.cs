@@ -334,7 +334,10 @@ namespace StS2AP.Models
 
             try
             {
-                var potion = PotionFactory.CreateRandomPotionOutOfCombat(player, player.PlayerRng.Rewards);
+                var potion = PotionFactory.CreateRandomPotionOutOfCombat(
+                    player,
+                    player.PlayerRng.Rewards
+                ).ToMutable();
                 PotionAssignments[index] = potion;
                 LogUtility.Info($"Pre-assigned potion '{potion.Id}' for item w/ index {index}");
                 return potion;
@@ -733,11 +736,31 @@ namespace StS2AP.Models
                             .Select(card => SerializeAssignment(card.ToSerializable()))
                             .ToList(),
                         CanReroll = kv.Value.CanReroll,
+                        IsRare = kv.Value is ApMirroredRewardDispatcher.ApNativeCardReward native
+                            && native.IsRare,
+                        RewardActIndex = kv.Value is ApMirroredRewardDispatcher.ApNativeCardReward assigned
+                            ? assigned.RewardActIndex
+                            : null,
+                        HasBeenRevealed = kv.Value is ApMirroredRewardDispatcher.ApNativeCardReward revealed
+                            && revealed.HasBeenRevealed,
+                        MaterializationStrategyId = kv.Value is ApMirroredRewardDispatcher.ApNativeCardReward materialized
+                            ? materialized.MaterializationStrategyId
+                            : string.Empty,
+                        AppliedEffects = kv.Value is ApMirroredRewardDispatcher.ApNativeCardReward effected
+                            ? effected.AppliedEffects.Select(effect => new ApRewardEffectSpec
+                            {
+                                EffectId = effect.EffectId,
+                                BeforeValue = effect.BeforeValue,
+                                AfterValue = effect.AfterValue,
+                            }).ToList()
+                            : new List<ApRewardEffectSpec>(),
                     }
                 ),
                 PotionAssignments = PotionAssignments.ToDictionary(
                     kv => kv.Key,
-                    kv => SerializeAssignment(kv.Value.ToMutable().ToSerializable(-1))
+                    kv => SerializeAssignment(
+                        (kv.Value.IsMutable ? kv.Value : kv.Value.ToMutable()).ToSerializable(-1)
+                    )
                 ),
                 PendingLocationChecks = new HashSet<long>(PendingLocationChecks),
                 Ascensions = Ascensions.CurrentAscension
@@ -824,7 +847,7 @@ namespace StS2AP.Models
                     kv => kv.Key,
                     kv => PotionModel.FromSerializable(
                         DeserializeAssignment<SerializablePotion>(kv.Value)
-                    ).CanonicalInstance
+                    )
                 ),
                 PendingLocationChecks = new HashSet<long>(saveData.PendingLocationChecks ?? new HashSet<long>()),
             };
@@ -833,27 +856,17 @@ namespace StS2AP.Models
             foreach(var kv in saveData.CardAssignments)
             {
                 var cards = kv.Value.SerializedCards.Select(json =>
-                    player.RunState.CreateCard(
-                        CardModel.FromSerializable(
-                            DeserializeAssignment<SerializableCard>(json)
-                        ).CanonicalInstance,
+                    player.RunState.LoadCard(
+                        DeserializeAssignment<SerializableCard>(json),
                         player
                     )
                 ).ToList();
-                var options = new CardCreationOptions(
-                    new[] { player.Character.CardPool },
-                    CardCreationSource.Encounter,
-                    CardRarityOddsType.RegularEncounter
-                );
-                cardRewards[kv.Key] = new CardReward(
-                    cards,
-                    CardCreationSource.Encounter,
+                cardRewards[kv.Key] = ApMirroredRewardDispatcher.RestorePersistedCardAssignment(
+                    kv.Key,
+                    kv.Value,
                     player,
-                    options
-                )
-                {
-                    CanReroll = kv.Value.CanReroll,
-                };
+                    cards
+                );
             }
 
             var ascensionLevels = saveData.Ascensions?.Select((level) => (AscensionLevel)level).ToHashSet() ?? new HashSet<AscensionLevel>();

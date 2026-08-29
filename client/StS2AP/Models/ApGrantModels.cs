@@ -35,7 +35,7 @@ public enum ApMirroredRewardKind
 /// </summary>
 public sealed class ApMirroredRewardSpec
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 5;
 
     public int ApSlotId { get; set; }
     public int ReceivedItemIndex { get; set; }
@@ -67,11 +67,37 @@ public sealed class ApMirroredRewardSpec
     public bool CardCanReroll { get; set; }
 
     /// <summary>
-    /// The owner consumed Silken Tress while materializing this stable card assignment.
-    /// Remote replicas receive the already-modified cards, so they use this marker to mirror
-    /// the relic's one-shot state transition without applying card modifiers a second time.
+    /// True once the owning player has opened this card picker and learned its choices. Relics
+    /// obtained afterward must not retroactively modify those already-known cards.
     /// </summary>
-    public bool ConsumedSilkenTress { get; set; }
+    public bool CardHasBeenRevealed { get; set; }
+
+    /// <summary>
+    /// Versioned generation contract used for a newly assigned card or potion. Existing stable
+    /// assignments still carry this value so every replica knows whether owner-final models or
+    /// replica-native generation produced them.
+    /// </summary>
+    public string MaterializationStrategyId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// True only when this menu snapshot created the stable assignment. Every replica must run
+    /// the corresponding native card or potion factory exactly once before offering the menu.
+    /// Reopened and save-restored assignments carry their final models without replaying rolls.
+    /// </summary>
+    public bool RequiresNativeMaterialization { get; set; }
+
+    /// <summary>
+    /// Deterministic state fingerprints surrounding a new native materialization. They are compared
+    /// on every replica; they are diagnostics and validation data, never state to copy into place.
+    /// </summary>
+    public string StateBeforeMaterialization { get; set; } = string.Empty;
+    public string StateAfterMaterialization { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Idempotent native state transitions produced by reviewed owner-final card hooks. These are
+    /// persisted with the stable assignment and replayed on replicas which did not run the hooks.
+    /// </summary>
+    public List<ApRewardEffectSpec> AppliedEffects { get; set; } = new();
 
     // CONFIRM: the datatype of serialized models, why string?
     public List<string> SerializedModels { get; set; } = new();
@@ -90,12 +116,23 @@ public sealed class ApMenuGoldSpec
 }
 
 /// <summary>
+/// Compact before/after form of a reviewed persistent card-reward hook effect. Absolute values
+/// make application idempotent across menu reopening, save restoration, and reconnect.
+/// </summary>
+public sealed class ApRewardEffectSpec
+{
+    public string EffectId { get; set; } = string.Empty;
+    public int BeforeValue { get; set; }
+    public int AfterValue { get; set; }
+}
+
+/// <summary>
 /// One immutable AP reward-menu snapshot. Every multiplayer replica builds the same ordered
 /// native RewardsSet before MegaCrit begins synchronizing selections for its owner.
 /// </summary>
 public sealed class ApRewardMenuSpec
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 5;
     public Guid RunId { get; set; }
     public Guid MenuId { get; set; } = Guid.NewGuid();
     public int ApSlotId { get; set; }

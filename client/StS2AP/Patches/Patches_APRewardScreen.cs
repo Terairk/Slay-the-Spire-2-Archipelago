@@ -218,7 +218,11 @@ namespace StS2AP.Patches
                          child.GetSignalConnectionList(NRewardButton.SignalName.RewardClaimed))
                 {
                     Callable callback = connection["callable"].AsCallable();
-                    child.Disconnect(NRewardButton.SignalName.RewardClaimed, callback);
+                    // Godot also reports the generated C# signal-event bridge here even though it
+                    // is not a disconnectable native connection. Only remove callbacks which the
+                    // signal registry can resolve; otherwise Disconnect logs an engine error.
+                    if (child.IsConnected(NRewardButton.SignalName.RewardClaimed, callback))
+                        child.Disconnect(NRewardButton.SignalName.RewardClaimed, callback);
                 }
 
                 child.Connect(
@@ -358,8 +362,10 @@ namespace StS2AP.Patches
                 return;
             }
 
-            screen.RewardCollectedFrom(linkedSet);
             linkedSet.LinkedRewardSet.OnSkipped();
+            // NRewardsScreen already listens to this signal and removes the linked row. Calling
+            // RewardCollectedFrom directly as well removes it twice and leaves the second call
+            // dereferencing a null parent in NRewardsScreen.RemoveButton.
             linkedSet.EmitSignal(NLinkedRewardSet.SignalName.RewardClaimed, linkedSet);
             linkedSet.QueueFreeSafely();
 
