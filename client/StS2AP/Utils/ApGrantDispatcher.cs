@@ -17,7 +17,7 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ApGrantDispatcher
 {
-    public const int UniversalBuffGoldValue = 5;
+    public const int UniversalBuffGoldValue = UniversalBuffGold.ValuePerBuff;
 
     private static long? _activeCharacterOffset;
 
@@ -25,12 +25,13 @@ public static class ApGrantDispatcher
     public static void RebuildGoldBank(IReadOnlyList<ItemInfo> receivedItems)
     {
         var rebuilt = new Dictionary<long, int>();
+        int buffCount = 0;
         foreach (ItemInfo item in receivedItems)
         {
             if (item.ItemId < 10000)
             {
                 if (ItemTable.IsUniversalCombatBuff(item.ItemId))
-                    AddUniversalBuffGold(rebuilt);
+                    buffCount++;
                 continue;
             }
 
@@ -43,7 +44,14 @@ public static class ApGrantDispatcher
             rebuilt[characterOffset] = previous + amount;
         }
 
+        UniversalBuffGold.AddToBank(
+            rebuilt,
+            ArchipelagoClient.Settings.Characters.Values.Select(config => (long)config.CharOffset),
+            previousBuffCount: 0,
+            addedBuffCount: buffCount
+        );
         ArchipelagoClient.Progress.GoldReceived = rebuilt;
+        ArchipelagoClient.Progress.UniversalBuffsConvertedToGold = buffCount;
         LogUtility.Info(
             $"Rebuilt AP gold bank from {receivedItems.Count} receipt(s): "
                 + string.Join(",", rebuilt.OrderBy(pair => pair.Key)
@@ -52,19 +60,21 @@ public static class ApGrantDispatcher
     }
 
     /// <summary>
-    /// Converts one universal combat buff into ordinary raw AP gold for every character
-    /// configured by this slot. Each character can therefore redeem it independently on its
-    /// next run, through the same cursor and Poverty handling as all other AP gold.
+    /// Divides cumulative universal buff gold across the characters configured by this slot.
+    /// Only the increase in each character's whole-gold share is added for this receipt.
+    /// The resulting bank uses the same cursor and Poverty handling as all other AP gold.
     /// </summary>
-    public static void AddUniversalBuffGold(IDictionary<long, int> goldBank)
+    public static int AddUniversalBuffGold()
     {
-        foreach (long characterOffset in ArchipelagoClient.Settings.Characters.Values
-                     .Select(config => (long)config.CharOffset)
-                     .Distinct())
-        {
-            goldBank.TryGetValue(characterOffset, out int previous);
-            goldBank[characterOffset] = previous + UniversalBuffGoldValue;
-        }
+        var progress = ArchipelagoClient.Progress;
+        int amount = UniversalBuffGold.AddToBank(
+            progress.GoldReceived,
+            ArchipelagoClient.Settings.Characters.Values.Select(config => (long)config.CharOffset),
+            progress.UniversalBuffsConvertedToGold,
+            addedBuffCount: 1
+        );
+        progress.UniversalBuffsConvertedToGold++;
+        return amount;
     }
 
     /// <summary>Binds the host-owned per-player cursor to the launched local STS run.</summary>

@@ -465,6 +465,12 @@ namespace StS2AP.Models
         public Dictionary<long, int> GoldReceived { get; set; } = new Dictionary<long, int>();
 
         /// <summary>
+        /// Multiplayer receipt count used to divide cumulative buff gold without rounding each
+        /// item separately. Rebuilt with GoldReceived from AP history, not saved or reset per run.
+        /// </summary>
+        internal int UniversalBuffsConvertedToGold { get; set; }
+
+        /// <summary>
         /// The Gold you've redeemed so far this run
         /// </summary>
         public int GoldRedeemed { get; set; } = 0;
