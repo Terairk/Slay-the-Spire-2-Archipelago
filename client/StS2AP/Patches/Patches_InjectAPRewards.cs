@@ -407,8 +407,9 @@ namespace StS2AP.Patches
                     );
                 }
 
-                if (____currentRelics?.Count == 0)
-                    RunManager.Instance.TreasureRoomRelicSynchronizer.CompleteWithNoRelics();
+                // Do not complete an empty picker here. The native empty-chest animation calls
+                // CompleteWithNoRelics after the chest opens; completing it during room entry
+                // emits RelicsAwarded twice and completes the UI's TaskCompletionSource twice.
                 RelicReceiptMultiplayer.MarkPickerReady(runState);
             }
         }

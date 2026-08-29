@@ -13,6 +13,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.ScreenContext;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
+using StS2AP.Multiplayer;
 using StS2AP.Utils;
 
 namespace StS2AP.UI;
@@ -27,6 +28,8 @@ public static class ArchipelagoRewardUI
         "Multiplayer AP rewards can only be claimed outside combat.";
     private const string NativeChoiceBlockedMessage =
         "Finish the current card or relic selection before opening AP rewards.";
+    private const string TreasureRoomBlockedMessage =
+        "Wait until every player is ready to proceed before opening AP rewards.";
     private const string TravelBlockedMessage =
         "AP rewards are unavailable while traveling to another room.";
 
@@ -133,7 +136,8 @@ public static class ArchipelagoRewardUI
     {
         if (IsOpen || _opening)
             return;
-        if (TryBlockTravel() || TryBlockMultiplayerCombatOpen() || TryBlockNativeChoiceOpen())
+        if (TryBlockTravel() || TryBlockMultiplayerCombatOpen()
+            || TryBlockTreasureRoomOpen() || TryBlockNativeChoiceOpen())
             return;
 
         _opening = true;
@@ -146,7 +150,9 @@ public static class ArchipelagoRewardUI
 
     internal static bool CanBuildMenuAfterAwait(int apLifecycleVersion) =>
         Travel.CanOpen(apLifecycleVersion, RunManager.Instance.NetService.IsGameLoading)
-        && !TryBlockMultiplayerCombatOpen() && !TryBlockNativeChoiceOpen();
+        && !TryBlockMultiplayerCombatOpen()
+        && !TryBlockTreasureRoomOpen()
+        && !TryBlockNativeChoiceOpen();
 
     private static async Task OpenOnMainThread(int apLifecycleVersion)
     {
@@ -159,7 +165,9 @@ public static class ArchipelagoRewardUI
             // ShowRewards is deferred, so combat or a native choice can begin after the click-time
             // guard. Repeat both checks before OpenMenu creates a synchronized RewardsSet.
             if (apLifecycleVersion != Travel.ApLifecycleVersion || TryBlockTravel()
-                || TryBlockMultiplayerCombatOpen() || TryBlockNativeChoiceOpen())
+                || TryBlockMultiplayerCombatOpen()
+                || TryBlockTreasureRoomOpen()
+                || TryBlockNativeChoiceOpen())
                 return;
             PrepareForOpen();
             destinationPrepared = true;
@@ -305,7 +313,11 @@ public static class ArchipelagoRewardUI
             return false;
         }
 
-        ShowBlockedMessage(MultiplayerCombatBlockedMessage, blockedByCombat: true);
+        ShowBlockedMessage(
+            MultiplayerCombatBlockedMessage,
+            blockedByCombat: true,
+            includeInDevConsole: false
+        );
         return true;
     }
 
@@ -313,7 +325,11 @@ public static class ArchipelagoRewardUI
     {
         if (!IsTravelBlocked)
             return false;
-        ShowBlockedMessage(TravelBlockedMessage, blockedByCombat: false);
+        ShowBlockedMessage(
+            TravelBlockedMessage,
+            blockedByCombat: false,
+            includeInDevConsole: false
+        );
         return true;
     }
 
@@ -325,7 +341,33 @@ public static class ArchipelagoRewardUI
             return false;
         }
 
-        ShowBlockedMessage(NativeChoiceBlockedMessage, blockedByCombat: false);
+        ShowBlockedMessage(
+            NativeChoiceBlockedMessage,
+            blockedByCombat: false,
+            includeInDevConsole: false
+        );
+        return true;
+    }
+
+    private static bool TryBlockTreasureRoomOpen()
+    {
+        if (!MultiplayerSupport.IsRealMultiplayerRun || NRun.Instance?.TreasureRoom == null)
+            return false;
+        if (RunManager.Instance.DebugOnlyGetState() is RunState run
+            && RelicReceiptMultiplayer.IsTreasureProceedReadyForApMenu(run))
+        {
+            return false;
+        }
+
+        // TreasureRoom.DoExtraRewardsIfNeeded constructs one native RewardsSet per player.
+        // Different replicas can reach that construction several seconds apart, so inserting
+        // an AP RewardsSet anywhere in this room can give the same set ID different meanings.
+        ShowBlockedMessage(
+            TreasureRoomBlockedMessage,
+            blockedByCombat: false,
+            emphasized: true,
+            includeInDevConsole: false
+        );
         return true;
     }
 
@@ -336,15 +378,20 @@ public static class ArchipelagoRewardUI
             or NChooseABundleSelectionScreen
             or NChooseARelicSelection;
 
-    private static void ShowBlockedMessage(string message, bool blockedByCombat)
+    private static void ShowBlockedMessage(
+        string message,
+        bool blockedByCombat,
+        bool emphasized = false,
+        bool includeInDevConsole = true)
     {
+        bool useLargePresentation = blockedByCombat || emphasized;
         NotificationUtility.ShowRawText(
-            blockedByCombat ? $"[font_size=60]{message}[/font_size]" : message,
-            timeout: blockedByCombat ? 3.5 : 3.0,
-            priority: blockedByCombat
+            useLargePresentation ? $"[font_size=60]{message}[/font_size]" : message,
+            timeout: useLargePresentation ? 3.5 : 3.0,
+            priority: useLargePresentation
                 ? NotificationUtility.NotificationPriority.High
                 : NotificationUtility.NotificationPriority.Normal,
-            includeInDevConsole: !blockedByCombat
+            includeInDevConsole: includeInDevConsole
         );
     }
 

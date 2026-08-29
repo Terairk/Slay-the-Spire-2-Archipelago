@@ -44,4 +44,22 @@ public static class Patches_TreasureReceiptAgreement
             return false;
         }
     }
+
+    [HarmonyPatch(typeof(NTreasureRoom), "OpenChest")]
+    private static class PublishProceedReadiness
+    {
+        [HarmonyPostfix]
+        private static void Postfix(ref Task __result)
+        {
+            if (Enabled && RunManager.Instance.DebugOnlyGetState() is RunState run)
+                __result = AfterChestFinished(__result, run);
+        }
+
+        private static async Task AfterChestFinished(Task original, RunState run)
+        {
+            await original;
+            if (Enabled && ReferenceEquals(RunManager.Instance.DebugOnlyGetState(), run))
+                RelicReceiptMultiplayer.MarkLocalTreasureProceedReady(run);
+        }
+    }
 }

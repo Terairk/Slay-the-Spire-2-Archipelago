@@ -34,6 +34,15 @@ public static class RelicReceiptMultiplayer
         public List<int> BankedMenuIndexes { get; set; } = new();
     }
 
+    private sealed class TreasureProceedReady
+    {
+        public TreasureProceedReady() { }
+        public Guid RunId { get; set; }
+        public string RoomKey { get; set; } = string.Empty;
+        public ulong PlayerNetId { get; set; }
+        public bool AllPlayersReady { get; set; }
+    }
+
     private static readonly RitsuLibSidecarJsonSerializer<Request> RequestSerializer = new();
     private static readonly RitsuLibSidecarJsonSerializer<Reply> ReplySerializer = new();
     private static readonly RitsuLibSidecarMessageDescriptor<Request> RequestDescriptor = new(
@@ -42,13 +51,35 @@ public static class RelicReceiptMultiplayer
     private static readonly RitsuLibSidecarMessageDescriptor<Reply> ReplyDescriptor = new(
         ModEntry.ModId, "relic_receipt_decision_v1", ReplySerializer.Serialize,
         ReplySerializer.Deserialize, Required: true);
+    private static readonly RitsuLibSidecarJsonSerializer<TreasureProceedReady>
+        TreasureProceedReadySerializer = new();
+    private static readonly RitsuLibSidecarMessageDescriptor<TreasureProceedReady>
+        TreasureProceedReadyRequestDescriptor = new(
+            ModEntry.ModId,
+            "treasure_proceed_ready_request_v1",
+            TreasureProceedReadySerializer.Serialize,
+            TreasureProceedReadySerializer.Deserialize,
+            Required: true
+        );
+    private static readonly RitsuLibSidecarMessageDescriptor<TreasureProceedReady>
+        TreasureProceedReadyDecisionDescriptor = new(
+            ModEntry.ModId,
+            "treasure_proceed_ready_decision_v1",
+            TreasureProceedReadySerializer.Serialize,
+            TreasureProceedReadySerializer.Deserialize,
+            Required: true
+        );
     private static readonly Dictionary<Guid, TaskCompletionSource<Reply>> PendingMenus = new();
     private static readonly Dictionary<string, TaskCompletionSource> PendingChests = new();
     private static readonly HashSet<string> ReadyPickers = new();
     private static readonly HashSet<(string, ulong)> OpenedChests = new();
+    private static readonly Dictionary<string, HashSet<ulong>> ProceedReadyPlayers = new();
+    private static readonly HashSet<string> ProceedReadyRooms = new();
     private static TaskCompletionSource _decisionsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static IDisposable? _requestSubscription;
     private static IDisposable? _replySubscription;
+    private static IDisposable? _treasureProceedReadyRequestSubscription;
+    private static IDisposable? _treasureProceedReadyDecisionSubscription;
     private static int _runGeneration;
 
     public static void Initialize()
@@ -62,6 +93,26 @@ public static class RelicReceiptMultiplayer
                     && context.SenderNetId == host)
                     ApplyReply(context.Message);
             }));
+        _treasureProceedReadyRequestSubscription ??= RitsuLibSidecarTypedMessageRegistry.Subscribe(
+            TreasureProceedReadyRequestDescriptor,
+            context => Post(() => HandleTreasureProceedReady(
+                context.SenderNetId,
+                context.Message
+            ))
+        );
+        _treasureProceedReadyDecisionSubscription ??= RitsuLibSidecarTypedMessageRegistry.Subscribe(
+            TreasureProceedReadyDecisionDescriptor,
+            context => Post(() =>
+            {
+                if (BetaMainCompatibility.TryGetHostNetId(
+                        RunManager.Instance.NetService,
+                        out ulong host)
+                    && context.SenderNetId == host)
+                {
+                    ApplyTreasureProceedReady(context.Message);
+                }
+            })
+        );
     }
 
     public static void EndRun()
@@ -73,6 +124,8 @@ public static class RelicReceiptMultiplayer
         PendingChests.Clear();
         ReadyPickers.Clear();
         OpenedChests.Clear();
+        ProceedReadyPlayers.Clear();
+        ProceedReadyRooms.Clear();
         _decisionsChanged.TrySetCanceled();
         _decisionsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -96,7 +149,9 @@ public static class RelicReceiptMultiplayer
     }
 
     public static string RoomKey(RunState run) => $"chest:{run.CurrentActIndex}:{run.CurrentMapCoord}";
-    private static string WaitKey(RunState run) => $"{ApRunData.GetSharedState(run).RunId}:{RoomKey(run)}";
+    private static string WaitKey(Guid runId, string roomKey) => $"{runId}:{roomKey}";
+    private static string WaitKey(RunState run) =>
+        WaitKey(ApRunData.GetSharedState(run).RunId, RoomKey(run));
     public static ApRelicReceiptState State(RunState run) => ApRunData.GetSharedState(run).RelicReceipts;
 
     public static bool IsReserved(Player player, int index) =>
@@ -286,6 +341,92 @@ public static class RelicReceiptMultiplayer
         if (!OpenedChests.Add((WaitKey(run), player))) return false;
         ApRunData.ModifyRelicReceipts(run, state => state.Chests[RoomKey(run)].SettledPlayers.Add(player));
         return true;
+    }
+
+    public static void MarkLocalTreasureProceedReady(RunState run)
+    {
+        var ready = new TreasureProceedReady
+        {
+            RunId = ApRunData.GetSharedState(run).RunId,
+            RoomKey = RoomKey(run),
+            PlayerNetId = RunManager.Instance.NetService.NetId,
+        };
+        if (RunManager.Instance.NetService.Type == NetGameType.Host)
+        {
+            HandleTreasureProceedReady(ready.PlayerNetId, ready);
+            return;
+        }
+
+        if (!RitsuLibSidecarTypedMessageRegistry.SendToHost(
+                RunManager.Instance.NetService,
+                TreasureProceedReadyRequestDescriptor,
+                ready))
+        {
+            throw new InvalidOperationException(
+                "Could not report treasure proceed readiness to the host."
+            );
+        }
+    }
+
+    public static bool IsTreasureProceedReadyForApMenu(RunState run) =>
+        ProceedReadyRooms.Contains(WaitKey(run));
+
+    private static void HandleTreasureProceedReady(ulong sender, TreasureProceedReady ready)
+    {
+        if (RunManager.Instance.NetService.Type != NetGameType.Host
+            || sender != ready.PlayerNetId
+            || ready.AllPlayersReady
+            || !TryRun(ready.RunId, out RunState run)
+            || run.GetPlayer(sender) == null
+            || ready.RoomKey != RoomKey(run))
+        {
+            return;
+        }
+
+        string waitKey = WaitKey(ready.RunId, ready.RoomKey);
+        if (!ProceedReadyPlayers.TryGetValue(waitKey, out HashSet<ulong>? players))
+        {
+            players = new HashSet<ulong>();
+            ProceedReadyPlayers.Add(waitKey, players);
+        }
+        players.Add(sender);
+        if (ProceedReadyRooms.Contains(waitKey)
+            || run.Players.Any(player => !players.Contains(player.NetId)))
+        {
+            return;
+        }
+
+        var decision = new TreasureProceedReady
+        {
+            RunId = ready.RunId,
+            RoomKey = ready.RoomKey,
+            PlayerNetId = RunManager.Instance.NetService.NetId,
+            AllPlayersReady = true,
+        };
+        if (!RitsuLibSidecarTypedMessageRegistry.Broadcast(
+                RunManager.Instance.NetService,
+                TreasureProceedReadyDecisionDescriptor,
+                decision))
+        {
+            throw new InvalidOperationException(
+                "Could not publish treasure proceed readiness to every player."
+            );
+        }
+        ApplyTreasureProceedReady(decision);
+    }
+
+    private static void ApplyTreasureProceedReady(TreasureProceedReady ready)
+    {
+        if (!ready.AllPlayersReady
+            || !TryRun(ready.RunId, out RunState run)
+            || ready.RoomKey != RoomKey(run))
+        {
+            return;
+        }
+        ProceedReadyRooms.Add(WaitKey(ready.RunId, ready.RoomKey));
+        LogUtility.Info(
+            $"All replicas reached treasure Proceed; AP rewards are safe in {ready.RoomKey}."
+        );
     }
 
     public static void ReconcileProgress(RunState run, Player player, ApRunProgressState progress)
