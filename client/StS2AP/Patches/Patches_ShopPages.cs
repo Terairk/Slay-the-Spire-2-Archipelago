@@ -78,9 +78,14 @@ namespace StS2AP.Patches
                 __instance.SetMeta("StS2AP_ApPageSpawned", true);
 
                 _isSpawning = true;
+                NMerchantInventory? spawnedApPage = null;
+                Control? spawnedToApButton = null;
+                Control? spawnedToVanillaButton = null;
                 try
                 {
                     ShopPageUtility.Reset();
+                    _toApPageButton = null;
+                    _toVanillaButton = null;
 
                     string? scenePath = __instance.SceneFilePath;
                     if (string.IsNullOrEmpty(scenePath))
@@ -97,6 +102,7 @@ namespace StS2AP.Patches
                     }
 
                     NMerchantInventory apPage = scene.Instantiate<NMerchantInventory>();
+                    spawnedApPage = apPage;
                     __instance.GetParent().AddChildSafely(apPage);
                     apPage.Initialize(apInventory, dialogue);
 
@@ -118,7 +124,7 @@ namespace StS2AP.Patches
 
                     Node commonParent = __instance.GetParent();
 
-                    _toApPageButton = BuildNavButton(__instance, "AP Checks >", () =>
+                    _toApPageButton = spawnedToApButton = BuildNavButton(__instance, "AP Checks >", () =>
                     {
                         ShopPageUtility.ShowApPage();
                         SyncNavButtonsToFrontPage();
@@ -131,7 +137,7 @@ namespace StS2AP.Patches
                     commonParent.AddChildSafely(_toApPageButton);
                     _toApPageButton.Visible = false;
 
-                    _toVanillaButton = BuildNavButton(apPage, "< Shop", () =>
+                    _toVanillaButton = spawnedToVanillaButton = BuildNavButton(apPage, "< Shop", () =>
                     {
                         ShopPageUtility.ShowVanillaPage();
                         SyncNavButtonsToFrontPage();
@@ -149,9 +155,34 @@ namespace StS2AP.Patches
                     TaskHelper.RunSafely(ParkApPageOffscreen(__instance, apPage));
                     TaskHelper.RunSafely(PositionEdgeButtonsDeferred(__instance, commonParent, _toApPageButton, _toVanillaButton));
                 }
+                catch (System.Exception ex)
+                {
+                    // The AP page is optional presentation. Never let a duplicate-scene or
+                    // fake-entry failure abort NMerchantRoom._Ready and strand the run behind
+                    // the room-transition blackout.
+                    LogUtility.Error(
+                        "ShopPages: AP page initialization failed; removing the partial AP "
+                            + $"page and continuing with the vanilla shop. {ex}"
+                    );
+
+                    ShopPageUtility.Reset();
+                    QueueFreeIfValid(spawnedToApButton);
+                    QueueFreeIfValid(spawnedToVanillaButton);
+                    QueueFreeIfValid(spawnedApPage);
+                    _toApPageButton = null;
+                    _toVanillaButton = null;
+                }
                 finally
                 {
                     _isSpawning = false;
+                }
+            }
+
+            private static void QueueFreeIfValid(Node? node)
+            {
+                if (node != null && GodotObject.IsInstanceValid(node))
+                {
+                    node.QueueFreeSafely();
                 }
             }
 
