@@ -21,7 +21,7 @@ namespace StS2AP.Multiplayer;
 /// </summary>
 public static class ApRunData
 {
-    internal const int RunSchemaVersion = 8;
+    internal const int RunSchemaVersion = 9;
     private const string ProgressSnapshotMessageKey = "player_ap_progress_snapshot_v1";
     private const string ProgressDeltaMessageKey = "player_ap_progress_delta_v1";
     private static RunSavedData<ApRunSharedState> _sharedRun = null!;
@@ -128,6 +128,7 @@ public static class ApRunData
                 _ => true,
             },
             Progress = existing?.Progress ?? new ApRunProgressState(),
+            Construction = existing?.Construction ?? new ApReplicaConstructionState(),
             ProgressRevision = existing?.ProgressRevision ?? 0,
             ProgressiveStarters = existing?.ProgressiveStarters
                 ?? new ApProgressiveStarterPlayerState(),
@@ -356,6 +357,7 @@ public static class ApRunData
         if (!state.Progress.Initialized)
             return false;
 
+        EnsureConstructionInitialized(state, state.Progress);
         RelicReceiptMultiplayer.ReconcileProgress(runState, player, state.Progress);
         ArchipelagoClient.Progress = ArchipelagoProgress.FromRunProgressState(state.Progress, player);
         _lastPublishedLocalProgress = ArchipelagoClient.Progress.ToRunProgressState();
@@ -380,6 +382,7 @@ public static class ApRunData
         }
 
         ApRunProgressState snapshot = ArchipelagoClient.Progress.ToRunProgressState();
+        EnsureConstructionInitialized(state, snapshot);
         ApProgressDelta? delta = _lastPublishedLocalProgress == null
             ? null
             : ApProgressDelta.Between(_lastPublishedLocalProgress, snapshot);
@@ -529,10 +532,7 @@ public static class ApRunData
                 return;
             }
 
-            PreserveRegularCardRewardConstructionCounter(
-                state.Progress,
-                context.Message.Progress
-            );
+            EnsureConstructionInitialized(state, context.Message.Progress);
             state.Progress = context.Message.Progress;
             if (runState.GetPlayer(context.Message.OwnerNetId) is Player snapshotOwner)
                 RelicReceiptMultiplayer.ReconcileProgress(runState, snapshotOwner, state.Progress);
@@ -615,8 +615,8 @@ public static class ApRunData
                 return;
             }
 
+            EnsureConstructionInitialized(state, state.Progress);
             ApRunProgressState updatedProgress = context.Message.Delta.ApplyToCopy(state.Progress);
-            PreserveRegularCardRewardConstructionCounter(state.Progress, updatedProgress);
             state.Progress = updatedProgress;
             if (runState.GetPlayer(context.Message.OwnerNetId) is Player deltaOwner)
                 RelicReceiptMultiplayer.ReconcileProgress(runState, deltaOwner, state.Progress);
@@ -645,19 +645,19 @@ public static class ApRunData
             LogUtility.Error("Could not schedule the AP progress delta on the game main loop.");
     }
 
-    /// <summary>
-    /// Regular combat card rewards are constructed on every multiplayer process, so every process
-    /// advances this counter itself. An owner's live AP progress message already contains that same
-    /// advancement; applying it before local reward construction would count the reward twice.
-    /// The host-carried run snapshot establishes the initial/reconnect baseline before progress is
-    /// initialized, so only live updates to an initialized view preserve the local cursor.
-    /// </summary>
-    private static void PreserveRegularCardRewardConstructionCounter(
-        ApRunProgressState current,
-        ApRunProgressState incoming)
+    internal static ApReplicaConstructionState EnsureConstructionInitialized(
+        ApPlayerRunState state,
+        ApRunProgressState baseline)
     {
-        if (current.Initialized)
-            incoming.CardRewardsAttempted = current.CardRewardsAttempted;
+        state.Construction ??= new ApReplicaConstructionState();
+        state.Construction.EnsureInitialized(
+            baseline.CardRewardsAttempted,
+            baseline.RareCardRewardsAttempted,
+            baseline.GoldRewardsAttempted,
+            baseline.PotionRewardsAttempted,
+            baseline.MultiplayerBossCompensatedActs
+        );
+        return state.Construction;
     }
 
     private static bool TryGetProgressOwner(

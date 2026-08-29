@@ -1,7 +1,9 @@
 namespace StS2AP.Persistence;
 
 /// <summary>
-/// One player's canonical contribution, keyed by the MegaCrit Net ID retained across rejoin.
+/// One player's run contribution, keyed by the MegaCrit Net ID retained across rejoin. Progress
+/// is the owner's canonical view; Construction is the current process's independently advancing
+/// reward-construction cursor and the fixed host's reconnect baseline.
 /// </summary>
 public sealed class ApPlayerRunState
 {
@@ -15,6 +17,7 @@ public sealed class ApPlayerRunState
     public Dictionary<long, int> InitialProgressiveAncientsByCharacter { get; set; } = new();
     public bool ReceiptSourceReady { get; set; }
     public ApRunProgressState Progress { get; set; } = new();
+    public ApReplicaConstructionState Construction { get; set; } = new();
     public long ProgressRevision { get; set; }
     public ApProgressiveStarterPlayerState ProgressiveStarters { get; set; } = new();
 }

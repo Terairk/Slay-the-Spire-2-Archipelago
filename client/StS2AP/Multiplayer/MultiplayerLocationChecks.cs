@@ -78,17 +78,24 @@ public static class MultiplayerLocationChecks
         IncrementCounter(player, Counter.Potion);
 
     /// <summary>
-    /// Atomically marks one player's deterministic multiplayer boss compensation. The marker is
-    /// part of replicated run progress, so restoring a boss room cannot advance reward cursors twice.
+    /// Marks one player's deterministic boss compensation in this replica's construction state.
+    /// The local owner mirrors the marker into canonical progress for the next durable checkpoint.
     /// </summary>
     public static bool TryMarkBossCompensation(Player player, int act)
     {
         if (!MultiplayerSupport.IsRealMultiplayerRun || act is < 1 or > 3)
             return false;
-        if (IsLocalProgressOwner(player))
-            return ArchipelagoClient.Progress.MultiplayerBossCompensatedActs.Add(act);
-        return TryGetRemoteProgress(player, out ApRunProgressState progress)
-            && progress.MultiplayerBossCompensatedActs.Add(act);
+
+        bool localOwner = IsLocalProgressOwner(player);
+        if (!TryGetConstructionState(player, localOwner, out ApReplicaConstructionState construction)
+            || !construction.TryMarkBossCompensation(act))
+        {
+            return false;
+        }
+
+        if (localOwner)
+            ArchipelagoClient.Progress.MultiplayerBossCompensatedActs.Add(act);
+        return true;
     }
 
     public static int GetRelicRewardsAttempted(Player player)
@@ -102,7 +109,7 @@ public static class MultiplayerLocationChecks
 
     private static int IncrementCounter(Player player, Counter counter)
     {
-        if (!MultiplayerSupport.IsRealMultiplayerRun || IsLocalProgressOwner(player))
+        if (!MultiplayerSupport.IsRealMultiplayerRun)
         {
             return counter switch
             {
@@ -114,16 +121,69 @@ public static class MultiplayerLocationChecks
             };
         }
 
-        if (!TryGetRemoteProgress(player, out ApRunProgressState progress))
+        bool localOwner = IsLocalProgressOwner(player);
+        if (!TryGetConstructionState(player, localOwner, out ApReplicaConstructionState construction))
             return int.MaxValue;
-        return counter switch
+
+        int result = counter switch
         {
-            Counter.Card => ++progress.CardRewardsAttempted,
-            Counter.RareCard => ++progress.RareCardRewardsAttempted,
-            Counter.Gold => ++progress.GoldRewardsAttempted,
-            Counter.Potion => ++progress.PotionRewardsAttempted,
+            Counter.Card => construction.IncrementCardRewards(),
+            Counter.RareCard => construction.IncrementRareCardRewards(),
+            Counter.Gold => construction.IncrementGoldRewards(),
+            Counter.Potion => construction.IncrementPotionRewards(),
             _ => throw new ArgumentOutOfRangeException(nameof(counter)),
         };
+
+        if (localOwner)
+        {
+            switch (counter)
+            {
+                case Counter.Card:
+                    ArchipelagoClient.Progress.CardRewardsAttempted = result;
+                    break;
+                case Counter.RareCard:
+                    ArchipelagoClient.Progress.RareCardRewardsAttempted = result;
+                    break;
+                case Counter.Gold:
+                    ArchipelagoClient.Progress.GoldRewardsAttempted = result;
+                    break;
+                case Counter.Potion:
+                    ArchipelagoClient.Progress.PotionRewardsAttempted = result;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(counter));
+            }
+        }
+
+        return result;
+    }
+
+    private static bool TryGetConstructionState(
+        Player player,
+        bool localOwner,
+        out ApReplicaConstructionState construction)
+    {
+        if (player.RunState is RunState runState
+            && ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState state)
+            && state.Participation != ApParticipationKind.VanillaGuest)
+        {
+            ApRunProgressState baseline;
+            if (state.Progress.Initialized)
+                baseline = state.Progress;
+            else if (localOwner)
+                baseline = ArchipelagoClient.Progress.ToRunProgressState();
+            else
+            {
+                construction = null!;
+                return false;
+            }
+
+            construction = ApRunData.EnsureConstructionInitialized(state, baseline);
+            return true;
+        }
+
+        construction = null!;
+        return false;
     }
 
     internal static bool TryGetRemoteProgress(Player player, out ApRunProgressState progress)
