@@ -25,10 +25,9 @@
     <ModName Condition="'$(ModName)' == ''">ExampleMod</ModName>
     <ModDisplayName Condition="'$(ModDisplayName)' == ''">Example Mod</ModDisplayName>
     <ModAuthor Condition="'$(ModAuthor)' == ''">Unknown</ModAuthor>
-    <ModVersion Condition="'$(ModVersion)' == ''">1.0.0</ModVersion>
 
     <AssemblyName>$(ModName)</AssemblyName>
-    <Version>$(ModVersion)</Version>
+    <Version>1.0.1</Version>
 
     <!-- Build/deploy paths on the Windows build machine. -->
     <ModsOutputDir>$(STS2GamePath)\mods\$(ModName)</ModsOutputDir>
@@ -66,6 +65,11 @@
     <None Update="Archipelago.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <EmbeddedResource Include="Archipelago.json" LogicalName="StS2AP.Archipelago.json" />
+    <EmbeddedResource
+      Include="..\..\world\spire2\archipelago.json"
+      LogicalName="StS2AP.Spire2Archipelago.json"
+    />
   </ItemGroup>
 
   <!-- Create steam_appid.txt for Windows debugging outside Steam. -->
