@@ -1,30 +1,35 @@
 <#
 .SYNOPSIS
-  Update version across the Slay the Spire II Archipelago codebase.
+  Release independently versioned Slay the Spire II client and APWorld artifacts.
 
 .DESCRIPTION
-  Takes a version string (e.g., "alpha-0.2.1" or "0.3.0"), extracts the semver
-  part (major.minor.patch), and updates:
+  Takes separate mod and APWorld version strings, extracts each semver part
+  (major.minor.patch), and updates:
     - StS2AP.csproj:               ModVersion property
-        - local.props.template:        ModVersion property
-        - local.props (when present):  ModVersion property
+    - local.props.template:        ModVersion property
+    - local.props (when present):  ModVersion property
     - world/spire2/archipelago.json: world_version field
     - client/StS2AP/Archipelago.json: version field
     - world/spire2/world.py:       mod_compat_version field
 
-.PARAMETER Version
-  Version string to use. Can include a prefix (e.g., "alpha-0.2.1").
-  The semver (X.Y.Z) will be extracted.
+.PARAMETER ModVersion
+  Client/mod release version. This also names the Git tag and GitHub release.
+
+.PARAMETER APWorldVersion
+  APWorld release version. Change this only when publishing a new APWorld artifact;
+  client-only releases may keep the existing APWorld version.
 
 .EXAMPLE
-  .\scripts\release.ps1 -Version "0.3.0"
-  .\scripts\release.ps1 -Version "alpha-0.2.1"
-  .\scripts\release.ps1 -Version "alpha-0.2.1" -skipGitHub
+  .\scripts\release.ps1 -ModVersion "1.0.2" -APWorldVersion "1.0.0"
+  .\scripts\release.ps1 -ModVersion "1.1.0" -APWorldVersion "1.0.1" -skipGitHub
 #>
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$Version,
+    [string]$ModVersion,
+
+    [Parameter(Mandatory = $true)]
+    [string]$APWorldVersion,
 
     [switch]$skipGitHub
 )
@@ -59,15 +64,21 @@ $ReleasePaths = @(
     "world/spire2/world.py"
 )
 
-# Extract semver (X.Y.Z) from the input version string
-if ($Version -match '(\d+\.\d+\.\d+)') {
-    $SemVer = $matches[1]
-    Write-Host "Input version: $Version" -ForegroundColor Cyan
-    Write-Host "Extracted semver: $SemVer" -ForegroundColor Green
-} else {
-    Write-Error "Version '$Version' does not contain a valid semver pattern (X.Y.Z)"
+function Get-SemVer([string]$Label, [string]$InputVersion) {
+    if ($InputVersion -match '(\d+\.\d+\.\d+)') {
+        $result = $matches[1]
+        Write-Host "$Label input: $InputVersion" -ForegroundColor Cyan
+        Write-Host "$Label semver: $result" -ForegroundColor Green
+        return $result
+    }
+
+    Write-Error "$Label version '$InputVersion' does not contain a valid semver pattern (X.Y.Z)"
     exit 1
 }
+
+$ModSemVer = Get-SemVer "Mod" $ModVersion
+$APWorldSemVer = Get-SemVer "APWorld" $APWorldVersion
+$releaseCommitMessage = "release: mod $ModVersion, APWorld $APWorldVersion"
 
 # ~ Verify we are on the main branch ~
 Write-Host "`nChecking current branch..." -ForegroundColor Cyan
@@ -147,33 +158,33 @@ if ($localHead -eq $releaseBaseCommit) {
     $localCommitPaths = @(git -C $RepoRoot diff-tree --no-commit-id --name-only -r HEAD)
     if ($LASTEXITCODE -ne 0 -or
         $localParent -ne $releaseBaseCommit -or
-        $localSubject -ne $Version -or
+        $localSubject -ne $releaseCommitMessage -or
         $localCommitPaths.Count -eq 0 -or
         $unexpectedLocalCommitPaths.Count -gt 0) {
-        Write-Error "Local HEAD is neither $ReleaseRemote/main nor the controlled '$Version' version-only commit based directly on it. Local-only commits will not be published."
+        Write-Error "Local HEAD is neither $ReleaseRemote/main nor the controlled '$releaseCommitMessage' version-only commit based directly on it. Local-only commits will not be published."
         exit 1
     }
     $resumingRelease = $true
     Write-Host "  Resuming controlled release commit: $localHead" -ForegroundColor Yellow
 }
 
-git -C $RepoRoot show-ref --verify --quiet "refs/tags/$Version"
+git -C $RepoRoot show-ref --verify --quiet "refs/tags/$ModVersion"
 if ($LASTEXITCODE -eq 0) {
-    $localTagCommit = git -C $RepoRoot rev-parse "refs/tags/$Version^{commit}" 2>&1
+    $localTagCommit = git -C $RepoRoot rev-parse "refs/tags/$ModVersion^{commit}" 2>&1
     if (-not $resumingRelease -or $LASTEXITCODE -ne 0 -or $localTagCommit -ne $localHead) {
-        Write-Error "Local tag '$Version' already exists but does not identify the verified resumable release commit."
+        Write-Error "Local tag '$ModVersion' already exists but does not identify the verified resumable release commit."
         exit 1
     }
-    Write-Host "  Reusing local tag '$Version' at the verified release commit." -ForegroundColor Yellow
+    Write-Host "  Reusing local tag '$ModVersion' at the verified release commit." -ForegroundColor Yellow
 }
 
-git -C $RepoRoot ls-remote --exit-code --tags $ReleaseRemote "refs/tags/$Version" | Out-Null
+git -C $RepoRoot ls-remote --exit-code --tags $ReleaseRemote "refs/tags/$ModVersion" | Out-Null
 $remoteTagExit = $LASTEXITCODE
 if ($remoteTagExit -eq 0) {
-    Write-Error "Tag '$Version' already exists in $ReleaseRepo."
+    Write-Error "Tag '$ModVersion' already exists in $ReleaseRepo."
     exit 1
 } elseif ($remoteTagExit -ne 2) {
-    Write-Error "Failed to check whether tag '$Version' exists in $ReleaseRepo (exit code $remoteTagExit)."
+    Write-Error "Failed to check whether tag '$ModVersion' exists in $ReleaseRepo (exit code $remoteTagExit)."
     exit 1
 }
 
@@ -200,7 +211,7 @@ if (-not (Test-Path $csprojPath)) {
 }
 $csprojContent = Get-Content $csprojPath -Raw
 $csprojPattern = '<ModVersion Condition=".*?">[^<]*</ModVersion>'
-$csprojReplacement = "<ModVersion Condition=`"'`$(ModVersion)' == ''`">$SemVer</ModVersion>"
+$csprojReplacement = "<ModVersion Condition=`"'`$(ModVersion)' == ''`">$ModSemVer</ModVersion>"
 $csprojNew = $csprojContent -replace $csprojPattern, $csprojReplacement
 if ($csprojNew -ne $csprojContent) {
     Set-Utf8NoBomContent -Path $csprojPath -Content $csprojNew
@@ -219,7 +230,7 @@ if (-not (Test-Path $localPropsTemplatePath)) {
 }
 $localPropsTemplateContent = Get-Content $localPropsTemplatePath -Raw
 $localPropsTemplatePattern = '<ModVersion>[^<]*</ModVersion>'
-$localPropsTemplateReplacement = "<ModVersion>$SemVer</ModVersion>"
+$localPropsTemplateReplacement = "<ModVersion>$ModSemVer</ModVersion>"
 $localPropsTemplateNew = $localPropsTemplateContent -replace $localPropsTemplatePattern, $localPropsTemplateReplacement
 if ($localPropsTemplateNew -ne $localPropsTemplateContent) {
     Set-Utf8NoBomContent -Path $localPropsTemplatePath -Content $localPropsTemplateNew
@@ -237,7 +248,7 @@ if (-not (Test-Path $localPropsPath)) {
 } else {
     $localPropsContent = Get-Content $localPropsPath -Raw
     $localPropsPattern = '<ModVersion>[^<]*</ModVersion>'
-    $localPropsReplacement = "<ModVersion>$SemVer</ModVersion>"
+    $localPropsReplacement = "<ModVersion>$ModSemVer</ModVersion>"
     $localPropsNew = $localPropsContent -replace $localPropsPattern, $localPropsReplacement
     if ($localPropsNew -ne $localPropsContent) {
         Set-Utf8NoBomContent -Path $localPropsPath -Content $localPropsNew
@@ -257,7 +268,7 @@ if (-not (Test-Path $worldJsonPath)) {
 }
 $worldJsonContent = Get-Content $worldJsonPath -Raw
 $worldJsonPattern = '"world_version"\s*:\s*"[^"]+"'
-$worldJsonReplacement = "`"world_version`": `"$SemVer`""
+$worldJsonReplacement = "`"world_version`": `"$APWorldSemVer`""
 $worldJsonNew = $worldJsonContent -replace $worldJsonPattern, $worldJsonReplacement
 if ($worldJsonNew -ne $worldJsonContent) {
     Set-Utf8NoBomContent -Path $worldJsonPath -Content $worldJsonNew
@@ -276,7 +287,7 @@ if (-not (Test-Path $clientJsonPath)) {
 }
 $clientJsonContent = Get-Content $clientJsonPath -Raw
 $clientJsonPattern = '"version"\s*:\s*"[^"]+"'
-$clientJsonReplacement = "`"version`": `"$SemVer`""
+$clientJsonReplacement = "`"version`": `"$ModSemVer`""
 $clientJsonNew = $clientJsonContent -replace $clientJsonPattern, $clientJsonReplacement
 if ($clientJsonNew -ne $clientJsonContent) {
     Set-Utf8NoBomContent -Path $clientJsonPath -Content $clientJsonNew
@@ -295,7 +306,7 @@ if (-not (Test-Path $worldPyPath)) {
 }
 $worldPyContent = Get-Content $worldPyPath -Raw
 $worldPyPattern = '(mod_compat_version\s*=\s*")[^"]+"'
-$worldPyReplacement = "`${1}$SemVer`""
+$worldPyReplacement = "`${1}$APWorldSemVer`""
 $worldPyNew = $worldPyContent -replace $worldPyPattern, $worldPyReplacement
 if ($worldPyNew -ne $worldPyContent) {
     Set-Utf8NoBomContent -Path $worldPyPath -Content $worldPyNew
@@ -306,10 +317,10 @@ if ($worldPyNew -ne $worldPyContent) {
     Write-Warning "  No match found in world/spire2/world.py"
 }
 
-# ~ Commit version bump ~
+# ~ Commit independent version updates ~
 # Stage only the files we just modified and create a commit titled with the version.
 # This commit will be used as the tagged commit for the release.
-Write-Host "`nCommitting version bump..." -ForegroundColor Cyan
+Write-Host "`nCommitting version updates..." -ForegroundColor Cyan
 git -C $RepoRoot add `
     "client/StS2AP/StS2AP.csproj" `
     "client/StS2AP/local.props.template" `
@@ -326,13 +337,12 @@ $gitDiffExit = $LASTEXITCODE
 if ($gitDiffExit -eq 0) {
     Write-Host "  Version already committed; using current HEAD." -ForegroundColor Yellow
 } elseif ($gitDiffExit -eq 1) {
-    git -C $RepoRoot commit --message $Version
+    git -C $RepoRoot commit --message $releaseCommitMessage
     $gitCommitExit = $LASTEXITCODE
     if ($gitCommitExit -ne 0) {
         Write-Error "git commit failed (exit code $gitCommitExit)."
         exit 1
     }
-
     $commitParent = git -C $RepoRoot rev-parse HEAD^ 2>&1
     if ($LASTEXITCODE -ne 0 -or $commitParent -ne $releaseBaseCommit) {
         Write-Error "The version commit is not based directly on the verified $ReleaseRemote/main commit. Nothing has been pushed."
@@ -343,7 +353,7 @@ if ($gitDiffExit -eq 0) {
         Write-Error "The version commit contains unexpected paths: $($unexpectedCommitPaths -join ', '). Nothing has been pushed."
         exit 1
     }
-    Write-Host "  Committed: $Version" -ForegroundColor Green
+    Write-Host "  Committed: $releaseCommitMessage" -ForegroundColor Green
 } else {
     Write-Error "git diff failed (exit code $gitDiffExit)."
     exit 1
@@ -484,49 +494,49 @@ if (-not (Test-Path $apworldPath)) {
 }
 
 # ~ Tag the version commit ~
-# Tag HEAD (the version-bump commit we just created) with the release version,
+# Tag HEAD (the version-update commit we just created) with the mod release version,
 # or reuse the verified tag from an interrupted release run.
-git -C $RepoRoot show-ref --verify --quiet "refs/tags/$Version"
+git -C $RepoRoot show-ref --verify --quiet "refs/tags/$ModVersion"
 if ($LASTEXITCODE -eq 0) {
-    $localTagCommit = git -C $RepoRoot rev-parse "refs/tags/$Version^{commit}" 2>&1
+    $localTagCommit = git -C $RepoRoot rev-parse "refs/tags/$ModVersion^{commit}" 2>&1
     $currentHead = git -C $RepoRoot rev-parse HEAD 2>&1
     if ($LASTEXITCODE -ne 0 -or $localTagCommit -ne $currentHead) {
-        Write-Error "Existing local tag '$Version' does not point to the verified release commit."
+        Write-Error "Existing local tag '$ModVersion' does not point to the verified release commit."
         exit 1
     }
-    Write-Host "  Reusing existing local tag: $Version" -ForegroundColor Yellow
+    Write-Host "  Reusing existing local tag: $ModVersion" -ForegroundColor Yellow
 } else {
-    git -C $RepoRoot tag $Version HEAD
+    git -C $RepoRoot tag $ModVersion HEAD
     $gitTagExit = $LASTEXITCODE
     if ($gitTagExit -ne 0) {
         Write-Error "git tag failed (exit code $gitTagExit)."
         exit 1
     }
-    Write-Host "  Tagged HEAD as: $Version" -ForegroundColor Green
+    Write-Host "  Tagged HEAD as: $ModVersion" -ForegroundColor Green
 }
 
 if ($skipGitHub) {
     Write-Host "`nSkipping GitHub push and release (-skipGitHub specified)." -ForegroundColor Yellow
-    Write-Host "  Commit and tag '$Version' created locally only." -ForegroundColor Yellow
+    Write-Host "  Commit and tag '$ModVersion' created locally only." -ForegroundColor Yellow
 } else {
     # ~ Push only the release tag, then create the GitHub Release. The tag
     # carries the controlled version-only commit while protected main remains
     # unchanged. ~
     Write-Host "`nPushing release tag to GitHub..." -ForegroundColor Cyan
 
-    git -C $RepoRoot push $ReleaseRemote "refs/tags/$Version"
+    git -C $RepoRoot push $ReleaseRemote "refs/tags/$ModVersion"
     $gitPushTagExit = $LASTEXITCODE
     if ($gitPushTagExit -ne 0) {
         Write-Error "git push tag failed (exit code $gitPushTagExit)."
         exit 1
     }
-    Write-Host "  Pushed: tag $Version" -ForegroundColor Green
+    Write-Host "  Pushed: tag $ModVersion" -ForegroundColor Green
 
     # ~ Create GitHub Release ~
     Write-Host "`nCreating GitHub release..." -ForegroundColor Cyan
 
     # Generate release notes from template
-    $releaseNotes = (Get-Content $templatePath -Raw) -replace '\{\{VERSION\}\}', $Version
+    $releaseNotes = (Get-Content $templatePath -Raw) -replace '\{\{VERSION\}\}', $ModVersion
 
     $releaseNotesFile = Join-Path $env:TEMP "sts2-release-notes-$(Get-Random).md"
     Set-Utf8NoBomContent -Path $releaseNotesFile -Content $releaseNotes
@@ -542,14 +552,14 @@ if ($skipGitHub) {
         }
 
         # Create the release
-        gh release create $Version @assetArgs --repo $ReleaseRepo --title $Version --notes-file $releaseNotesFile --latest
+        gh release create $ModVersion @assetArgs --repo $ReleaseRepo --title $ModVersion --notes-file $releaseNotesFile --latest
         $ghReleaseExit = $LASTEXITCODE
         if ($ghReleaseExit -ne 0) {
             Write-Error "GitHub release creation failed for $ReleaseRepo (exit code $ghReleaseExit)."
             exit 1
         }
 
-        Write-Host "  Release '$Version' created in $ReleaseRepo and marked as latest." -ForegroundColor Green
+        Write-Host "  Release '$ModVersion' created in $ReleaseRepo and marked as latest." -ForegroundColor Green
         Write-Host "  Don't forget to update the Changelist in the release notes on GitHub!" -ForegroundColor Yellow
     } finally {
         Remove-Item $releaseNotesFile -ErrorAction SilentlyContinue
