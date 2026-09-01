@@ -44,8 +44,11 @@ namespace StS2AP
         public const int SupportedCompatFlag = 1;
 
         private const string ModManifestResourceName = "StS2AP.Archipelago.json";
+        private const string ApWorldManifestResourceName = "StS2AP.Spire2Archipelago.json";
         private static readonly Lazy<System.Version> ModManifestVersion =
             new(ReadModManifestVersion);
+        private static readonly Lazy<System.Version> BundledApWorldManifestVersion =
+            new(ReadBundledApWorldManifestVersion);
 
         /// <summary>
         /// The version of the Archipelago Mod (semantic version: major.minor.patch)
@@ -608,8 +611,9 @@ namespace StS2AP
                     return;
                 }
 
-                System.Version clientVersion = GetClientSemanticVersion();
+                System.Version bundledApWorldVersion = BundledApWorldManifestVersion.Value;
                 LogUtility.Info($"APWorld Version: v{apWorldVersion}");
+                LogUtility.Info($"Bundled APWorld Version: v{bundledApWorldVersion}");
                 LogUtility.Info($"Client Version: {Version}");
                 LogUtility.Info(
                     $"APWorld CompatFlag: {apWorldCompatFlag}; client CompatFlag: {SupportedCompatFlag}"
@@ -625,24 +629,18 @@ namespace StS2AP
                     return;
                 }
 
-                int majorMinorComparison = CompareMajorMinor(clientVersion, apWorldVersion);
-                if (majorMinorComparison < 0)
-                {
-                    RejectIncompatibleConnection(
-                        $"This APWorld is v{apWorldVersion}, but this client is {Version}. "
-                            + "Update the mod before connecting to this newer APWorld.",
-                        wasAutomaticReconnect
-                    );
-                    return;
-                }
-
                 Settings = GetPlayerSettings();
 
-                if (majorMinorComparison > 0)
+                int apWorldAgeComparison = CompareMajorMinor(
+                    bundledApWorldVersion,
+                    apWorldVersion
+                );
+                if (apWorldAgeComparison > 0)
                 {
                     string warning =
-                        $"Client {Version} supports APWorld v{apWorldVersion} through CompatFlag "
-                            + $"{SupportedCompatFlag}, but updating the APWorld is recommended.";
+                        $"The server's APWorld v{apWorldVersion} is older than the bundled APWorld "
+                            + $"v{bundledApWorldVersion}. CompatFlag {SupportedCompatFlag} still matches, "
+                            + "but updating the APWorld is recommended.";
                     LogUtility.Warn(warning);
 
                     if (wasAutomaticReconnect)
@@ -658,7 +656,7 @@ namespace StS2AP
 
                     var warningBody = new LocString("main_menu_ui", "APWORLD_OLDER.body");
                     warningBody.Add("server", $"v{apWorldVersion}");
-                    warningBody.Add("client", Version);
+                    warningBody.Add("bundled", $"v{bundledApWorldVersion}");
                     var popup = new ConfirmPopup
                     {
                         Header = new LocString("main_menu_ui", "APWORLD_OLDER.header"),
@@ -744,17 +742,36 @@ namespace StS2AP
 
         private static System.Version GetClientSemanticVersion() => ModManifestVersion.Value;
 
-        private static System.Version ReadModManifestVersion()
+        private static System.Version ReadModManifestVersion() => ReadEmbeddedSemanticVersion(
+            ModManifestResourceName,
+            "version",
+            "mod manifest"
+        );
+
+        private static System.Version ReadBundledApWorldManifestVersion() =>
+            ReadEmbeddedSemanticVersion(
+                ApWorldManifestResourceName,
+                "world_version",
+                "bundled APWorld manifest"
+            );
+
+        private static System.Version ReadEmbeddedSemanticVersion(
+            string resourceName,
+            string propertyName,
+            string manifestLabel
+        )
         {
             using Stream stream = typeof(ArchipelagoClient).Assembly.GetManifestResourceStream(
-                ModManifestResourceName
+                resourceName
             ) ?? throw new InvalidDataException(
-                $"Embedded mod manifest '{ModManifestResourceName}' was not found."
+                $"Embedded {manifestLabel} '{resourceName}' was not found."
             );
             using JsonDocument manifest = JsonDocument.Parse(stream);
-            if (!manifest.RootElement.TryGetProperty("version", out JsonElement versionElement))
+            if (!manifest.RootElement.TryGetProperty(propertyName, out JsonElement versionElement))
             {
-                throw new InvalidDataException("Embedded mod manifest has no version field.");
+                throw new InvalidDataException(
+                    $"Embedded {manifestLabel} has no {propertyName} field."
+                );
             }
 
             string? versionText = versionElement.GetString();
@@ -763,7 +780,7 @@ namespace StS2AP
                 || version.Build < 0)
             {
                 throw new InvalidDataException(
-                    $"Embedded mod manifest version '{versionText}' is not semantic X.Y.Z."
+                    $"Embedded {manifestLabel} version '{versionText}' is not semantic X.Y.Z."
                 );
             }
             return version;
