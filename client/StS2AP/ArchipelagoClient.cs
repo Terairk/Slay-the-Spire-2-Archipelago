@@ -567,6 +567,10 @@ namespace StS2AP
         {
             LogUtility.Success("Successfully Connected to Archipelago Server");
 
+            // Bind durable external effects only after login has authenticated the exact room,
+            // team, and slot represented by this session.
+            PendingCheckUtility.BindAuthenticatedSession(Session, ServerAddress, Seed);
+
             // Restore checked locations from server so "Claimed" state survives restarts
             CheckedLocations = new List<long>(Session.Locations.AllLocationsChecked);
             LogUtility.Info(
