@@ -35,7 +35,7 @@ public static class Patches_LastingCandy
         AccessTools.DeclaredMethod(typeof(LastingCandy), "BeforeCombatRewardOffered");
 
     private static readonly PropertyInfo? s_rewardCountProperty =
-        AccessTools.Property(typeof(LastingCandy), nameof(LastingCandy.CombatsSeen))
+        AccessTools.Property(typeof(LastingCandy), "CombatsSeen")
         ?? AccessTools.Property(typeof(LastingCandy), "CombatRewardsSeen");
 
     private static readonly MethodInfo? s_invokeDisplayAmountChangedMethod =
