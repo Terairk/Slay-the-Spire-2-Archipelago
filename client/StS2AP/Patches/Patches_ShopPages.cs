@@ -37,6 +37,11 @@ namespace StS2AP.Patches
         private static readonly MethodInfo? CloseInventoryMethod =
             AccessTools.Method(typeof(NMerchantInventory), "Close");
 
+        private const string ApNavIconPath = "res://images/APIcon.png";
+        private static readonly Color ApNavArrowColor = new("62D68B");
+        private static readonly Color ShopNavArrowColor = new("86B8CC");
+        private static Texture2D? _apNavIconTexture;
+
         private static Control? _toApPageButton;
         private static Control? _toVanillaButton;
         private static bool _isCoordinatingClose;
@@ -121,6 +126,7 @@ namespace StS2AP.Patches
 
                     if (_toApPageButton is NBackButton apRealButton)
                     {
+                        ConfigureApNavArtwork(apRealButton);
                         FlipButtonArtwork(apRealButton);
                     }
                     commonParent.AddChildSafely(_toApPageButton);
@@ -131,6 +137,10 @@ namespace StS2AP.Patches
                         ShopPageUtility.ShowVanillaPage();
                         SyncNavButtonsToFrontPage();
                     });
+                    if (_toVanillaButton is NBackButton shopRealButton)
+                    {
+                        TintNavButton(shopRealButton, ShopNavArrowColor, "shop");
+                    }
                     commonParent.AddChildSafely(_toVanillaButton);
                     _toVanillaButton.Visible = false;
 
@@ -305,6 +315,52 @@ namespace StS2AP.Patches
                         LogUtility.Error($"ShopPages: couldn't find '{childName}' on the AP-checks button to flip, it may render pointing the wrong way.");
                     }
                 }
+            }
+
+            /// <summary>
+            /// Keeps the native arrow, hover outline, focus handling, and slide animation while
+            /// making the AP destination unmistakable with a green arrow and AP flower badge.
+            /// </summary>
+            private static void ConfigureApNavArtwork(NBackButton button)
+            {
+                if (!TintNavButton(button, ApNavArrowColor, "AP checks"))
+                {
+                    return;
+                }
+
+                _apNavIconTexture ??= ResourceLoader.Load<Texture2D>(
+                    ApNavIconPath,
+                    null,
+                    ResourceLoader.CacheMode.Reuse);
+                if (_apNavIconTexture == null)
+                {
+                    LogUtility.Error($"ShopPages: failed to load AP navigation icon at {ApNavIconPath}.");
+                    return;
+                }
+
+                var apIcon = new TextureRect
+                {
+                    Name = "ArchipelagoShopNavIcon",
+                    Texture = _apNavIconTexture,
+                    Position = new Vector2(74f, 29f),
+                    Size = new Vector2(52f, 52f),
+                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                    MouseFilter = Control.MouseFilterEnum.Ignore,
+                };
+                button.AddChildSafely(apIcon);
+            }
+
+            private static bool TintNavButton(NBackButton button, Color tint, string destination)
+            {
+                if (button.GetNodeOrNull<Control>("Image") is not Control image)
+                {
+                    LogUtility.Error($"ShopPages: couldn't find 'Image' on the {destination} navigation button, so its tint was not applied.");
+                    return false;
+                }
+
+                image.SelfModulate = tint;
+                return true;
             }
         }
 
