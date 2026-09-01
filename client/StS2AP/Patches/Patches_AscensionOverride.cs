@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Models;
+using StS2AP.Models;
 
 namespace StS2AP.Patches
 {
@@ -185,8 +186,41 @@ namespace StS2AP.Patches
                 return;
             }
 
-            levelLabel.SetTextAutoSize(config.Ascension.Count.ToString());
+            levelLabel.SetTextAutoSize(CountEffectiveAscensions(config).ToString());
             panel.Visible = true;
+        }
+
+        private static int CountEffectiveAscensions(CharacterConfig config)
+        {
+            var ascensionManager = ArchipelagoClient.Progress.Ascensions;
+            var effectiveAscensions = new HashSet<AscensionLevel>();
+            foreach (var configuredAscension in config.Ascension)
+            {
+                var level = ascensionManager.GetLevel(configuredAscension);
+                if (level.HasValue)
+                {
+                    effectiveAscensions.Add(level.Value);
+                }
+            }
+
+            foreach (var receivedItem in ArchipelagoClient.Progress.AllReceivedItems)
+            {
+                var item = receivedItem.Item;
+                if (item.GetCharacterOffset() != config.CharOffset)
+                {
+                    continue;
+                }
+
+                var itemId = item.GetCharacterSpecificItemID();
+                if ((int)itemId < 19 || (int)itemId > 28)
+                {
+                    continue;
+                }
+
+                effectiveAscensions.Remove(ascensionManager.ToAscensionLevel(itemId));
+            }
+
+            return effectiveAscensions.Count;
         }
 
         /// <summary>
