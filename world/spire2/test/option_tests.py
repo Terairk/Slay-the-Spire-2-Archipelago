@@ -7,10 +7,10 @@ from worlds.spire2.test import Spire2TestBase
 
 
 class TestOptionDefaults(Spire2TestBase):
-    def test_slot_data_schema_version_is_sent(self):
+    def test_compat_flag_is_sent(self):
         self.assertEqual(
-            SlayTheSpire2World.slot_data_version,
-            self.world.fill_slot_data()["slot_data_version"],
+            SlayTheSpire2World.compat_flag,
+            self.world.fill_slot_data()["CompatFlag"],
         )
 
     def test_unlocked_character_default_is_a_named_choice(self):

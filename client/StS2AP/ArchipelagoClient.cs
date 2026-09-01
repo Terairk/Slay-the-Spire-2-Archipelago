@@ -37,10 +37,10 @@ namespace StS2AP
     public static class ArchipelagoClient
     {
         /// <summary>
-        /// Highest slot-data contract understood by this client. Release versions are allowed
-        /// to differ independently when they use a compatible schema.
+        /// Slot-data contract supported by this client. Increment only when a future client can
+        /// no longer safely consume worlds using the previous contract.
         /// </summary>
-        public const int SupportedSlotDataVersion = 1;
+        public const int SupportedCompatFlag = 1;
 
         /// <summary>
         /// The version of the Archipelago Mod (semantic version: major.minor.patch)
@@ -595,52 +595,88 @@ namespace StS2AP
                     LogUtility.Info($"VAL: {kvp.Value.ToString()}");
                 }
 
-                string apWorldVersion = SlotData.TryGetValue(
-                    "mod_compat_version",
-                    out object? apWorldVersionValue)
-                        ? Convert.ToString(apWorldVersionValue) ?? "unknown"
-                        : "unknown";
-                int apWorldSlotDataVersion = ResolveSlotDataVersion(
-                    apWorldVersion,
-                    out string? schemaWarning
-                );
+                if (!TryReadApWorldCompatibility(
+                        out System.Version apWorldVersion,
+                        out int apWorldCompatFlag,
+                        out string compatibilityError
+                    ))
+                {
+                    RejectIncompatibleConnection(compatibilityError, wasAutomaticReconnect);
+                    return;
+                }
+
+                System.Version clientVersion = GetClientSemanticVersion();
                 LogUtility.Info($"APWorld Version: v{apWorldVersion}");
                 LogUtility.Info($"Client Version: {Version}");
                 LogUtility.Info(
-                    $"APWorld slot-data schema: {apWorldSlotDataVersion}; "
-                        + $"client supports: {SupportedSlotDataVersion}"
+                    $"APWorld CompatFlag: {apWorldCompatFlag}; client CompatFlag: {SupportedCompatFlag}"
                 );
 
-                if (schemaWarning != null
-                    || apWorldSlotDataVersion > SupportedSlotDataVersion)
+                if (apWorldCompatFlag != SupportedCompatFlag)
                 {
-                    string warning = schemaWarning
-                        ?? $"This APWorld uses slot-data schema {apWorldSlotDataVersion}, but "
-                            + $"this client supports through schema {SupportedSlotDataVersion}. "
-                            + "Continuing anyway; a crash or incorrect behavior is possible.";
-                    LogUtility.Warn(warning);
-                    NotificationUtility.ShowRawText(
-                        warning,
-                        timeout: 8.0,
-                        priority: NotificationUtility.NotificationPriority.High
+                    RejectIncompatibleConnection(
+                        $"Incompatible APWorld contract: the APWorld uses CompatFlag "
+                            + $"{apWorldCompatFlag}, but this client requires {SupportedCompatFlag}.",
+                        wasAutomaticReconnect
                     );
-                }
-                else if (!string.Equals(
-                             $"v{apWorldVersion}",
-                             Version,
-                             StringComparison.OrdinalIgnoreCase))
-                {
-                    LogUtility.Info(
-                        $"Release versions differ (APWorld v{apWorldVersion}, client {Version}), "
-                            + "but their slot-data schema is compatible."
-                    );
+                    return;
                 }
 
-                // Compatibility is advisory: attempt to parse and connect even when the world
-                // advertises a newer schema. The warning above is intentionally nonmodal.
+                int majorMinorComparison = CompareMajorMinor(clientVersion, apWorldVersion);
+                if (majorMinorComparison < 0)
+                {
+                    RejectIncompatibleConnection(
+                        $"This APWorld is v{apWorldVersion}, but this client is {Version}. "
+                            + "Update the mod before connecting to this newer APWorld.",
+                        wasAutomaticReconnect
+                    );
+                    return;
+                }
+
                 Settings = GetPlayerSettings();
 
-                outText = $"Successfully connected to {ServerAddress} as {PlayerName}!";
+                if (majorMinorComparison > 0)
+                {
+                    string warning =
+                        $"Client {Version} supports APWorld v{apWorldVersion} through CompatFlag "
+                            + $"{SupportedCompatFlag}, but updating the APWorld is recommended.";
+                    LogUtility.Warn(warning);
+
+                    if (wasAutomaticReconnect)
+                    {
+                        NotificationUtility.ShowRawText(
+                            warning,
+                            timeout: 8.0,
+                            priority: NotificationUtility.NotificationPriority.High
+                        );
+                        OnConnected();
+                        return;
+                    }
+
+                    var warningBody = new LocString("main_menu_ui", "APWORLD_OLDER.body");
+                    warningBody.Add("server", $"v{apWorldVersion}");
+                    warningBody.Add("client", Version);
+                    var popup = new ConfirmPopup
+                    {
+                        Header = new LocString("main_menu_ui", "APWORLD_OLDER.header"),
+                        Body = warningBody,
+                        ButtonPressed = continueConnecting =>
+                        {
+                            if (continueConnecting)
+                                OnConnected();
+                            else
+                                RejectIncompatibleConnection(
+                                    "Connection cancelled. Update the APWorld before trying again."
+                                );
+                        },
+                    };
+
+                    ArchipelagoConnectionUI.Hide();
+                    popup.Show();
+                    return;
+                }
+
+                // Patch-only differences within one major/minor line are intentionally silent.
                 OnConnected();
             }
             else
@@ -660,42 +696,84 @@ namespace StS2AP
             }
         }
 
-        private static int ResolveSlotDataVersion(
-            string apWorldReleaseVersion,
-            out string? warning)
+        private static bool TryReadApWorldCompatibility(
+            out System.Version apWorldVersion,
+            out int compatFlag,
+            out string error
+        )
         {
-            warning = null;
-            if (SlotData.TryGetValue("slot_data_version", out object? value))
+            apWorldVersion = new System.Version(0, 0, 0);
+            compatFlag = SupportedCompatFlag;
+            error = string.Empty;
+
+            if (!SlotData.TryGetValue("mod_compat_version", out object? versionValue)
+                || !System.Version.TryParse(
+                    Convert.ToString(versionValue)?.TrimStart('v', 'V'),
+                    out System.Version? parsedVersion
+                )
+                || parsedVersion == null)
             {
-                try
-                {
-                    int version = Convert.ToInt32(value);
-                    if (version < 0)
-                        throw new InvalidDataException("Slot-data versions cannot be negative.");
-                    return version;
-                }
-                catch (Exception exception)
-                {
-                    warning = $"The APWorld supplied an invalid slot-data schema value "
-                        + $"('{Convert.ToString(value)}'). Continuing anyway; a crash or "
-                        + $"incorrect behavior is possible. ({exception.Message})";
-                    return SupportedSlotDataVersion + 1;
-                }
+                error = "The APWorld did not provide a valid semantic version.";
+                return false;
+            }
+            apWorldVersion = parsedVersion;
+
+            if (!SlotData.TryGetValue("CompatFlag", out object? compatValue))
+            {
+                LogUtility.Info("APWorld omitted CompatFlag; defaulting to contract 1.");
+                return true;
             }
 
-            // APWorld 1.0 predates the explicit integer while using the same contract as
-            // schema 1. Older worlds retain their original schema-0 parsing behavior.
-            if (System.Version.TryParse(apWorldReleaseVersion, out var parsedReleaseVersion)
-                && parsedReleaseVersion.CompareTo(new System.Version(1, 0, 0)) >= 0)
+            try
             {
-                LogUtility.Info(
-                    "APWorld omitted slot_data_version; inferred schema 1 from its release version."
+                compatFlag = Convert.ToInt32(compatValue);
+                if (compatFlag < 1)
+                    throw new InvalidDataException("CompatFlag must be a positive integer.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"The APWorld supplied an invalid CompatFlag "
+                    + $"('{Convert.ToString(compatValue)}'): {ex.Message}";
+                return false;
+            }
+        }
+
+        private static System.Version GetClientSemanticVersion() =>
+            typeof(ArchipelagoClient).Assembly.GetName().Version
+            ?? throw new InvalidDataException("The client assembly version is unavailable.");
+
+        private static int CompareMajorMinor(System.Version left, System.Version right)
+        {
+            int majorComparison = left.Major.CompareTo(right.Major);
+            return majorComparison != 0
+                ? majorComparison
+                : left.Minor.CompareTo(right.Minor);
+        }
+
+        private static void RejectIncompatibleConnection(
+            string reason,
+            bool wasAutomaticReconnect = false
+        )
+        {
+            LogUtility.Error($"Archipelago compatibility check failed: {reason}");
+            ApReconnectController.Stop(reason);
+            if (wasAutomaticReconnect)
+            {
+                Disconnect(showMultiplayerNotice: false);
+                NotificationUtility.ShowRawText(
+                    reason,
+                    timeout: 8.0,
+                    priority: NotificationUtility.NotificationPriority.High
                 );
-                return 1;
+                return;
             }
 
-            LogUtility.Info("APWorld omitted slot_data_version; treating it as legacy schema 0.");
-            return 0;
+            ArchipelagoConnectionUI.Show();
+            Disconnect(showMultiplayerNotice: false);
+            ArchipelagoConnectionUI.SetConnectButtonEnabled(true);
+            ArchipelagoConnectionUI.SetCloseButtonEnabled(true);
+            ArchipelagoConnectionUI.SetStatus(reason);
         }
 
         /// <summary>
