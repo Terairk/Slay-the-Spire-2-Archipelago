@@ -557,21 +557,7 @@ public static class MultiplayerSupport
             return true;
         }
 
-        if (!ArchipelagoClient.Settings.Characters.ContainsKey(character.Id.Entry))
-        {
-            reason = $"Character {character.Id.Entry} is not configured for this AP slot.";
-            return false;
-        }
-
-        if (!ArchipelagoClient.Progress.UnlockedCharacters.Any(
-                unlocked => unlocked.Id == character.Id))
-        {
-            reason = $"Character {character.Id.Entry} is not unlocked for this AP slot.";
-            return false;
-        }
-
-        reason = string.Empty;
-        return true;
+        return ArchipelagoClient.CanSelectCharacter(character, out reason);
     }
 
     public static bool CanLaunchRun(RunState runState, out string reason)

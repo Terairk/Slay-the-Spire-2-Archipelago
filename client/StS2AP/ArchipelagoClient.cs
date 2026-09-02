@@ -145,6 +145,34 @@ namespace StS2AP
             SetupUnlockedCharacters();
         }
 
+        /// <summary>
+        /// Validates a character against the current slot rather than the reused native
+        /// character-select button state.
+        /// </summary>
+        internal static bool CanSelectCharacter(CharacterModel character, out string reason)
+        {
+            if (Settings?.Characters == null)
+            {
+                reason = "The Archipelago slot has not finished preparing its characters.";
+                return false;
+            }
+
+            if (!Settings.Characters.ContainsKey(character.Id.Entry))
+            {
+                reason = $"Character {character.Id.Entry} is not configured for this AP slot.";
+                return false;
+            }
+
+            if (!Progress.UnlockedCharacters.Any(unlocked => unlocked.Id == character.Id))
+            {
+                reason = $"Character {character.Id.Entry} is not unlocked for this AP slot.";
+                return false;
+            }
+
+            reason = string.Empty;
+            return true;
+        }
+
         public static ArchipelagoSession Session { get; set; }
 
         /// <summary>
