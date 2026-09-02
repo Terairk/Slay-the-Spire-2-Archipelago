@@ -1,6 +1,6 @@
 from BaseClasses import Tutorial
 from worlds.AutoWorld import WebWorld
-from Options import OptionGroup
+from Options import Accessibility, OptionGroup, ProgressionBalancing
 from .options import (
     Characters, ModdedCharacters, DeathLink, DeathLinkDamagePercent, EnableDeathFragments, PickNumberCharacters, GoalNumChar,
     LockCharacters, UnlockedCharacter, Ascension, AscensionDown, AdvancedChar, CharacterOptions,
@@ -41,6 +41,8 @@ class SlayTheSpire2Web(WebWorld):
             AscensionDown,
         ]),
         OptionGroup("Game Options", [
+            ProgressionBalancing,
+            Accessibility,
             AncientRelicLocation,
             AncientRelicPool,
             RelicRewardsAvailableAnytime,
