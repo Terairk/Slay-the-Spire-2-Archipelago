@@ -1,8 +1,8 @@
 from BaseClasses import Tutorial
 from worlds.AutoWorld import WebWorld
-from Options import DeathLink, OptionGroup
+from Options import OptionGroup
 from .options import (
-    Characters, ModdedCharacters, DeathLinkDamagePercent, EnableDeathFragments, PickNumberCharacters, GoalNumChar,
+    Characters, ModdedCharacters, DeathLink, DeathLinkDamagePercent, EnableDeathFragments, PickNumberCharacters, GoalNumChar,
     LockCharacters, UnlockedCharacter, Ascension, AscensionDown, AdvancedChar, CharacterOptions,
     IncludeFloorChecks, NeowSanity, CampfireSanity, GoldSanity, PotionSanity,
     ShopSanity, ShopCardSlots, ShopNeutralSlots, ShopRelicSlots, ShopPotionSlots, ShopRemoveSlots, ShopSanityCosts,
