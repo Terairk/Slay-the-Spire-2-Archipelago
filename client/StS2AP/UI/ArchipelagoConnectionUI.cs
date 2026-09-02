@@ -516,6 +516,16 @@ namespace StS2AP.UI
                 return;
             }
 
+            if (ArchipelagoClient.HasSlotConnection)
+            {
+                // A failed or offline attempt may leave this form open with authenticated state
+                // from the previous slot. Apply the same departure boundary before retrying.
+                if (!ArchipelagoClient.TryLeaveSlot())
+                    return;
+                Show();
+                ArchipelagoNotificationUI.InjectUI();
+            }
+
             // Begin Connecting
             LogUtility.Info($"Connect pressed - Slot: {slotName}, URL: {url}");
             SetStatus("Connecting...");

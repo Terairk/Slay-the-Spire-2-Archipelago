@@ -104,6 +104,34 @@ namespace StS2AP
         /// </summary>
         public static ArchipelagoSettings Settings { get; private set; }
 
+        /// <summary>
+        /// Validates a character against the current slot rather than the reused native
+        /// character-select button state.
+        /// </summary>
+        internal static bool CanSelectCharacter(CharacterModel character, out string reason)
+        {
+            if (Settings?.Characters == null)
+            {
+                reason = "The Archipelago slot has not finished preparing its characters.";
+                return false;
+            }
+
+            if (!Settings.Characters.ContainsKey(character.Id.Entry))
+            {
+                reason = $"Character {character.Id.Entry} is not configured for this AP slot.";
+                return false;
+            }
+
+            if (!Progress.UnlockedCharacters.Any(unlocked => unlocked.Id == character.Id))
+            {
+                reason = $"Character {character.Id.Entry} is not unlocked for this AP slot.";
+                return false;
+            }
+
+            reason = string.Empty;
+            return true;
+        }
+
         public static ArchipelagoSession Session { get; set; }
 
         /// <summary>
@@ -257,9 +285,10 @@ namespace StS2AP
         private static readonly object _connectionStateLock = new();
         private static bool _currentAttemptIsAutomaticReconnect;
         private static ApSessionIdentity? _authenticatedIdentity;
+        private static Action<ReceivedItemsHelper>? _itemReceivedHandler;
 
         internal static bool HasSlotConnection =>
-            State != ConnectionState.Disconnected || ApReconnectController.IsActive;
+            State != ConnectionState.Disconnected || Settings != null || ApReconnectController.IsActive;
 
         private static void PublishConnectionState()
         {
@@ -270,6 +299,66 @@ namespace StS2AP
                 if (ReferenceEquals(Session, session) && State == state)
                     ConnectionStateChanged?.Invoke(state);
             }).CallDeferred();
+        }
+
+        /// <summary>Runs a main-thread callback only while its SDK session is still current.</summary>
+        internal static void RunForSession(ArchipelagoSession session, Action action) =>
+            Callable.From(() =>
+            {
+                if (ReferenceEquals(Session, session))
+                    action();
+            }).CallDeferred();
+
+        /// <summary>
+        /// Intentionally leaves the authenticated slot at the main menu. This is distinct from a
+        /// recoverable socket disconnect, which must retain the slot state for automatic retry.
+        /// </summary>
+        internal static bool TryLeaveSlot()
+        {
+            if (GameUtility.IsInRun)
+            {
+                LogUtility.Warn("Refused to leave the Archipelago slot while a run is active");
+                return false;
+            }
+
+            LogUtility.Info($"[AP Session] Leaving slot {PlayerName}, seed {Seed}");
+            ApReconnectController.Stop();
+            Disconnect(showLostConnectionPrompt: false);
+            ResetSlotState();
+            ArchipelagoConnectionUI.CancelPendingAttempt();
+            ArchipelagoRewardUI.RemoveUI();
+            ArchipelagoCharTrackerUI.RemoveUI();
+            ArchipelagoGoalTrackerUI.RemoveUI();
+            ArchipelagoNotificationUI.RemoveUI();
+            PublishConnectionState();
+            return true;
+        }
+
+        private static void ResetSlotState()
+        {
+            // The item callback checks its session under this same lock. An old callback cannot
+            // repopulate the queue after this reset, even if it was already in flight.
+            lock (_itemLock)
+            {
+                Patches_ItemProcessor.ClearQueue();
+                Index = 0;
+                Progress = new ArchipelagoProgress();
+            }
+
+            Settings = null!;
+            SlotData = new();
+            CheckedLocations = new();
+            ScoutedLocations = new();
+            Seed = string.Empty;
+            _authenticatedIdentity = null;
+            DeathLinkController = null!;
+            LastDeathLinkMessage = null;
+            LastDeathLinkReceivedAt = null;
+            _rewardCountProgress = null;
+            BuffUtility.ClearQueue();
+            NotificationUtility.ClearQueue();
+            GameUtility.ResetSlotState();
+            LogUtility.Info("[AP Session] Cleared slot caches and receipt indexes");
         }
 
         /// <summary>
@@ -326,6 +415,8 @@ namespace StS2AP
                 return;
             }
 
+            Action<ReceivedItemsHelper> itemReceivedHandler = helper =>
+                OnItemReceived(connectionSession, helper);
             lock (_connectionStateLock)
             {
                 if (State is not ConnectionState.Connecting and not ConnectionState.Reconnecting)
@@ -335,11 +426,10 @@ namespace StS2AP
                     return;
                 }
                 Session = connectionSession;
+                _itemReceivedHandler = itemReceivedHandler;
+                connectionSession.Items.ItemReceived += itemReceivedHandler;
             }
             PublishConnectionState();
-
-            // Listen for received items
-            connectionSession.Items.ItemReceived += OnItemReceived;
 
             // Listen for errors
             connectionSession.Socket.ErrorReceived += OnErrorReceived;
@@ -812,6 +902,7 @@ namespace StS2AP
         public static void Disconnect(bool showLostConnectionPrompt = true)
         {
             ArchipelagoSession? session;
+            Action<ReceivedItemsHelper>? itemReceivedHandler;
             lock (_connectionStateLock)
             {
                 if (State == ConnectionState.Disconnected)
@@ -825,13 +916,16 @@ namespace StS2AP
                 Session = null;
                 State = ConnectionState.Disconnected;
                 _currentAttemptIsAutomaticReconnect = false;
+                itemReceivedHandler = _itemReceivedHandler;
+                _itemReceivedHandler = null;
             }
 
             if (session != null)
             {
                 // Stop the socket-close callback from re-entering this workflow after an
                 // intentional disconnect, and release the other session event handlers.
-                session.Items.ItemReceived -= OnItemReceived;
+                if (itemReceivedHandler != null)
+                    session.Items.ItemReceived -= itemReceivedHandler;
                 session.Socket.ErrorReceived -= OnErrorReceived;
                 session.Socket.SocketClosed -= OnSocketSessionEnd;
                 session.MessageLog.OnMessageReceived -= OnMessageReceived;
@@ -933,7 +1027,10 @@ namespace StS2AP
         /// <summary>
         /// Handle incoming items that come from Archipelago
         /// </summary>
-        private static void OnItemReceived(ReceivedItemsHelper helper)
+        private static void OnItemReceived(
+            ArchipelagoSession session,
+            ReceivedItemsHelper helper
+        )
         {
             ConnectionLock.AcquireReaderLock(120000);
 
@@ -942,6 +1039,9 @@ namespace StS2AP
                 // Deal with this Item
                 lock (_itemLock)
                 {
+                    if (!ReferenceEquals(Session, session))
+                        return;
+
                     // Grab the item data
                     var receivedItem = helper.DequeueItem();
 

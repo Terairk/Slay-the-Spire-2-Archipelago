@@ -71,18 +71,17 @@ namespace StS2AP.Patches
                 return;
             }
 
+            // Bind the confirmation to this session; a late confirmation must not disconnect a
+            // replacement session after an automatic reconnect or another menu action.
+            var session = ArchipelagoClient.Session;
             var popup = new ConfirmPopup
             {
                 Header = new LocString("main_menu_ui", "AP_DISCONNECT.header"),
                 Body = new LocString("main_menu_ui", "AP_DISCONNECT.body"),
                 ButtonPressed = confirmed =>
                 {
-                    if (!confirmed)
-                        return;
-                    ApReconnectController.Stop("cancelled from the main menu");
-                    if (ArchipelagoClient.State != ConnectionState.Disconnected)
-                        ArchipelagoClient.Disconnect(showLostConnectionPrompt: false);
-                    RefreshConnectionPresentation();
+                    if (confirmed && ReferenceEquals(session, ArchipelagoClient.Session))
+                        ArchipelagoClient.TryLeaveSlot();
                 },
             };
             popup.Show();
