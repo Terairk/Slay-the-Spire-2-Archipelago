@@ -7,9 +7,9 @@ using System.Text;
 namespace StS2AP.Utils
 {
     /// <summary>
-    /// Builds deterministic three-relic choices from the Ancients assigned to Acts 2 and 3.
-    /// The pool is derived from each Ancient's possible options so Neow relics are excluded by
-    /// construction and conventionally registered custom Ancients are included automatically.
+    /// Builds deterministic three-relic choices from the requested act's Ancient pool.
+    /// Act 1 is restricted to Neow's pool; conventionally registered custom Ancients remain
+    /// available in the Act 2/3 pools.
     /// </summary>
     public static class AncientRelicPool
     {
@@ -195,8 +195,11 @@ namespace StS2AP.Utils
                 var runAct = player.RunState.Acts.FirstOrDefault(act => act.Index == ancientActIndex);
                 if (runAct != null)
                 {
-                    return runAct.GetUnlockedAncients(player.RunState.UnlockState)
-                        .Concat(player.RunState.UnlockState.SharedAncients)
+                    var fallbackAncients = runAct.GetUnlockedAncients(player.RunState.UnlockState);
+                    if (ancientActIndex != 0)
+                        fallbackAncients = fallbackAncients.Concat(player.RunState.UnlockState.SharedAncients);
+
+                    return fallbackAncients
                         .GroupBy(ancient => ancient.Id)
                         .Select(group => group.First())
                         .ToList();
@@ -222,10 +225,13 @@ namespace StS2AP.Utils
                 .Where(act => ancientActIndex.HasValue ? act.Index == ancientActIndex.Value : act.Index is 1 or 2)
                 .SelectMany(act => act.AllAncients);
 
-            // Shared Ancients can be rolled into either Act 2 or Act 3 and therefore belong in
-            // each act-scoped pool as well as the combined pool.
+            // Shared Ancients can be rolled into Act 2 or Act 3, but not Neow's Act 1 slot.
+            // They therefore belong in each later act pool and in the combined Act 2/3 pool.
+            var sharedAncients = ancientActIndex == 0
+                ? Enumerable.Empty<AncientEventModel>()
+                : ModelDb.AllSharedAncients;
             return actAncients
-                .Concat(ModelDb.AllSharedAncients)
+                .Concat(sharedAncients)
                 .GroupBy(ancient => ancient.Id)
                 .Select(group => group.First())
                 .ToList();

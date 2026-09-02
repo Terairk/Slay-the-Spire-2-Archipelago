@@ -118,7 +118,9 @@ class Ascension(OptionSet):
 #     default = 0
 
 class NeowSanity(Toggle):
-    """Whether to shuffle Neow giving you a start of run bonus or not."""
+    """Adds Neow's start-of-run reward as a location and Progressive Ancient reward.
+
+    With Anytime, Neow's relic choices appear in the Archipelago reward menu."""
     display_name = "Neow Sanity"
     default = 0
 
@@ -139,7 +141,7 @@ class AncientRelicPool(Choice):
 
     Balanced uses the natural Ancient rolled for that act. Chaos can use relics from
     any Ancient in the appropriate act. True Chaos combines the Act 2 and Act 3 pools for the
-    Act 2 and Act 3 Progressive Ancient rewards."""
+    Act 2 and Act 3 Progressive Ancient rewards. Neow's reward always uses Neow's Act 1 pool."""
     display_name = "Ancient Relic Pool"
     option_balanced = 0
     option_chaos = 1

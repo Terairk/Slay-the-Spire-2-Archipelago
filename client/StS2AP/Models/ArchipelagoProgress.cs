@@ -220,9 +220,8 @@ namespace StS2AP.Models
             
             // AllReceivedItems contains multiple reward types, so restrict it to this
             // character's Progressive Ancients. ArchipelagoClient adds these entries only for
-            // Anytime mode; with Neow Sanity enabled, it omits the first unlock because
-            // that remains Neow's start-of-run reward. Sorting the remaining entries by
-            // AP item index maps ordinal 0 to Act 2 and ordinal 1 to Act 3.
+            // Anytime mode. Sorting them by AP item index maps their ordinals to Neow/Act 2/Act 3
+            // when Neow Sanity is enabled, or Act 2/Act 3 otherwise.
             var characterOffset = player.Character.GetCharacterOffset();
             var orderedAncientItemIndices = AllReceivedItems
                 .Where(item => item.Item.GetCharacterOffset() == characterOffset &&
@@ -233,16 +232,27 @@ namespace StS2AP.Models
 
             // This is the item's zero-based position in the ordered list above, not its AP item index.
             var rewardOrdinal = orderedAncientItemIndices.IndexOf(index);
-            if (rewardOrdinal is < 0 or > 1)
+            var includesNeowReward = ArchipelagoClient.Settings?.NeowSanity ?? false;
+            var maxRewardOrdinal = includesNeowReward ? 2 : 1;
+            if (rewardOrdinal < 0 || rewardOrdinal > maxRewardOrdinal)
             {
-                LogUtility.Error($"Could not map Ancient reward item index {index} to its Act 2/3 progression");
+                var expectedProgression = includesNeowReward ? "Neow/Act 2/Act 3" : "Act 2/Act 3";
+                LogUtility.Error(
+                    $"Could not map Ancient reward item index {index} to its {expectedProgression} progression"
+                );
                 return Array.Empty<RelicModel>();
             }
 
-            // ModelDb uses zero-based Act indices: 1 is Act 2 and 2 is Act 3 so convert accordingly
-            var ancientActIndex = rewardOrdinal + 1;
+            // rewardOrdinal is the item's position among menu-backed Progressive Ancients.
+            // With Neow Sanity: ordinals 0/1/2 map to Act indices 0/1/2 (Neow/Act 2/Act 3).
+            // Without Neow Sanity: ordinals 0/1 map to Act indices 1/2 (Act 2/Act 3),
+            // because the normal Act 1 Neow reward has no Progressive Ancient item.
+            var ancientActIndex = rewardOrdinal + (includesNeowReward ? 0 : 1);
             var poolMode = ArchipelagoClient.Settings?.AncientRelicPool ?? AncientRelicPoolMode.Balanced;
-            int? poolActIndex = (poolMode == AncientRelicPoolMode.TrueChaos) ? null : ancientActIndex;
+            // True Chaos combines only the Act 2/3 pools. Its Neow reward remains Neow-only.
+            int? poolActIndex = ancientActIndex == 0
+                ? 0
+                : (poolMode == AncientRelicPoolMode.TrueChaos ? null : ancientActIndex);
             var choiceKey = index.ToString();
             AncientEventModel? naturalAncient = null;
             if (poolMode == AncientRelicPoolMode.Balanced)
