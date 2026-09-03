@@ -7,7 +7,6 @@ using StS2AP.Models;
 using StS2AP.Utils;
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 
 namespace StS2AP.Patches
 {
@@ -18,53 +17,16 @@ namespace StS2AP.Patches
     public static class Patches_Floorsanity
     {
         /// <summary>
-        /// Sends an Archipelago location check when entering any room.
-        /// Patches all room types (Combat, Event, Treasure, Rest Site, Merchant) since abstract classes cannot be patched directly.
+        /// Sends floor checks after the shared concrete room-entry wrapper has assigned the room ID.
         /// </summary>
-        [HarmonyPatch]
-        public static class OnRoomEnter
+        [HarmonyPatch(typeof(AbstractRoom), nameof(AbstractRoom.Enter))]
+        private static class OnRoomEnter
         {
-            /// <summary>
-            /// List of all room types that should trigger floor checks when entered.
-            /// </summary>
-            private static readonly Type[] RoomTypes =
-            [
-                typeof(CombatRoom),
-                typeof(EventRoom),
-                typeof(TreasureRoom),
-                typeof(RestSiteRoom),
-                typeof(MerchantRoom)
-            ];
-
-            /// <summary>
-            /// Identifies all the `Enter` methods from each room type that should be patched.
-            /// Harmony will apply the postfix patch to each of these methods.
-            /// </summary>
-            /// <returns>An enumerable of MethodBase objects representing each Enter method to patch.</returns>
-            [HarmonyTargetMethods]
-            static IEnumerable<MethodBase> TargetMethods()
-            {
-                foreach (var type in RoomTypes)
-                {
-                    var method = AccessTools.Method(type, nameof(CombatRoom.Enter));
-                    if (method != null)
-                    {
-                        yield return method;
-                    }
-                }
-            }
-
-            /// <summary>
-            /// Postfix patch that sends a floor check when entering any room type.
-            /// </summary>
-            /// <param name="runState">The current run state.</param>
             [HarmonyPostfix]
-            public static void Postfix(
-                AbstractRoom __instance,
-                IRunState? runState)
+            private static void Postfix(AbstractRoom __instance, IRunState? runState)
             {
                 if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
-                    MultiplayerFeature.FloorChecks))
+                        MultiplayerFeature.FloorChecks))
                     return;
 
                 TrySendFloorChecks(__instance, runState);
@@ -85,24 +47,8 @@ namespace StS2AP.Patches
                 return;
             }
 
-            // Try to get floor information from runState using reflection
-            var floorProperty = runState.GetType().GetProperty("TotalFloor");
-
-            if (floorProperty == null)
-            {
-                LogUtility.Error("fail");
-                return;
-            }
-
-            object? floorValue = floorProperty.GetValue(runState);
-            if (floorValue == null)
-            {
-                LogUtility.Error("TotalFloor was null, skipping Archipelago floor checks");
-                return;
-            }
-
             var concreteRun = runState as RunState;
-            int rawFloor = Convert.ToInt32(floorValue);
+            int rawFloor = runState.TotalFloor;
             int normalizedFloor = MultiplayerSupport.IsRealMultiplayerRun && concreteRun != null
                 ? rawFloor + concreteRun.CurrentActIndex
                 : rawFloor;

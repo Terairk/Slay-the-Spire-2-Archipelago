@@ -51,8 +51,6 @@ public static class Patches_APCardRewardUpgradeOdds
         typeof(WingCharm),
     ];
 
-    private static readonly HashSet<string> LoggedIgnoredHooks = new();
-
     private sealed class ApRewardRngScope(Rng? previous) : IDisposable
     {
         public void Dispose() => s_apRewardRng = previous;
@@ -144,10 +142,7 @@ public static class Patches_APCardRewardUpgradeOdds
             bool modified = false;
             foreach (AbstractModel model in runState.IterateHookListeners(null))
             {
-                if (!ShouldRunHook(
-                        model,
-                        nameof(AbstractModel.TryModifyCardRewardOptions),
-                        [typeof(Player), typeof(List<CardCreationResult>), typeof(CardCreationOptions)]))
+                if (!ShouldRunHook(model))
                 {
                     continue;
                 }
@@ -162,10 +157,7 @@ public static class Patches_APCardRewardUpgradeOdds
             }
             foreach (AbstractModel model in runState.IterateHookListeners(null))
             {
-                if (!ShouldRunHook(
-                        model,
-                        nameof(AbstractModel.TryModifyCardRewardOptionsLate),
-                        [typeof(Player), typeof(List<CardCreationResult>), typeof(CardCreationOptions)]))
+                if (!ShouldRunHook(model))
                 {
                     continue;
                 }
@@ -200,20 +192,14 @@ public static class Patches_APCardRewardUpgradeOdds
             CardCreationOptions result = options;
             foreach (AbstractModel model in runState.IterateHookListeners(null))
             {
-                if (ShouldRunHook(
-                        model,
-                        nameof(AbstractModel.ModifyCardRewardCreationOptions),
-                        [typeof(Player), typeof(CardCreationOptions)]))
+                if (ShouldRunHook(model))
                 {
                     result = model.ModifyCardRewardCreationOptions(player, result);
                 }
             }
             foreach (AbstractModel model in runState.IterateHookListeners(null))
             {
-                if (ShouldRunHook(
-                        model,
-                        nameof(AbstractModel.ModifyCardRewardCreationOptionsLate),
-                        [typeof(Player), typeof(CardCreationOptions)]))
+                if (ShouldRunHook(model))
                 {
                     result = model.ModifyCardRewardCreationOptionsLate(player, result);
                 }
@@ -420,10 +406,7 @@ public static class Patches_APCardRewardUpgradeOdds
             var modifiers = new List<AbstractModel>();
             foreach (AbstractModel model in runState.IterateHookListeners(null))
             {
-                if (!ShouldRunHook(
-                        model,
-                        nameof(AbstractModel.TryModifyCardRewardAlternatives),
-                        [typeof(Player), typeof(CardReward), typeof(List<CardRewardAlternative>)]))
+                if (!ShouldRunHook(model))
                 {
                     continue;
                 }
@@ -435,27 +418,6 @@ public static class Patches_APCardRewardUpgradeOdds
         }
     }
 
-    private static bool ShouldRunHook(
-        AbstractModel model,
-        string methodName,
-        Type[] parameterTypes)
-    {
-        Type type = model.GetType();
-        if (SupportedApHookTypes.Contains(type))
-            return true;
-
-        System.Reflection.MethodInfo? method = AccessTools.Method(type, methodName, parameterTypes);
-        if (method?.DeclaringType != typeof(AbstractModel))
-        {
-            string key = $"{type.FullName}:{methodName}";
-            if (LoggedIgnoredHooks.Add(key))
-            {
-                LogUtility.Warn(
-                    $"Ignoring unsupported card-reward hook {type.FullName}.{methodName} "
-                        + "for AP rewards."
-                );
-            }
-        }
-        return false;
-    }
+    private static bool ShouldRunHook(AbstractModel model) =>
+        SupportedApHookTypes.Contains(model.GetType());
 }

@@ -7,7 +7,6 @@ using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Unlocks;
 using StS2AP.Models;
 using StS2AP.Utils;
-using System.Reflection;
 
 namespace StS2AP.Patches
 {
@@ -56,10 +55,6 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.OnSubmenuOpened), [])]
         public static class OverrideCharacterSelectMenuOptions
         {
-            private static readonly FieldInfo CharButtonContainerField =
-                typeof(NCharacterSelectScreen)
-                .GetField("_charButtonContainer", BindingFlags.NonPublic | BindingFlags.Instance)!;
-
             [HarmonyPostfix]
             public static void Postfix(NCharacterSelectScreen __instance)
             {
@@ -71,7 +66,7 @@ namespace StS2AP.Patches
             {
                 if (MultiplayerSupport.IsLocalGuest)
                 {
-                    if (CharButtonContainerField.GetValue(__instance) is Control guestContainer)
+                    if (__instance._charButtonContainer is Control guestContainer)
                     {
                         foreach (NCharacterSelectButton button in guestContainer
                                      .GetChildren()
@@ -94,7 +89,7 @@ namespace StS2AP.Patches
 
                 LogUtility.Debug($"OverrideCharacterSelectMenuOptions: OnSubmenuOpened postfix fired. AvailableCharacters: [{string.Join(", ", ArchipelagoClient.Settings.Characters.Values)}]");
 
-                if (CharButtonContainerField.GetValue(__instance) is not Control container)
+                if (__instance._charButtonContainer is not Control container)
                 {
                     LogUtility.Debug("OverrideCharacterSelectMenuOptions: Could not find _charButtonContainer — skipping");
                     return;
@@ -177,10 +172,6 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.OnSubmenuOpened), [])]
         public static class SubscribeToUnlockEventOnOpen
         {
-            private static readonly FieldInfo CharButtonContainerField =
-                typeof(NCharacterSelectScreen)
-                .GetField("_charButtonContainer", BindingFlags.NonPublic | BindingFlags.Instance)!;
-
             /// <summary>
             /// Per-screen-instance handler storage.
             /// Keyed on the screen instance so UnsubscribeFromUnlockEventOnClose can remove the exact delegate.
@@ -244,7 +235,7 @@ namespace StS2AP.Patches
 
                 LogUtility.Debug($"HandleCharacterUnlocked: Received unlock event for {config.OfficialName} on screen instance {screen?.GetInstanceId()}");
 
-                if (CharButtonContainerField.GetValue(screen) is not Control container)
+                if (screen._charButtonContainer is not Control container)
                 {
                     LogUtility.Debug("HandleCharacterUnlocked: Could not find _charButtonContainer on screen");
                     return;

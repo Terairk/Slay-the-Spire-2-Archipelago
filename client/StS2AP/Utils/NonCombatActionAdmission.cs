@@ -26,9 +26,9 @@ internal static class NonCombatActionAdmission
             CombatInProgress: combat.IsInProgress,
             CombatStarting: combat.IsStarting,
             CombatEnding: combat.IsEnding,
-            IsNonCombatPhase: BetaMainCompatibility.IsActionSynchronizerCombatState(
+            IsNonCombatPhase: Sts2Compatibility.IsActionSynchronizerCombatState(
                 manager.ActionQueueSynchronizer.CombatState,
-                nameof(ActionSynchronizerCombatState.NotInCombat)),
+                ActionSynchronizerCombatState.NotInCombat),
             ExecutorRunning: executor.IsRunning,
             ExecutorPaused: executor.IsPaused,
             HasCurrentAction: executor.CurrentlyRunningAction != null,

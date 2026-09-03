@@ -305,7 +305,7 @@ namespace StS2AP.Patches
                 if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
                     return true;
 
-                var character = BetaMainCompatibility.GetLocalCharacter(__instance.Lobby);
+                var character = Sts2Compatibility.GetLocalCharacter(__instance.Lobby);
                 if (!ArchipelagoClient.CanSelectCharacter(character, out string blockedReason))
                 {
                     __instance.Lobby.SetReady(ready: false);
@@ -349,7 +349,7 @@ namespace StS2AP.Patches
 
             private static async Task ContinueRun(NCharacterSelectScreen _charSelect)
             {
-                var charName = BetaMainCompatibility.GetLocalCharacter(_charSelect.Lobby).Id.Entry;
+                var charName = Sts2Compatibility.GetLocalCharacter(_charSelect.Lobby).Id.Entry;
                 if (!GameUtility.APSaves.TryGetValue(charName, out var saveStr))
                 {
                     LogUtility.Error(

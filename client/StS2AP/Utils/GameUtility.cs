@@ -198,7 +198,7 @@ namespace StS2AP.Utils
             try
             {
                 var rarity = rare ? CardRarityOddsType.BossEncounter : CardRarityOddsType.RegularEncounter;
-                var options = BetaMainCompatibility.WithCombatRewardCompatibility(
+                var options = Sts2Compatibility.WithCombatRewardCompatibility(
                     new CardCreationOptions(
                         new[] { player.Character.CardPool },
                         CardCreationSource.Encounter,

@@ -1,6 +1,5 @@
 using Archipelago.MultiClient.Net.Models;
 using Godot;
-using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -52,9 +51,9 @@ public static class MultiplayerSupport
 
     internal static bool IsSynchronizedCombatActive =>
         CombatManager.Instance.IsStarting
-        || !BetaMainCompatibility.IsActionSynchronizerCombatState(
+        || !Sts2Compatibility.IsActionSynchronizerCombatState(
             RunManager.Instance.ActionQueueSynchronizer.CombatState,
-            nameof(ActionSynchronizerCombatState.NotInCombat)
+            ActionSynchronizerCombatState.NotInCombat
         );
 
     private static readonly Dictionary<int, IndexedItemInfo> DeferredItems = new();
@@ -626,7 +625,7 @@ public static class MultiplayerSupport
                     screen.Lobby,
                     out string hostBlockedReason))
             {
-                bool wasReady = BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby);
+                bool wasReady = Sts2Compatibility.IsLocalPlayerReady(screen.Lobby);
                 EnsureLocalPlayerUnready(screen);
                 embarkButton.Disable();
                 if (wasReady)
@@ -638,10 +637,10 @@ public static class MultiplayerSupport
                 return;
             }
 
-            if (BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
+            if (Sts2Compatibility.IsLocalPlayerReady(screen.Lobby))
                 return;
 
-            if (CanEmbark(BetaMainCompatibility.GetLocalCharacter(screen.Lobby), out _))
+            if (CanEmbark(Sts2Compatibility.GetLocalCharacter(screen.Lobby), out _))
                 embarkButton.Enable();
             else
                 embarkButton.Disable();
@@ -654,21 +653,14 @@ public static class MultiplayerSupport
 
     private static void EnsureLocalPlayerUnready(NCharacterSelectScreen screen)
     {
-        if (!BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
+        if (!Sts2Compatibility.IsLocalPlayerReady(screen.Lobby))
             return;
 
         // Use the native UI transition so auto-unready restores character buttons and the
         // waiting panel as well as changing the lobby flag.
         try
         {
-            var nativeUnready = AccessTools.Method(
-                typeof(NCharacterSelectScreen),
-                "OnUnreadyPressed"
-            );
-            if (nativeUnready != null)
-                nativeUnready.Invoke(screen, new object?[] { null });
-            else
-                screen.Lobby.SetReady(ready: false);
+            screen.OnUnreadyPressed(null!);
         }
         catch (Exception ex)
         {

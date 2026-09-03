@@ -1,5 +1,4 @@
 using Godot;
-using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -13,7 +12,6 @@ using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Persistence;
 using StS2AP.Utils;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -154,7 +152,7 @@ public static class ApMultiplayerCampaignStore
         out CampaignMetadata metadata)
     {
         IReadOnlyList<(ulong NetId, string CharacterId)> roster =
-            BetaMainCompatibility.GetLobbyPlayerCharacters(lobby);
+            Sts2Compatibility.GetLobbyPlayerCharacters(lobby);
         metadata = ListCampaigns()
             .Where(entry => entry.IsUsable && entry.Metadata != null)
             .Select(entry => entry.Metadata!)
@@ -549,7 +547,7 @@ public static class ApMultiplayerCampaignStore
         {
             NetId = player.NetId,
             DisplayName = ResolvePlayerName(run.PlatformType, player.NetId),
-            CharacterId = ReadModelId(player, "CharacterId") ?? "Unknown Character",
+            CharacterId = player.CharacterId?.Entry ?? "Unknown Character",
             Participation = ApParticipationKind.VanillaGuest,
         }).ToList();
 
@@ -722,13 +720,11 @@ public static class ApMultiplayerCampaignStore
 
     private static string GetActiveSavePath()
     {
-        string storePath = BetaMainCompatibility.GetRunSavePath(
+        string storePath = Sts2Compatibility.GetRunSavePath(
             SaveManager.Instance.CurrentProfileId,
             "current_run_mp.save"
         );
-        ISaveStore? saveStore = Traverse.Create(SaveManager.Instance)
-            .Field("_saveStore")
-            .GetValue<ISaveStore>();
+        ISaveStore? saveStore = SaveManager.Instance._saveStore;
         string? fullPath = saveStore?.GetFullPath(storePath);
         string path = fullPath ?? storePath;
         return path.Contains("://", StringComparison.Ordinal)
@@ -792,16 +788,4 @@ public static class ApMultiplayerCampaignStore
             File.Delete(activeSavePath);
     }
 
-    private static string? ReadModelId(object target, string memberName)
-    {
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        object? value = target.GetType().GetProperty(memberName, flags)?.GetValue(target)
-            ?? target.GetType().GetField(memberName, flags)?.GetValue(target);
-        if (value == null)
-            return null;
-        if (value is string text)
-            return text;
-        object? entry = value.GetType().GetProperty("Entry", flags)?.GetValue(value);
-        return entry as string ?? value.ToString();
-    }
 }

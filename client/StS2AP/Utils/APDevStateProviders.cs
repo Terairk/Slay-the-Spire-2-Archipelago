@@ -297,7 +297,7 @@ public static class ApDevStateProviders
             try
             {
                 ulong[] expected = runState.Players.Select(player => player.NetId).ToArray();
-                ulong[] connected = BetaMainCompatibility
+                ulong[] connected = Sts2Compatibility
                     .GetConnectedRunPlayerNetIds(runLobby)
                     .Order()
                     .ToArray();
@@ -355,7 +355,7 @@ public static class ApDevStateProviders
                     "No AP multiplayer start lobby is currently displayed."
                 );
             INetGameService netService = lobby.NetService;
-            string hostNetId = BetaMainCompatibility.TryGetHostNetId(netService, out ulong hostId)
+            string hostNetId = Sts2Compatibility.TryGetHostNetId(netService, out ulong hostId)
                 ? hostId.ToString()
                 : "unavailable";
             string runId = ApRunData.TryGetLobbySharedState(lobby, out ApRunSharedState shared)
@@ -364,7 +364,7 @@ public static class ApDevStateProviders
             string hostSettingsFrozen = YesNo(shared?.HostSettings != null);
 
             var players = new List<string>();
-            foreach (ulong netId in BetaMainCompatibility.GetLobbyPlayerNetIds(lobby))
+            foreach (ulong netId in Sts2Compatibility.GetLobbyPlayerNetIds(lobby))
             {
                 if (!ApRunData.TryGetLobbyPlayerState(lobby, netId, out ApPlayerRunState state))
                 {
@@ -447,7 +447,7 @@ public static class ApDevStateProviders
             RunState runState = context.RunState
                 ?? throw new InvalidOperationException("No active run exists.");
             INetGameService netService = RunManager.Instance.NetService;
-            string hostNetId = BetaMainCompatibility.TryGetHostNetId(netService, out ulong hostId)
+            string hostNetId = Sts2Compatibility.TryGetHostNetId(netService, out ulong hostId)
                 ? hostId.ToString()
                 : "unavailable";
             if (!ApRunData.TryGetSharedState(runState, out ApRunSharedState shared))

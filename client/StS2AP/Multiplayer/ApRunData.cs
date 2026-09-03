@@ -284,7 +284,7 @@ public static class ApRunData
             return false;
         }
 
-        foreach (ulong netId in BetaMainCompatibility.GetLobbyPlayerNetIds(lobby))
+        foreach (ulong netId in Sts2Compatibility.GetLobbyPlayerNetIds(lobby))
         {
             if (!TryGetLobbyPlayerState(lobby, netId, out ApPlayerRunState state))
             {
@@ -682,7 +682,7 @@ public static class ApRunData
     }
 
     private static bool IsMessageFromHost(ulong senderNetId) =>
-        BetaMainCompatibility.TryGetHostNetId(
+        Sts2Compatibility.TryGetHostNetId(
             RunManager.Instance.NetService,
             out ulong hostNetId
         ) && senderNetId == hostNetId;

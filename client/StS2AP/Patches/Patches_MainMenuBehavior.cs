@@ -653,21 +653,9 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                SetButtonVisible(__instance, "_hostButton", visible: true);
-                SetButtonVisible(__instance, "_loadButton", visible: false);
-                SetButtonVisible(__instance, "_abandonButton", visible: false);
-            }
-
-            private static void SetButtonVisible(
-                NMultiplayerSubmenu submenu,
-                string fieldName,
-                bool visible)
-            {
-                if (AccessTools.Field(typeof(NMultiplayerSubmenu), fieldName)
-                        ?.GetValue(submenu) is CanvasItem button)
-                {
-                    button.Visible = visible;
-                }
+                __instance._hostButton.Visible = true;
+                __instance._loadButton.Visible = false;
+                __instance._abandonButton.Visible = false;
             }
         }
 
@@ -683,11 +671,7 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                if (AccessTools.Field(typeof(NMultiplayerSubmenu), "_hostButton")
-                        ?.GetValue(__instance) is Control hostButton)
-                {
-                    __result = hostButton;
-                }
+                __result = __instance._hostButton;
             }
         }
 
@@ -702,7 +686,7 @@ namespace StS2AP.Patches
                     return true;
 
                 ApRunData.StageLocalPlayer(__instance.Lobby);
-                CharacterModel character = BetaMainCompatibility.GetLocalCharacter(__instance.Lobby);
+                CharacterModel character = Sts2Compatibility.GetLocalCharacter(__instance.Lobby);
                 if (!MultiplayerSupport.CanEmbark(character, out string blockedReason))
                     return BlockReady(__instance, blockedReason);
 
@@ -726,7 +710,7 @@ namespace StS2AP.Patches
                 NCharacterSelectScreen screen,
                 string blockedReason)
             {
-                if (BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
+                if (Sts2Compatibility.IsLocalPlayerReady(screen.Lobby))
                     screen.Lobby.SetReady(ready: false);
                 NotificationUtility.ShowRawText(blockedReason);
                 LogUtility.Warn($"Blocked AP multiplayer embark: {blockedReason}");

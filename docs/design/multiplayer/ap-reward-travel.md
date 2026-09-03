@@ -42,7 +42,7 @@ Static inspection of the installed beta 0.111.0 assembly established:
   tokens; old completions cannot clear a later transition's guard.
 - Ordinary AP browsing (including unselected linked relic choices) closes using
   the existing native skip path. A completed set is not skipped again.
-- `BetaMainCompatibility.TrySkipCardRewardSelection` matches the exact picker
+- `Sts2Compatibility.TrySkipCardRewardSelection` matches the exact picker
   owned by an AP card reward and invokes its existing Skip handler. It checks the
   actual alternative ID and non-consuming result by name; it does not assume a
   button index or choose another alternative. Already-resolved choices and

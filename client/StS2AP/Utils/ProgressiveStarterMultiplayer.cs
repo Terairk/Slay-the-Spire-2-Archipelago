@@ -39,9 +39,6 @@ public static class ProgressiveStarterMultiplayer
         (Guid RunId, ulong PlayerNetId, ApProgressiveStarterActionMessage.StarterKind Kind),
         ApProgressiveStarterKindState
     > PendingSpecifications = new();
-    private static readonly System.Reflection.FieldInfo? AllRunCardsField =
-        AccessTools.Field(typeof(RunState), "_allCards");
-
     private static bool _initialized;
 
     public static void Initialize()
@@ -815,9 +812,7 @@ public static class ProgressiveStarterMultiplayer
     /// RunState.CreateCard. Recipe capture happens only on the action author, so that preview must
     /// be removed again before networking or the replicas would begin with different run cards.
     /// </summary>
-    private static IReadOnlyList<CardModel> GetAllRunCards(RunState runState) =>
-        AllRunCardsField?.GetValue(runState) as IReadOnlyList<CardModel>
-        ?? throw new MissingFieldException(typeof(RunState).FullName, "_allCards");
+    private static IReadOnlyList<CardModel> GetAllRunCards(RunState runState) => runState._allCards;
 
     private static void RemoveSetupOnlyCards(
         RunState runState,

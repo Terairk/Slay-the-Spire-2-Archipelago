@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
@@ -19,25 +18,6 @@ namespace StS2AP.Patches
     /// </summary>
     public static class Patches_ShopPages
     {
-        // in the future these should probably try use RitsuLib's PrivateField helper
-        private static readonly FieldInfo? RugField =
-            AccessTools.Field(typeof(NMerchantSlot), "_merchantRug");
-
-        private static readonly FieldInfo? IsHoveredField =
-            AccessTools.Field(typeof(NMerchantSlot), "_isHovered");
-
-        private static readonly FieldInfo? ShowPosField =
-            AccessTools.Field(typeof(NBackButton), "_showPos");
-
-        private static readonly FieldInfo? HidePosField =
-            AccessTools.Field(typeof(NBackButton), "_hidePos");
-
-        private static readonly FieldInfo? MoveTweenField =
-            AccessTools.Field(typeof(NBackButton), "_moveTween");
-
-        private static readonly MethodInfo? CloseInventoryMethod =
-            AccessTools.Method(typeof(NMerchantInventory), "Close");
-
         private static Control? _toApPageButton;
         private static Control? _toVanillaButton;
         private static bool _isCoordinatingClose;
@@ -305,12 +285,12 @@ namespace StS2AP.Patches
                 {
                     // Override the internal show/hide positions so the button doesn't
                     // reset to its vanilla bottom-left spot.
-                    ShowPosField?.SetValue(backButton, targetShowPos);
-                    HidePosField?.SetValue(backButton, targetShowPos + hideOffset);
+                    backButton._showPos = targetShowPos;
+                    backButton._hidePos = targetShowPos + hideOffset;
 
                     // _Ready() already started a hide tween toward the old _hidePos; kill
                     // it now that we own positioning, or it'll fight the line below.
-                    if (MoveTweenField?.GetValue(backButton) is Tween staleTween)
+                    if (backButton._moveTween is Tween staleTween)
                     {
                         staleTween.Kill();
                     }
@@ -548,14 +528,7 @@ namespace StS2AP.Patches
                 {
                     if (peerPage != null && GodotObject.IsInstanceValid(peerPage) && peerPage.IsOpen)
                     {
-                        if (CloseInventoryMethod == null)
-                        {
-                            LogUtility.Error("ShopPages: couldn't resolve NMerchantInventory.Close, so the peer page could not be closed.");
-                        }
-                        else
-                        {
-                            CloseInventoryMethod.Invoke(peerPage, null);
-                        }
+                        peerPage.Close();
                     }
                 }
                 catch (System.Exception ex)
@@ -607,14 +580,14 @@ namespace StS2AP.Patches
             public static bool Prefix(NMerchantSlot __instance)
             {
                 if (!ShopPageUtility.HasPages
-                    || RugField?.GetValue(__instance) is not NMerchantInventory rug
+                    || __instance._merchantRug is not NMerchantInventory rug
                     || (!ReferenceEquals(rug, ShopPageUtility.VanillaPageInstance)
                         && !ReferenceEquals(rug, ShopPageUtility.ApPageInstance)))
                 {
                     return true;
                 }
 
-                return IsHoveredField?.GetValue(__instance) is not true;
+                return !__instance._isHovered;
             }
         }
 
@@ -628,7 +601,7 @@ namespace StS2AP.Patches
             {
                 return;
             }
-            if (RugField?.GetValue(slot) is not NMerchantInventory rug)
+            if (slot._merchantRug is not NMerchantInventory rug)
             {
                 return;
             }

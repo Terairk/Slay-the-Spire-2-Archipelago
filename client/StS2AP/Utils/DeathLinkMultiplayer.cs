@@ -487,9 +487,9 @@ public static class DeathLinkMultiplayer
 
         ActionSynchronizerCombatState synchronizerState =
             RunManager.Instance.ActionQueueSynchronizer.CombatState;
-        if (BetaMainCompatibility.IsActionSynchronizerCombatState(
+        if (Sts2Compatibility.IsActionSynchronizerCombatState(
                 synchronizerState,
-                nameof(ActionSynchronizerCombatState.PlayPhase)))
+                ActionSynchronizerCombatState.PlayPhase))
         {
             // PlayPhase is the native synchronizer's authoritative indication that it is safe to
             // enqueue a CombatPlayPhaseOnly action. Rechecking CombatManager.IsInProgress here can
@@ -498,9 +498,9 @@ public static class DeathLinkMultiplayer
             return true;
         }
         if (!combat.IsInProgress
-            && BetaMainCompatibility.IsActionSynchronizerCombatState(
+            && Sts2Compatibility.IsActionSynchronizerCombatState(
                 synchronizerState,
-                nameof(ActionSynchronizerCombatState.NotInCombat)))
+                ActionSynchronizerCombatState.NotInCombat))
         {
             if (NonCombatActionAdmission.CaptureState().BlockedReason is string reason)
             {
@@ -751,7 +751,7 @@ public static class DeathLinkMultiplayer
         out RunState runState)
     {
         runState = null!;
-        if (!BetaMainCompatibility.TryGetHostNetId(
+        if (!Sts2Compatibility.TryGetHostNetId(
                 RunManager.Instance.NetService,
                 out ulong hostNetId
             )
@@ -882,7 +882,7 @@ public static class DeathLinkMultiplayer
     {
         INetGameService netService = RunManager.Instance.NetService;
         return netService.Type == NetGameType.Client
-            && BetaMainCompatibility.TryGetHostNetId(netService, out ulong hostNetId)
+            && Sts2Compatibility.TryGetHostNetId(netService, out ulong hostNetId)
             && senderNetId == hostNetId
             && message.SchemaVersion == SchemaVersion
             && message.RunId != Guid.Empty

@@ -253,13 +253,6 @@ public static class ApMirroredRewardDispatcher
     /// </summary>
     internal static bool UseStrictReplicaMaterializationForDiagnostics { get; set; }
 
-    private static readonly System.Reflection.FieldInfo CardRewardCardsField =
-        AccessTools.Field(typeof(CardReward), "_cards")
-        ?? throw new MissingFieldException(typeof(CardReward).FullName, "_cards");
-    private static readonly System.Reflection.FieldInfo RunStateAllCardsField =
-        AccessTools.Field(typeof(RunState), "_allCards")
-        ?? throw new MissingFieldException(typeof(RunState).FullName, "_allCards");
-
     /*
      * Production card and potion assignments are generated once by the receipt owner from a stable,
      * receipt-specific AP RNG. The immutable final models are then materialized on other replicas.
@@ -560,7 +553,7 @@ public static class ApMirroredRewardDispatcher
         ulong senderNetId,
         MaterializationDecision decision)
     {
-        if (!BetaMainCompatibility.TryGetHostNetId(
+        if (!Sts2Compatibility.TryGetHostNetId(
                 RunManager.Instance.NetService,
                 out ulong hostNetId)
             || senderNetId != hostNetId)
@@ -1117,7 +1110,7 @@ public static class ApMirroredRewardDispatcher
         CardRarityOddsType rarity = rare
             ? CardRarityOddsType.BossEncounter
             : CardRarityOddsType.RegularEncounter;
-        return BetaMainCompatibility.WithCombatRewardCompatibility(
+        return Sts2Compatibility.WithCombatRewardCompatibility(
             new CardCreationOptions(
                 new[] { player.Character.CardPool },
                 CardCreationSource.Encounter,
@@ -1208,8 +1201,7 @@ public static class ApMirroredRewardDispatcher
     {
         if (player.RunState is not RunState runState)
             throw new InvalidOperationException("AP reward generation requires a native run state.");
-        var allCards = RunStateAllCardsField.GetValue(runState) as List<CardModel>
-            ?? throw new InvalidOperationException("Could not inspect the native run card registry.");
+        List<CardModel> allCards = runState._allCards;
         var preexistingCards = allCards.ToHashSet();
         Rng rng = CreateApRewardRng(spec, player, "card");
         CardCreationOptions options = CreateCardOptions(player, spec.IsRareCardReward)
@@ -1337,8 +1329,7 @@ public static class ApMirroredRewardDispatcher
     {
         if (player.RunState is not RunState runState)
             throw new InvalidOperationException("AP reward materialization requires a native run state.");
-        var allCards = RunStateAllCardsField.GetValue(runState) as List<CardModel>
-            ?? throw new InvalidOperationException("Could not inspect the native run card registry.");
+        List<CardModel> allCards = runState._allCards;
 
         return StableHash(Serialize(new
         {
@@ -2026,9 +2017,7 @@ public static class ApMirroredRewardDispatcher
             bool canReroll)
             : base(options, cards.Count, player)
         {
-            var nativeCards = CardRewardCardsField.GetValue(this) as List<CardCreationResult>
-                ?? throw new InvalidOperationException("Could not access native CardReward choices.");
-            nativeCards.AddRange(cards);
+            _cards.AddRange(cards);
             _itemIndex = spec.ReceivedItemIndex;
             _description = new LocString("gameplay_ui", "COMBAT_REWARD_ADD_CARD");
             Configure(spec);

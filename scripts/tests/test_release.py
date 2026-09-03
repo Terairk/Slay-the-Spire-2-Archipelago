@@ -103,75 +103,69 @@ class VersionSourceTests(unittest.TestCase):
 
 
 class ClientArchiveTests(unittest.TestCase):
-    def test_creates_flat_archive(self) -> None:
+    def make_valid_entries(self, root: Path) -> dict[str, Path | bytes]:
+        inputs = root / "inputs"
+        inputs.mkdir()
+        entries: dict[str, Path | bytes] = {}
+        for name in (
+            "Archipelago.json",
+            "Archipelago.dll",
+            "Archipelago.pck",
+            "Archipelago.MultiClient.Net.dll",
+            "spire2.apworld",
+        ):
+            path = inputs / name
+            if name == "Archipelago.json":
+                path.write_text(
+                    json.dumps({"id": "Archipelago", "version": "1.0.0"}),
+                    encoding="utf-8",
+                )
+            else:
+                path.write_bytes(name.encode())
+            entries[name] = path
+
+        variants = {}
+        for compat in release.SUPPORTED_STS2_API_COMPATS:
+            dll = inputs / f"Archipelago-{compat}.dll"
+            dll.write_bytes(f"variant-{compat}".encode())
+            assembly = f"lib/{compat}/Archipelago.dll"
+            entries[assembly] = dll
+            entries[f"lib/{compat}/compat-target.txt"] = f"{compat}\n".encode()
+            variants[compat] = {"assembly": assembly, "sha256": release.sha256(dll)}
+        entries[release.VARIANT_MANIFEST_NAME] = json.dumps(
+            {"schema": 1, "modVersion": "1.0.0", "variants": variants}
+        ).encode()
+        return entries
+
+    def test_creates_versioned_variant_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            inputs = root / "inputs"
-            inputs.mkdir()
-            files = []
-            for name in (
-                "Archipelago.json",
-                "Archipelago.dll",
-                "Archipelago.pck",
-                "Archipelago.MultiClient.Net.dll",
-                "spire2.apworld",
-            ):
-                path = inputs / name
-                if name == "Archipelago.json":
-                    path.write_text(
-                        json.dumps({"id": "Archipelago", "version": "1.0.0"}),
-                        encoding="utf-8",
-                    )
-                else:
-                    path.write_bytes(name.encode())
-                files.append(path)
+            entries = self.make_valid_entries(root)
             archive_path = root / "Archipelago.zip"
 
-            release.create_flat_client_archive(files, archive_path)
+            release.create_client_archive(entries, archive_path)
 
             with zipfile.ZipFile(archive_path) as archive:
-                self.assertEqual(
-                    archive.namelist(),
-                    sorted(path.name for path in files),
-                )
+                self.assertEqual(archive.namelist(), sorted(entries))
 
-    def test_rejects_nested_archive(self) -> None:
+    def test_rejects_unexpected_nested_archive_path(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            archive_path = Path(temporary) / "Archipelago.zip"
-            with zipfile.ZipFile(archive_path, "w") as archive:
-                for name in (
-                    "Archipelago/Archipelago.json",
-                    "Archipelago/Archipelago.dll",
-                    "Archipelago/Archipelago.pck",
-                    "Archipelago/spire2.apworld",
-                ):
-                    content = (
-                        json.dumps({"id": "Archipelago", "version": "1.0.0"})
-                        if name == "Archipelago.json"
-                        else "test"
-                    )
-                    archive.writestr(name, content)
+            root = Path(temporary)
+            archive_path = root / "Archipelago.zip"
+            release.create_client_archive(self.make_valid_entries(root), archive_path)
+            with zipfile.ZipFile(archive_path, "a") as archive:
+                archive.writestr("Archipelago/unexpected.dll", b"test")
 
-            with self.assertRaisesRegex(release.ReleaseError, "must be flat"):
+            with self.assertRaisesRegex(release.ReleaseError, "Unexpected nested"):
                 release.verify_client_archive(archive_path)
 
     def test_rejects_forbidden_build_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            archive_path = Path(temporary) / "Archipelago.zip"
-            with zipfile.ZipFile(archive_path, "w") as archive:
-                for name in (
-                    "Archipelago.json",
-                    "Archipelago.dll",
-                    "Archipelago.pck",
-                    "spire2.apworld",
-                    "sts2.dll",
-                ):
-                    content = (
-                        json.dumps({"id": "Archipelago", "version": "1.0.0"})
-                        if name == "Archipelago.json"
-                        else "test"
-                    )
-                    archive.writestr(name, content)
+            root = Path(temporary)
+            archive_path = root / "Archipelago.zip"
+            release.create_client_archive(self.make_valid_entries(root), archive_path)
+            with zipfile.ZipFile(archive_path, "a") as archive:
+                archive.writestr("sts2.dll", b"test")
 
             with self.assertRaisesRegex(release.ReleaseError, "forbidden files"):
                 release.verify_client_archive(archive_path)

@@ -1,4 +1,3 @@
-using HarmonyLib;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -82,17 +81,9 @@ public static class ApMultiplayerCampaignFlow
                 bool archived = false;
                 try
                 {
-                    var embark = AccessTools.Method(
-                        typeof(NCharacterSelectScreen),
-                        "OnEmbarkPressed",
-                        [typeof(NButton)]
-                    ) ?? throw new MissingMethodException(
-                        typeof(NCharacterSelectScreen).FullName,
-                        "OnEmbarkPressed(NButton)"
-                    );
                     ApMultiplayerCampaignStore.ArchiveCampaign(existing.CampaignId);
                     archived = true;
-                    embark.Invoke(screen, new object?[] { null });
+                    screen.OnEmbarkPressed(null!);
                 }
                 catch (Exception ex)
                 {
@@ -117,12 +108,10 @@ public static class ApMultiplayerCampaignFlow
         reason = string.Empty;
         try
         {
-            object? value = AccessTools.Field(typeof(NMultiplayerLoadGameScreen), "_runLobby")
-                ?.GetValue(screen);
-            if (value is not LoadRunLobby lobby)
+            if (screen._runLobby is not LoadRunLobby lobby)
                 return true;
 
-            HashSet<ulong> connectedIds = BetaMainCompatibility
+            HashSet<ulong> connectedIds = Sts2Compatibility
                 .GetConnectedRunPlayerNetIds(lobby)
                 .ToHashSet();
             connectedIds.Add(lobby.NetService.NetId);

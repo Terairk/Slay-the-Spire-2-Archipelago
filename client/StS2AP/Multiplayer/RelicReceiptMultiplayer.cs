@@ -89,7 +89,7 @@ public static class RelicReceiptMultiplayer
         _replySubscription ??= RitsuLibSidecarTypedMessageRegistry.Subscribe(
             ReplyDescriptor, context => Post(() =>
             {
-                if (BetaMainCompatibility.TryGetHostNetId(RunManager.Instance.NetService, out ulong host)
+                if (Sts2Compatibility.TryGetHostNetId(RunManager.Instance.NetService, out ulong host)
                     && context.SenderNetId == host)
                     ApplyReply(context.Message);
             }));
@@ -104,7 +104,7 @@ public static class RelicReceiptMultiplayer
             TreasureProceedReadyDecisionDescriptor,
             context => Post(() =>
             {
-                if (BetaMainCompatibility.TryGetHostNetId(
+                if (Sts2Compatibility.TryGetHostNetId(
                         RunManager.Instance.NetService,
                         out ulong host)
                     && context.SenderNetId == host)

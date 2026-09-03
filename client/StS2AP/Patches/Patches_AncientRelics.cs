@@ -121,22 +121,16 @@ namespace StS2AP.Patches
 
                 // Materialize Orobas's pools in the same order as the base method, without
                 // modifying the event model's property results.
-                var pool1 = GetPrivateProperty<IEnumerable<EventOption>>(__instance, "OptionPool1").ToList();
+                var pool1 = __instance.OptionPool1.ToList();
 
                 EventOption dynamicPool1Option;
                 if (__instance.Rng.NextFloat() < 0.3333333f)
                 {
-                    dynamicPool1Option = GetPrivateProperty<EventOption>(
-                        __instance,
-                        "PrismaticGemOption"
-                    );
+                    dynamicPool1Option = __instance.PrismaticGemOption;
                 }
                 else
                 {
-                    dynamicPool1Option = GetPrivateProperty<IEnumerable<EventOption>>(
-                        __instance,
-                        "SeaGlassOptions"
-                    ).FirstOrDefault(option =>
+                    dynamicPool1Option = __instance.SeaGlassOptions.FirstOrDefault(option =>
                         option.Relic is SeaGlass seaGlass &&
                         seaGlass.CharacterId == seaGlassCharacter.Id
                     ) ?? throw new InvalidOperationException(
@@ -152,7 +146,7 @@ namespace StS2AP.Patches
                     "Orobas option pool 1 contains no valid options."
                 );
 
-                var pool2 = GetPrivateProperty<IEnumerable<EventOption>>(__instance, "OptionPool2").ToList();
+                var pool2 = __instance.OptionPool2.ToList();
                 pool2.RemoveAll(option => IsBlocked(option, settings));
                 var secondOption = PickRequired(
                     __instance,
@@ -160,7 +154,7 @@ namespace StS2AP.Patches
                     "Orobas option pool 2 contains no valid options."
                 );
 
-                var pool3 = GetPrivateProperty<IEnumerable<EventOption>>(__instance, "OptionPool3").ToList();
+                var pool3 = __instance.OptionPool3.ToList();
                 pool3.RemoveAll(option => IsBlocked(option, settings) || option.Relic is null);
                 var thirdOptionPool = pool3.Count > 0
                     ? pool3
@@ -232,17 +226,6 @@ namespace StS2AP.Patches
                 ?? throw new InvalidOperationException(errorMessage);
         }
 
-        private static T GetPrivateProperty<T>(Orobas instance, string propertyName)
-            where T : class
-        {
-            var property = AccessTools.Property(instance.GetType(), propertyName)
-                ?? throw new MissingMemberException(instance.GetType().FullName, propertyName);
-
-            return property.GetValue(instance) as T
-                ?? throw new InvalidOperationException(
-                    $"{instance.GetType().Name}.{propertyName} did not contain a {typeof(T).FullName}."
-                );
-        }
     }
 
     [HarmonyPatch(typeof(AncientEventModel), "GenerateInitialOptionsWrapper")]

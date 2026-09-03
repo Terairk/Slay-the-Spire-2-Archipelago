@@ -42,7 +42,7 @@ namespace StS2AP.Patches
                 if (!DeathLinkUtility.IsDeathLinkEnabled) return true;
 
                 // Grab the state of the Run
-                RunState? runState = Traverse.Create(__instance).Field<RunState>("_state").Value;
+                RunState? runState = __instance._state;
 
                 // Don't send death link if the player won (died to the Architect)
                 if (runState?.CurrentRoom?.IsVictoryRoom ?? false)

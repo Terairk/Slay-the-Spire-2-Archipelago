@@ -19,24 +19,47 @@ silent; the client recommends an update only when the server is on an older
 major/minor APWorld line than the bundled copy. Client and APWorld version
 numbers are never compared with each other.
 
+## DLL-only development without a game install
+
+Copy `client/StS2AP/local.props.template` to the untracked `local.props` and set
+`Sts2ApiSignatureRoot`. A minimal reference pack contains only `sts2.dll`,
+`0Harmony.dll`, and `GodotSharp.dll` in each numeric version directory. Then a
+single variant can be compiled without touching a game directory or exporting a
+PCK:
+
+```text
+dotnet build client/StS2AP/StS2AP.csproj -c Release -p:Sts2ApiCompat=0.107.1 -p:DllOnlyBuild=true
+dotnet build client/StS2AP/StS2AP.csproj -c Release -p:Sts2ApiCompat=0.111.0 -p:DllOnlyBuild=true
+dotnet build client/StS2AP.Loader/StS2AP.Loader.csproj -c Release
+```
+
+NuGet restore is still necessary for Archipelago, RitsuLib, and Publicizer. The
+resulting variant DLLs are under `client/StS2AP/bin/<version>/Release/net9.0/`.
+These commands prove compilation only; use the release command to assemble the
+hash-validated loader layout.
+
 ## Validate and build
 
 On Windows, use the PowerShell wrapper:
 
 ```powershell
 .\scripts\release.ps1 validate
-.\scripts\release.ps1 build
+.\scripts\release.ps1 build --sts2-api-signature-root C:\sts2-reference
 ```
 
 The equivalent direct commands are:
 
 ```text
 py -3.13 scripts/release.py validate
-py -3.13 scripts/release.py build
+py -3.13 scripts/release.py build --sts2-api-signature-root C:\sts2-reference
 ```
 
 Pass `--expected-mod-version` and `--expected-apworld-version` to make the
-operator's intended versions explicit. `build` replaces
+operator's intended versions explicit. The signature root must contain
+`0.107.1/` and `0.111.0/`, each with `sts2.dll`, `0Harmony.dll`, and
+`GodotSharp.dll`. These are compile-time reference packs; the full game does not
+need to be installed on the build machine, although NuGet restore and Godot are
+still required. `build` replaces
 `../Archipelago/worlds/spire2`, invokes the Archipelago APWorld builder, builds
 the C# client and Godot pack, and creates:
 
@@ -46,9 +69,15 @@ dist/spire2.apworld
 dist/release-build.json
 ```
 
-`Archipelago.zip` is deliberately flat. GUI archive tools should create the
-required `Archipelago` installation directory from the archive name. The build
-bundles `spire2.apworld` beside the client DLL so the in-game **Install APWorld**
+`Archipelago.zip` has top-level install files plus exact variants at
+`lib/0.107.1/Archipelago.dll` and `lib/0.111.0/Archipelago.dll`. GUI archive tools
+should still create the required `Archipelago` installation directory from the
+archive name. The root `Archipelago.dll` selects an exact variant when possible.
+For a later patch on the same major/minor version line, it selects the newest
+compiled target not newer than the running game and logs a warning. It refuses
+unreadable versions, older patches, and new major/minor lines. Game versions are
+never encoded into the mod version. The build bundles
+`spire2.apworld` beside the loader so the in-game **Install APWorld**
 button can launch it. The exact same APWorld is also kept as the standalone
 GitHub asset. The build verifies that both copies are byte-identical, alongside
 required entries, excluded game/debug libraries, APWorld contents, artifact

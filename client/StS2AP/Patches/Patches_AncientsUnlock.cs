@@ -35,10 +35,7 @@ namespace StS2AP.Patches
                 ))
                 return true;
 
-            var stateProperty = typeof(RunManager).GetProperty("State",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-            if (stateProperty?.GetValue(__instance) is RunState runState)
+            if (__instance.State is RunState runState)
             {
                 runState.ExtraFields.StartedWithNeow = true;
             }

@@ -15,9 +15,12 @@
 - **Your Slay the Spire II client must be running on Windows**. The debug terminal we use uses Win32 APIs.
   - This will not be a requirement long-term, but for early Alpha development it's necessary.
 - **Your host MUST use Archipelago Client v0.6.7+**.
-- This version of the mod is intended to be used for the Slay the Spire II **Beta Branch (v0.111.0)**
-  - **You must opt into the Beta Branch; the default public version is not supported by this client build.**
-  - If your installation of Slay the Spire II is higher or lower than this, the mod _may_ not work.
+- This mod contains exact client variants for Slay the Spire II **public v0.107.1**
+  and **public-beta v0.111.0**.
+  - Later patch releases on either version line use the newest compatible build
+    from that line and produce a warning in the log.
+  - The loader refuses unreadable versions, earlier patches, and new major/minor
+    lines.
   - We will do our best to keep up with game updates as they release, so please be patient.
 
 ## Installing the Mod

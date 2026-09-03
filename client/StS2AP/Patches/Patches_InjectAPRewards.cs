@@ -13,7 +13,6 @@ using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Utils;
-using System.Reflection;
 using static MegaCrit.Sts2.Core.Multiplayer.Game.TreasureRoomRelicSynchronizer;
 
 namespace StS2AP.Patches
@@ -54,16 +53,6 @@ namespace StS2AP.Patches
         public class GenerateRewardsForPatch
         {
             /// <summary>
-            /// Reflection needed to nab `Options` off of a `CardReward`
-            /// </summary>
-            private static readonly PropertyInfo? s_optionsProp = typeof(CardReward).GetProperty("Options", BindingFlags.Instance | BindingFlags.NonPublic);
-
-            /// <summary>
-            /// Reflection needed to read `_wasGoldStolenBack` off of a `GoldReward`
-            /// </summary>
-            private static readonly FieldInfo? s_wasGoldStolenBackField = typeof(GoldReward).GetField("_wasGoldStolenBack", BindingFlags.Instance | BindingFlags.NonPublic);
-
-            /// <summary>
             /// Inject Archipelago Rewards into the Loot Screen.
             /// I'm fairly certain I can write this with less nesting, but I'm scared to use `return` wrong on a HarmonyPatch lol
             /// </summary>
@@ -94,7 +83,7 @@ namespace StS2AP.Patches
                     if (cardReward != null)
                     {
                         // Is this a rare card reward?
-                        var cardOpts = s_optionsProp.GetValue(cardReward) as CardCreationOptions;
+                        CardCreationOptions cardOpts = cardReward.Options;
                         bool isRare = cardOpts.RarityOdds == CardRarityOddsType.BossEncounter;
 
                         // If it's rare, then we always want to replace it (only happens twice, Act 1 & 2 Boss)
@@ -133,7 +122,7 @@ namespace StS2AP.Patches
                     }
 
                     // If we're in GoldSanity, we want to replace the Gold Reward with an AP Location reward (so long as it's not returned gold)
-                    var goldReward = __result.FirstOrDefault(r => r is GoldReward && s_wasGoldStolenBackField?.GetValue(r) is false);
+                    var goldReward = __result.OfType<GoldReward>().FirstOrDefault(reward => !reward._wasGoldStolenBack);
                     if (goldReward != null && settings.GoldSanity)
                     {
                         // Is this a boss gold reward? (It's a different location/check)
@@ -473,14 +462,7 @@ namespace StS2AP.Patches
                 ))
                     return;
 
-                // Grab the private _rewardsContainer field (where NRewardButton instances are added).
-                FieldInfo? containerField = typeof(NRewardsScreen).GetField("_rewardsContainer", BindingFlags.Instance | BindingFlags.NonPublic);
-                if (containerField == null)
-                {
-                    return;
-                }
-
-                Control? rewardsContainer = containerField.GetValue(__result) as Control;
+                Control? rewardsContainer = __result._rewardsContainer;
                 if (rewardsContainer == null)
                 {
                     return;

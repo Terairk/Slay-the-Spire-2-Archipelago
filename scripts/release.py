@@ -21,7 +21,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Mapping, Sequence
 
 
 CLIENT_ARCHIVE_NAME = "Archipelago.zip"
@@ -31,7 +31,10 @@ CLIENT_MANIFEST_PATH = Path("client/StS2AP/Archipelago.json")
 WORLD_MANIFEST_PATH = Path("world/spire2/archipelago.json")
 WORLD_SOURCE_PATH = Path("world/spire2/world.py")
 CLIENT_PROJECT_PATH = Path("client/StS2AP/StS2AP.csproj")
+CLIENT_LOADER_PROJECT_PATH = Path("client/StS2AP.Loader/StS2AP.Loader.csproj")
 RELEASE_NOTES_PATH = Path("scripts/release-notes-template.md")
+VARIANT_MANIFEST_NAME = "archipelago-variants.json"
+SUPPORTED_STS2_API_COMPATS = ("0.107.1", "0.111.0")
 EXPECTED_MOD_ID = "Archipelago"
 EXPECTED_WORLD_GAME = "Slay the Spire II"
 EXCLUDED_CLIENT_FILES = {"0Harmony.dll", "GodotSharp.dll", "sts2.dll"}
@@ -40,6 +43,9 @@ REQUIRED_CLIENT_FILES = {
     "Archipelago.dll",
     "Archipelago.pck",
     APWORLD_ARCHIVE_NAME,
+    VARIANT_MANIFEST_NAME,
+    *(f"lib/{compat}/Archipelago.dll" for compat in SUPPORTED_STS2_API_COMPATS),
+    *(f"lib/{compat}/compat-target.txt" for compat in SUPPORTED_STS2_API_COMPATS),
 }
 
 
@@ -274,6 +280,7 @@ def release_input_changes(repo: Path) -> str:
         "--exclude-standard",
         "--",
         "client/StS2AP",
+        "client/StS2AP.Loader",
         "world/spire2",
     )
     return "\n".join(part for part in (tracked, untracked_inputs) if part)
@@ -284,7 +291,7 @@ def assert_reproducible_source(repo: Path, allow_dirty: bool) -> None:
     if changes and not allow_dirty:
         raise ReleaseError(
             "Release inputs are not reproducible. Commit/stash tracked changes and remove or ignore "
-            "untracked files under client/StS2AP or world/spire2, or use --allow-dirty for a local test build.\n"
+            "untracked files under the client projects or world/spire2, or use --allow-dirty for a local test build.\n"
             + changes
         )
 
@@ -393,16 +400,34 @@ def parse_msbuild_properties(output: str) -> dict[str, Any]:
     return properties
 
 
-def build_client(paths: BuildPaths, versions: Versions) -> None:
+def build_client(paths: BuildPaths, versions: Versions, signature_root: Path) -> None:
     project = paths.repo / CLIENT_PROJECT_PATH
-    build_properties = (
+    loader_project = paths.repo / CLIENT_LOADER_PROJECT_PATH
+    common_properties = (
         f"-p:Version={versions.mod}",
         f"-p:ModName={EXPECTED_MOD_ID}",
+        f"-p:Sts2ApiSignatureRoot={signature_root}",
     )
+    for compat in SUPPORTED_STS2_API_COMPATS:
+        run(
+            (
+                "dotnet",
+                "build",
+                project,
+                "-c",
+                "Release",
+                *common_properties,
+                f"-p:Sts2ApiCompat={compat}",
+                f"-p:DllOnlyBuild={'false' if compat == SUPPORTED_STS2_API_COMPATS[-1] else 'true'}",
+            ),
+            cwd=paths.repo,
+        )
     run(
-        ("dotnet", "build", project, "-c", "Release", *build_properties),
+        ("dotnet", "build", loader_project, "-c", "Release", *common_properties),
         cwd=paths.repo,
     )
+
+    latest_compat = SUPPORTED_STS2_API_COMPATS[-1]
     property_output = run(
         (
             "dotnet",
@@ -410,7 +435,8 @@ def build_client(paths: BuildPaths, versions: Versions) -> None:
             project,
             "-getProperty:ModsOutputDir",
             "-getProperty:ModName",
-            *build_properties,
+            *common_properties,
+            f"-p:Sts2ApiCompat={latest_compat}",
         ),
         cwd=paths.repo,
         capture=True,
@@ -428,13 +454,44 @@ def build_client(paths: BuildPaths, versions: Versions) -> None:
             f"Godot export did not produce {pck}. Check GodotExePath in client/StS2AP/local.props."
         )
 
-    output = paths.repo / "client/StS2AP/bin/Release/net9.0"
-    if not output.is_dir():
-        raise ReleaseError(f"Client build output directory does not exist: {output}")
-    files = [path for path in output.iterdir() if include_client_file(path)]
-    files.append(pck)
-    files.append(paths.apworld_archive)
-    create_flat_client_archive(files, paths.client_archive, versions)
+    latest_output = paths.repo / f"client/StS2AP/bin/{latest_compat}/Release/net9.0"
+    loader_output = paths.repo / "client/StS2AP.Loader/bin/Release/net9.0"
+    loader_dll = loader_output / "Archipelago.Loader.dll"
+    if not latest_output.is_dir() or not loader_dll.is_file():
+        raise ReleaseError(
+            f"Client or loader build output is missing: {latest_output}, {loader_dll}"
+        )
+
+    entries: dict[str, Path | bytes] = {
+        "Archipelago.dll": loader_dll,
+        "Archipelago.pck": pck,
+        APWORLD_ARCHIVE_NAME: paths.apworld_archive,
+    }
+    for path in latest_output.iterdir():
+        if include_client_file(path) and path.name != "Archipelago.dll":
+            entries[path.name] = path
+
+    variants: dict[str, dict[str, str]] = {}
+    for compat in SUPPORTED_STS2_API_COMPATS:
+        variant_dll = paths.repo / f"client/StS2AP/bin/{compat}/Release/net9.0/Archipelago.dll"
+        if not variant_dll.is_file():
+            raise ReleaseError(f"Client variant output is missing: {variant_dll}")
+        assembly_name = f"lib/{compat}/Archipelago.dll"
+        entries[assembly_name] = variant_dll
+        entries[f"lib/{compat}/compat-target.txt"] = f"{compat}\n".encode()
+        variants[compat] = {
+            "assembly": assembly_name,
+            "sha256": sha256(variant_dll),
+        }
+    entries[VARIANT_MANIFEST_NAME] = (
+        json.dumps(
+            {"schema": 1, "modVersion": str(versions.mod), "variants": variants},
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode()
+    create_client_archive(entries, paths.client_archive, versions)
 
 
 def include_client_file(path: Path) -> bool:
@@ -451,30 +508,40 @@ def include_client_file(path: Path) -> bool:
     return True
 
 
-def create_flat_client_archive(
-    files: Iterable[Path],
+def create_client_archive(
+    entries: Mapping[str, Path | bytes],
     destination: Path,
     versions: Versions | None = None,
 ) -> None:
-    selected: dict[str, Path] = {}
-    for path in files:
-        if not path.is_file():
-            raise ReleaseError(f"Client release input does not exist: {path}")
-        if path.name in selected and selected[path.name] != path:
-            raise ReleaseError(
-                f"Two client release inputs have the same filename {path.name}: "
-                f"{selected[path.name]} and {path}"
-            )
-        selected[path.name] = path
+    selected = dict(entries)
     missing = sorted(REQUIRED_CLIENT_FILES - selected.keys())
     if missing:
         raise ReleaseError(f"Client release is missing required files: {', '.join(missing)}")
+    for name, source in selected.items():
+        validate_archive_entry_name(name)
+        if isinstance(source, Path) and not source.is_file():
+            raise ReleaseError(f"Client release input does not exist: {source}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.unlink(missing_ok=True)
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name in sorted(selected):
-            archive.write(selected[name], arcname=name)
+            source = selected[name]
+            if isinstance(source, Path):
+                archive.write(source, arcname=name)
+            else:
+                archive.writestr(name, source)
     verify_client_archive(destination, versions)
+
+
+def validate_archive_entry_name(name: str) -> None:
+    path = Path(name)
+    if not name or name.startswith(("/", "\\")) or "\\" in name or ".." in path.parts:
+        raise ReleaseError(f"Invalid client archive path: {name!r}")
+    if len(path.parts) == 1:
+        return
+    if len(path.parts) == 3 and name in REQUIRED_CLIENT_FILES:
+        return
+    raise ReleaseError(f"Unexpected nested client archive path: {name!r}")
 
 
 def verify_client_archive(path: Path, versions: Versions | None = None) -> None:
@@ -487,14 +554,19 @@ def verify_client_archive(path: Path, versions: Versions | None = None) -> None:
                 if "Archipelago.json" in names
                 else None
             )
+            variant_manifest_bytes = (
+                archive.read(VARIANT_MANIFEST_NAME)
+                if VARIANT_MANIFEST_NAME in names
+                else None
+            )
     except (OSError, zipfile.BadZipFile) as exc:
         raise ReleaseError(f"Client archive is invalid: {path}: {exc}") from exc
     if corrupt is not None:
         raise ReleaseError(f"Client archive contains a corrupt entry: {corrupt}")
-    if any("/" in name.strip("/") or "\\" in name.strip("\\") for name in names):
-        raise ReleaseError(
-            f"{path.name} must be flat so archive tools create the Archipelago install directory"
-        )
+    if len(names) != len(set(names)):
+        raise ReleaseError(f"{path.name} contains duplicate archive entries")
+    for name in names:
+        validate_archive_entry_name(name)
     missing = sorted(REQUIRED_CLIENT_FILES - set(names))
     if missing:
         raise ReleaseError(f"{path.name} is missing required files: {', '.join(missing)}")
@@ -511,6 +583,32 @@ def verify_client_archive(path: Path, versions: Versions | None = None) -> None:
         raise ReleaseError(
             f"Built client declares version {archive_version}, expected {versions.mod}"
         )
+    try:
+        variant_manifest = json.loads(variant_manifest_bytes)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ReleaseError(f"{path.name} contains an invalid {VARIANT_MANIFEST_NAME}: {exc}") from exc
+    if not isinstance(variant_manifest, dict) or variant_manifest.get("schema") != 1:
+        raise ReleaseError(f"{path.name} contains an unsupported variant manifest")
+    if variant_manifest.get("modVersion") != str(archive_version):
+        raise ReleaseError(f"{path.name} variant manifest modVersion does not match Archipelago.json")
+    variants = variant_manifest.get("variants")
+    if not isinstance(variants, dict) or tuple(sorted(variants)) != tuple(sorted(SUPPORTED_STS2_API_COMPATS)):
+        raise ReleaseError(f"{path.name} must contain exactly the supported STS2 variants")
+    with zipfile.ZipFile(path) as archive:
+        for compat in SUPPORTED_STS2_API_COMPATS:
+            entry = variants.get(compat)
+            expected_assembly = f"lib/{compat}/Archipelago.dll"
+            if not isinstance(entry, dict) or entry.get("assembly") != expected_assembly:
+                raise ReleaseError(f"{path.name} has an invalid assembly path for STS2 {compat}")
+            actual_hash = hashlib.sha256(archive.read(expected_assembly)).hexdigest()
+            if entry.get("sha256") != actual_hash:
+                raise ReleaseError(f"{path.name} has an invalid DLL hash for STS2 {compat}")
+            try:
+                marker = archive.read(f"lib/{compat}/compat-target.txt").decode().strip()
+            except UnicodeDecodeError as exc:
+                raise ReleaseError(f"{path.name} has a non-text compatibility marker for STS2 {compat}") from exc
+            if marker != compat:
+                raise ReleaseError(f"{path.name} has an invalid compatibility marker for STS2 {compat}")
     forbidden = sorted(name for name in names if not include_client_archive_name(name))
     if forbidden:
         raise ReleaseError(f"{path.name} contains forbidden files: {', '.join(forbidden)}")
@@ -649,7 +747,7 @@ def command_build(args: argparse.Namespace, paths: BuildPaths) -> None:
     log(f"Building mod {versions.mod} with APWorld {versions.apworld}")
     build_apworld(paths)
     verify_apworld_archive(paths.apworld_archive, versions)
-    build_client(paths, versions)
+    build_client(paths, versions, args.sts2_api_signature_root.resolve())
     verify_bundled_apworld(paths.client_archive, paths.apworld_archive)
     write_build_manifest(
         paths,
@@ -770,6 +868,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--archipelago-root",
         type=Path,
         help="Archipelago checkout (default: sibling ../Archipelago)",
+    )
+    build.add_argument(
+        "--sts2-api-signature-root",
+        type=Path,
+        required=True,
+        help="directory containing 0.107.1/ and 0.111.0/ compile-time game assemblies",
     )
 
     publish = subparsers.add_parser(

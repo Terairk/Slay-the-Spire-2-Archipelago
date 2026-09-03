@@ -202,10 +202,8 @@ namespace StS2AP.Patches
                     return;
 
                 // Access Left/Right Ascension Modifying Arrows
-                var leftField = AccessTools.Field(typeof(NAscensionPanel), "_leftArrow");
-                var rightField = AccessTools.Field(typeof(NAscensionPanel), "_rightArrow");
-                var leftObj = leftField?.GetValue(__instance) as Control;
-                var rightObj = rightField?.GetValue(__instance) as Control;
+                Control? leftObj = __instance._leftArrow;
+                Control? rightObj = __instance._rightArrow;
 
                 if (leftObj != null)
                 {

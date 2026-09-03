@@ -452,7 +452,7 @@ public static class ArchipelagoRewardUI
 
         // Match the exact screen held by an AP card reward, not just an arbitrary top overlay.
         foreach (CardReward reward in _set.Rewards.OfType<CardReward>())
-            if (BetaMainCompatibility.TrySkipCardRewardSelection(reward, picker))
+            if (Sts2Compatibility.TrySkipCardRewardSelection(reward, picker))
                 return true;
         return false;
     }
