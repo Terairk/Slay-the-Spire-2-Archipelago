@@ -1163,7 +1163,9 @@ public static class ApMirroredRewardDispatcher
             spec.ReceivedItemIndex
         );
         byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(seedMaterial));
-        return new Rng(BinaryPrimitives.ReadUInt64LittleEndian(digest));
+        // The public build accepts a 32-bit seed while the beta build widens the same value.
+        // Using the shared 32-bit seed keeps materialization deterministic across both variants.
+        return new Rng(BinaryPrimitives.ReadUInt32LittleEndian(digest));
     }
 
     private static async Task<ApNativeCardReward> MaterializeReplicaNativeCardReward(

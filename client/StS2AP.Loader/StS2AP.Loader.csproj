@@ -11,8 +11,9 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <IsPackable>false</IsPackable>
     <Sts2ApiCompat>0.107.1</Sts2ApiCompat>
-    <Sts2ApiSignatureDir Condition="'$(Sts2ApiSignatureRoot)' != ''">$(Sts2ApiSignatureRoot)\$(Sts2ApiCompat)</Sts2ApiSignatureDir>
-    <STS2ReferenceDataDir Condition="'$(Sts2ApiSignatureRoot)' != ''">$(Sts2ApiSignatureDir)</STS2ReferenceDataDir>
+    <Sts2ApiSignatureDir Condition="'$(STS2ReferenceDataDir01071)' != ''">$(STS2ReferenceDataDir01071)</Sts2ApiSignatureDir>
+    <Sts2ApiSignatureDir Condition="'$(Sts2ApiSignatureDir)' == '' and '$(Sts2ApiSignatureRoot)' != ''">$(Sts2ApiSignatureRoot)\$(Sts2ApiCompat)</Sts2ApiSignatureDir>
+    <STS2ReferenceDataDir Condition="'$(Sts2ApiSignatureDir)' != ''">$(Sts2ApiSignatureDir)</STS2ReferenceDataDir>
     <STS2GamePath Condition="'$(STS2GamePath)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2</STS2GamePath>
     <STS2ReferenceDataDir Condition="'$(STS2ReferenceDataDir)' == ''">$(STS2GamePath)\data_sts2_windows_x86_64</STS2ReferenceDataDir>
   </PropertyGroup>

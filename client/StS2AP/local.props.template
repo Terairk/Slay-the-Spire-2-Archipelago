@@ -4,19 +4,20 @@
     <STS2GamePath>???\steamapps\common\Slay the Spire 2</STS2GamePath>
 
     <!--
-      Optional root for reproducible cross-version builds. Keep only the three compile-time
-      game assemblies in each numeric directory:
+      Compile-time reference directories. Keep only the three game assemblies in each:
 
-        ???\sts2-reference\0.107.1\sts2.dll
-        ???\sts2-reference\0.107.1\0Harmony.dll
-        ???\sts2-reference\0.107.1\GodotSharp.dll
-        ???\sts2-reference\0.111.0\sts2.dll
-        ???\sts2-reference\0.111.0\0Harmony.dll
-        ???\sts2-reference\0.111.0\GodotSharp.dll
+        ???\sts2-reference\v01071\sts2.dll
+        ???\sts2-reference\v01071\0Harmony.dll
+        ???\sts2-reference\v01071\GodotSharp.dll
+        ???\sts2-reference\v01110\sts2.dll
+        ???\sts2-reference\v01110\0Harmony.dll
+        ???\sts2-reference\v01110\GodotSharp.dll
 
-      The directory is deliberately untracked. NuGet restore is still required.
+      A numeric Sts2ApiSignatureRoot remains supported by the release tool. These explicit
+      paths are convenient for local builds and are deliberately untracked.
     -->
-    <!-- <Sts2ApiSignatureRoot>???\sts2-reference</Sts2ApiSignatureRoot> -->
+    <STS2ReferenceDataDir01071>???\sts2-reference\v01071</STS2ReferenceDataDir01071>
+    <STS2ReferenceDataDir01110>???\sts2-reference\v01110</STS2ReferenceDataDir01110>
 
     <!-- Godot 4.5.1 .NET executable used to export the mod's PCK. -->
     <GodotExePath>???\Godot_v4.5.1-stable_mono_win64.exe</GodotExePath>

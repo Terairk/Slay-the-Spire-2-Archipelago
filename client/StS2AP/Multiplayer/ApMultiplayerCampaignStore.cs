@@ -2,6 +2,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Platform.Steam;
 using MegaCrit.Sts2.Core.Runs;
@@ -148,7 +149,7 @@ public static class ApMultiplayerCampaignStore
         && metadata.ApSlotId == slotId;
 
     internal static bool TryGetActiveCampaignForRoster(
-        object lobby,
+        StartRunLobby lobby,
         out CampaignMetadata metadata)
     {
         IReadOnlyList<(ulong NetId, string CharacterId)> roster =

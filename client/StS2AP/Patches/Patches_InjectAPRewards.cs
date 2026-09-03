@@ -79,7 +79,7 @@ namespace StS2AP.Patches
                     var name = player.APName();
 
                     // Determine if a Card Reward is being placed
-                    var cardReward = __result.FirstOrDefault(r => r is CardReward);
+                    CardReward? cardReward = __result.OfType<CardReward>().FirstOrDefault();
                     if (cardReward != null)
                     {
                         // Is this a rare card reward?
