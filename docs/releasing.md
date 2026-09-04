@@ -21,22 +21,21 @@ numbers are never compared with each other.
 
 ## DLL-only development without a game install
 
-Copy `client/StS2AP/local.props.template` to the untracked `local.props` and set
-`Sts2ApiSignatureRoot`. A minimal reference pack contains only `sts2.dll`,
-`0Harmony.dll`, and `GodotSharp.dll` in each numeric version directory. Then a
-single variant can be compiled without touching a game directory or exporting a
-PCK:
+The project maps each supported `Sts2ApiCompat` to a pinned
+`Book.StS2.RefLib` package containing MegaCrit-permissioned, stripped reference
+assemblies. A single variant can therefore be compiled without a game install,
+touching a game directory, or exporting a PCK:
 
 ```text
-dotnet build client/StS2AP/StS2AP.csproj -c Release -p:Sts2ApiCompat=0.107.1 -p:DllOnlyBuild=true
-dotnet build client/StS2AP/StS2AP.csproj -c Release -p:Sts2ApiCompat=0.111.0 -p:DllOnlyBuild=true
+dotnet build client/StS2AP/StS2AP.csproj -c Release -p:Sts2ApiCompat=0.107.1 -p:UseSts2RefLib=true -p:DllOnlyBuild=true
+dotnet build client/StS2AP/StS2AP.csproj -c Release -p:Sts2ApiCompat=0.111.0 -p:UseSts2RefLib=true -p:DllOnlyBuild=true
 dotnet build client/StS2AP.Loader/StS2AP.Loader.csproj -c Release
 ```
 
-NuGet restore is still necessary for Archipelago, RitsuLib, and Publicizer. The
-resulting variant DLLs are under `client/StS2AP/bin/<version>/Release/net9.0/`.
-These commands prove compilation only; use the release command to assemble the
-hash-validated loader layout.
+NuGet restore is necessary for RefLib, Archipelago, and RitsuLib. The resulting
+variant DLLs are under `client/StS2AP/bin/<version>/Release/net9.0/`. These
+commands prove compilation only; use the release command with locally extracted
+reference packs to assemble and validate the complete loader layout.
 
 ## Validate and build
 

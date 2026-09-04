@@ -1,0 +1,47 @@
+name: Build STS2 API compatibility
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - experimental-branch
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sts2-compat-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.game_channel }} (${{ matrix.sts2_api }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - game_channel: main game API
+            sts2_api: 0.107.1
+          - game_channel: beta game API
+            sts2_api: 0.111.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build client against ${{ matrix.game_channel }}
+        run: >-
+          dotnet build client/StS2AP/StS2AP.csproj
+          --configuration Release
+          --property:Sts2ApiCompat=${{ matrix.sts2_api }}
+          --property:UseSts2RefLib=true
+          --property:DllOnlyBuild=true
+          --nologo
