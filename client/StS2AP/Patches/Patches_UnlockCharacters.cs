@@ -210,10 +210,10 @@ namespace StS2AP.Patches
             /// Called when a character unlock item arrives while this screen is open.
             /// Finds the corresponding button by its raw game name and calls UnlockIfPossible() on it.
             /// </summary>
-            public static void HandleCharacterUnlocked(NCharacterSelectScreen screen, CharacterConfig config)
+            public static void HandleCharacterUnlocked(NCharacterSelectScreen? screen, CharacterConfig config)
             {
                 // Null check
-                if (screen == null)
+                if (screen is null)
                 {
                     LogUtility.Debug("HandleCharacterUnlocked: screen is null — ignoring");
                     return;
@@ -233,7 +233,7 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                LogUtility.Debug($"HandleCharacterUnlocked: Received unlock event for {config.OfficialName} on screen instance {screen?.GetInstanceId()}");
+                LogUtility.Debug($"HandleCharacterUnlocked: Received unlock event for {config.OfficialName} on screen instance {screen.GetInstanceId()}");
 
                 if (screen._charButtonContainer is not Control container)
                 {

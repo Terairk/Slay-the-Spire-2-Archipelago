@@ -21,8 +21,15 @@ public static class ApPlayerContextResolver
     {
         if (!MultiplayerSupport.IsRealMultiplayerRun)
         {
-            settings = ArchipelagoClient.Settings;
-            return settings != null;
+            ArchipelagoSettings? currentSettings = ArchipelagoClient.Settings;
+            if (currentSettings == null)
+            {
+                settings = null!;
+                return false;
+            }
+
+            settings = currentSettings;
+            return true;
         }
 
         settings = null!;

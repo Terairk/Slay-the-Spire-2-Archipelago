@@ -15,7 +15,7 @@ namespace StS2AP.Utils
         /// <summary>
         /// The Main Menu stack, keeps track of the different views a user can be in from the Main Menu.
         /// </summary>
-        public static NMainMenuSubmenuStack SubmenuStack { get; set; }
+        public static NMainMenuSubmenuStack? SubmenuStack { get; set; }
 
         /// <summary>The active main menu instance, used to resume a requested play flow after AP login.</summary>
         public static NMainMenu? MainMenu { get; set; }
@@ -31,16 +31,24 @@ namespace StS2AP.Utils
             MultiplayerSupport.SelectDestination(ApPlayDestination.Singleplayer);
             Patches.Patches_ItemProcessor.ProcessDeferredItemsForSingleplayer();
 
-            if (SubmenuStack.Peek() is NCharacterSelectScreen)
+            NMainMenuSubmenuStack? submenuStack = SubmenuStack;
+            if (submenuStack == null)
+            {
+                LogUtility.Error("Cannot open character select: the main-menu stack is unavailable");
+                return;
+            }
+
+            if (submenuStack.Peek() is NCharacterSelectScreen)
             {
                 LogUtility.Warn(
                     "Ignored a request to open character select because it is already active."
                 );
+                return;
             }
 
-            var characterSelect = SubmenuStack.GetSubmenuType<NCharacterSelectScreen>();
+            var characterSelect = submenuStack.GetSubmenuType<NCharacterSelectScreen>();
             characterSelect.InitializeSingleplayer();
-            SubmenuStack.Push(characterSelect);
+            submenuStack.Push(characterSelect);
         }
 
         /// <summary>Continues through MegaCrit's unmodified multiplayer submenu.</summary>

@@ -178,8 +178,17 @@ namespace StS2AP.Utils
                 return;
             }
 
+            Archipelago.MultiClient.Net.ArchipelagoSession? session = ArchipelagoClient.Session;
+            if (session == null)
+            {
+                LogUtility.Warn(
+                    "[BuffUtility] LoadFromStorageAsync found no active session — skipping."
+                );
+                return;
+            }
+
             // Store the task so ProcessQueuedBuffsAsync can await it if needed.
-            _storageLoadTask = LoadFromStorageInternalAsync(ArchipelagoClient.Session);
+            _storageLoadTask = LoadFromStorageInternalAsync(session);
             await _storageLoadTask;
         }
 

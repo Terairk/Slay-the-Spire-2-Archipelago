@@ -1,8 +1,10 @@
-﻿using Archipelago.MultiClient.Net.Enums;
+﻿using Archipelago.MultiClient.Net;
+using Archipelago.MultiClient.Net.Enums;
 using Archipelago.MultiClient.Net.Models;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
@@ -95,6 +97,14 @@ namespace StS2AP.Patches
                 out bool isTreasureAutosave,
                 out string reason)
             {
+                ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                if (settings == null)
+                {
+                    isBossAutosave = false;
+                    isTreasureAutosave = false;
+                    reason = "the Archipelago slot settings are unavailable";
+                    return false;
+                }
                 int maxSaveAct = ArchipelagoClient.Progress.MaxProgressiveAncientLevel(
                     GameUtility.CurrentConfig?.CharOffset ?? -1
                 );
@@ -113,11 +123,9 @@ namespace StS2AP.Patches
                         preFinishedRoom?.RoomType == RoomType.Event
                         && currentMapPointType == MapPointType.Ancient
                     );
-                AncientRelicLocation ancientRelicLocation =
-                    ArchipelagoClient.Settings?.AncientRelicLocation
-                    ?? AncientRelicLocation.Anytime;
+                AncientRelicLocation ancientRelicLocation = settings.AncientRelicLocation;
                 bool usesProgressiveAncients =
-                    ArchipelagoClient.Settings.APWorldVersion > Constants.VERSION_0_5_3;
+                    settings.APWorldVersion > Constants.VERSION_0_5_3;
                 bool ancientIsLocked =
                     usesProgressiveAncients
                     && ancientRelicLocation == AncientRelicLocation.StartOfAct
@@ -150,10 +158,16 @@ namespace StS2AP.Patches
                 {
                     return;
                 }
+                ArchipelagoSession? session = ArchipelagoClient.Session;
+                if (session == null)
+                {
+                    LogUtility.Error("Cannot upload an AP checkpoint without an active session.");
+                    return;
+                }
                 var saveDict = new Dictionary<string, string>();
                 saveDict[GameUtility.CurrentPlayer.getInternalName()] = zipped;
                 const string saveStorageKey = "StS2AP_Saves";
-                var saveOperation = ArchipelagoClient.Session.DataStorage[
+                var saveOperation = session.DataStorage[
                     Scope.Slot,
                     saveStorageKey
                 ];
@@ -174,7 +188,7 @@ namespace StS2AP.Patches
                         }
                     );
                 }
-                ArchipelagoClient.Session.DataStorage[Scope.Slot, saveStorageKey] = saveOperation;
+                session.DataStorage[Scope.Slot, saveStorageKey] = saveOperation;
             }
 
             /// <summary>
@@ -269,30 +283,50 @@ namespace StS2AP.Patches
             );
             SfxCmd.Play(runState.Players[0].Character.CharacterTransitionSfx);
 
-            GameUtility.CurrentPlayer = runState.Players[0];
-            GameUtility.CurrentConfig = ArchipelagoClient.Settings.Characters[
-                GameUtility.CurrentPlayer.getInternalName()
-            ];
+            Player currentPlayer = runState.Players[0];
+            GameUtility.CurrentPlayer = currentPlayer;
+            ArchipelagoSettings settings = ArchipelagoClient.Settings
+                ?? throw new InvalidOperationException(
+                    "Cannot continue the AP run because slot settings are unavailable"
+                );
+            if (!settings.Characters.TryGetValue(
+                    currentPlayer.getInternalName(),
+                    out CharacterConfig? currentConfig))
+            {
+                throw new InvalidDataException(
+                    $"Cannot continue the AP run because character settings for "
+                        + $"'{currentPlayer.getInternalName()}' are unavailable"
+                );
+            }
+            GameUtility.CurrentConfig = currentConfig;
             ArchipelagoClient.Progress = ArchipelagoProgress.FromSerializable(
                 apSave,
-                GameUtility.CurrentPlayer
+                currentPlayer
             );
-            RelicCoupons.EnsureOwnedBy(GameUtility.CurrentPlayer, silent: true);
+            RelicCoupons.EnsureOwnedBy(currentPlayer, silent: true);
             // Rebuild these counts from AP history.
             ArchipelagoClient.Progress.ProgressiveAncients.Clear();
             ArchipelagoClient.Progress.ProgressiveRests.Clear();
             ArchipelagoClient.Progress.ProgressiveSmiths.Clear();
             Patches_ItemProcessor.ReprocessItems();
-            RelicRewardUtility.ReconcileBankedRewards(GameUtility.CurrentPlayer);
-            ArchipelagoClient.Progress.InitializeFromServer(GameUtility.CurrentPlayer);
+            RelicRewardUtility.ReconcileBankedRewards(currentPlayer);
+            ArchipelagoClient.Progress.InitializeFromServer(currentPlayer);
 
-            await NGame.Instance.Transition.FadeOut(
+            NGame game = NGame.Instance
+                ?? throw new InvalidOperationException(
+                    "Cannot continue the AP run because the game singleton is unavailable"
+                );
+            var transition = game.Transition
+                ?? throw new InvalidOperationException(
+                    "Cannot continue the AP run because the game transition controller is unavailable"
+                );
+            await transition.FadeOut(
                 0.8f,
                 runState.Players[0].Character.CharacterSelectTransitionPath
             );
-            NGame.Instance.ReactionContainer.InitializeNetworking(new NetSingleplayerGameService());
-            await NGame.Instance.LoadRun(runState, serializableRun.PreFinishedRoom);
-            await NGame.Instance.Transition.FadeIn();
+            game.ReactionContainer.InitializeNetworking(new NetSingleplayerGameService());
+            await game.LoadRun(runState, serializableRun.PreFinishedRoom);
+            await transition.FadeIn();
         }
 
         [HarmonyPatch(typeof(NCharacterSelectScreen), "OnEmbarkPressed")]

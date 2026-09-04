@@ -64,10 +64,10 @@ namespace StS2AP
 
         #region Connection Info
 
-        public static string ServerAddress { get; set; }
-        public static string ServerPassword { get; set; }
-        public static string PlayerName { get; set; }
-        public static string Seed { get; set; }
+        public static string ServerAddress { get; set; } = string.Empty;
+        public static string ServerPassword { get; set; } = string.Empty;
+        public static string PlayerName { get; set; } = string.Empty;
+        public static string Seed { get; set; } = string.Empty;
 
         /// <summary>
         /// The name of the Game
@@ -114,7 +114,7 @@ namespace StS2AP
         /// It should not be written to after initialization, as it represents the server's authoritative configuration for this slot,
         /// which we can't change.
         /// </summary>
-        public static ArchipelagoSettings Settings { get; private set; }
+        public static ArchipelagoSettings? Settings { get; private set; }
 
         /// <summary>Restores the fixed host's frozen settings on its own process.</summary>
         internal static void UseMultiplayerHostSettings(ArchipelagoSettings settings)
@@ -173,7 +173,7 @@ namespace StS2AP
             return true;
         }
 
-        public static ArchipelagoSession Session { get; set; }
+        public static ArchipelagoSession? Session { get; set; }
 
         /// <summary>
         /// Progress of the player through their Archipelago game.
@@ -287,7 +287,7 @@ namespace StS2AP
         /// <summary>
         /// Fires when the connection state changes
         /// </summary>
-        public static event Action<ConnectionState> ConnectionStateChanged;
+        public static event Action<ConnectionState>? ConnectionStateChanged;
 
         /// <summary>
         /// Pre-scouted location data. Key is location ID, value is a tuple of (ItemName, PlayerName).
@@ -300,7 +300,7 @@ namespace StS2AP
         /// <summary>
         /// Handles Death Link functionality, which allows players to share deaths across the multiworld.
         /// </summary>
-        public static DeathLinkService DeathLinkController { get; set; }
+        public static DeathLinkService? DeathLinkController { get; set; }
 
         /// <summary>
         /// A cache of the last Death Link message received, which will be loaded into a clone of the Death Link Curse after it
@@ -406,12 +406,12 @@ namespace StS2AP
                 Index = 0;
                 Progress = new ArchipelagoProgress();
             }
-            Settings = null!;
+            Settings = null;
             SlotData = new();
             CheckedLocations = new();
             ScoutedLocations = new();
             Seed = string.Empty;
-            DeathLinkController = null!;
+            DeathLinkController = null;
             LastDeathLinkMessage = null;
             LastDeathLinkReceivedAt = null;
             _rewardCountProgress = null;
@@ -657,7 +657,7 @@ namespace StS2AP
                     return;
                 }
 
-                Settings = GetPlayerSettings();
+                Settings = GetPlayerSettings(apWorldVersion);
 
                 int apWorldAgeComparison = CompareMajorMinor(
                     bundledApWorldVersion,
@@ -853,7 +853,14 @@ namespace StS2AP
         /// </summary>
         private static void SetupUnlockedCharacters()
         {
-            var characters = Settings.Characters;
+            ArchipelagoSettings? settings = Settings;
+            if (settings == null)
+            {
+                LogUtility.Error("Cannot set up unlocked characters without AP slot settings.");
+                return;
+            }
+
+            var characters = settings.Characters;
             var ids = new HashSet<string>(
                 Progress.UnlockedCharacters.Select(c => c.Id.Entry),
                 StringComparer.InvariantCultureIgnoreCase
@@ -927,16 +934,32 @@ namespace StS2AP
         public static void OnConnected()
         {
             LogUtility.Success("Successfully Connected to Archipelago Server");
-            int apTeamId = Session.ConnectionInfo.Team;
-            int apSlotId = Session.ConnectionInfo.Slot;
+            ArchipelagoSession? session = Session;
+            ArchipelagoSettings? settings = Settings;
+            DeathLinkService? deathLinkController = DeathLinkController;
+            if (session == null || settings == null || deathLinkController == null)
+            {
+                string reason = "The Archipelago connection completed without a fully initialized "
+                    + "session, slot settings, and Death Link service.";
+                LogUtility.Error(reason);
+                ApReconnectController.Stop(reason);
+                Disconnect();
+                ArchipelagoConnectionUI.SetConnectButtonEnabled(true);
+                ArchipelagoConnectionUI.SetCloseButtonEnabled(true);
+                ArchipelagoConnectionUI.SetStatus(reason);
+                return;
+            }
+
+            int apTeamId = session.ConnectionInfo.Team;
+            int apSlotId = session.ConnectionInfo.Slot;
             MultiplayerSupport.NoteApSessionConnected(Seed, apTeamId, apSlotId);
 
             // Bind durable external effects only after login has authenticated the exact room,
             // team, and slot represented by this session.
-            PendingCheckUtility.BindAuthenticatedSession(Session, ServerAddress, Seed);
+            PendingCheckUtility.BindAuthenticatedSession(session, ServerAddress, Seed);
 
             // Restore checked locations from server so "Claimed" state survives restarts
-            CheckedLocations = new List<long>(Session.Locations.AllLocationsChecked);
+            CheckedLocations = new List<long>(session.Locations.AllLocationsChecked);
             LogUtility.Info(
                 $"Restored {CheckedLocations.Count} previously checked location(s) from server."
             );
@@ -949,13 +972,13 @@ namespace StS2AP
             {
                 // Enable/Disable the Death Link Service based on user settings
                 LogUtility.Info(
-                    $"SLOT - Is Death Link Enabled: {Settings.IsDeathLinkEnabled.ToString()}"
+                    $"SLOT - Is Death Link Enabled: {settings.IsDeathLinkEnabled.ToString()}"
                 );
                 LogUtility.Info(
-                    $"SLOT - Death Link Damage Percentage: {Settings.DeathLinkDamagePercent.ToString()}%"
+                    $"SLOT - Death Link Damage Percentage: {settings.DeathLinkDamagePercent.ToString()}%"
                 );
                 LogUtility.Info(
-                    $"SLOT - Death Link Curse Enabled: {Settings.EnableDeathFragments.ToString()}"
+                    $"SLOT - Death Link Curse Enabled: {settings.EnableDeathFragments.ToString()}"
                 );
                 LogUtility.Info(
                     $"LOCAL - Death Link Settings Override: {LocalSettings.Value.OverrideDeathLinkOptions.ToString()}"
@@ -971,11 +994,11 @@ namespace StS2AP
                 );
                 if (DeathLinkUtility.IsDeathLinkEnabled)
                 {
-                    DeathLinkController.EnableDeathLink();
+                    deathLinkController.EnableDeathLink();
                 }
                 else
                 {
-                    DeathLinkController.DisableDeathLink();
+                    deathLinkController.DisableDeathLink();
                 }
             }
             catch (Exception ex)
@@ -1008,8 +1031,7 @@ namespace StS2AP
             }
 
             // Pre-scout all locations so we have item info available for notifications
-            var connectedSession = Session;
-            ThreadPool.QueueUserWorkItem(_ => PreScoutAllLocations(connectedSession));
+            ThreadPool.QueueUserWorkItem(_ => PreScoutAllLocations(session));
 
             // Restore goaled characters from DataStorage so cross-session goal tracking works
             _ = GameUtility.RestoreGoaledCharsFromStorage();
@@ -1182,7 +1204,7 @@ namespace StS2AP
         /// <summary>
         /// Log errors to the console and handle connection-terminating errors
         /// </summary>
-        private static void OnErrorReceived(Exception e, string message)
+        private static void OnErrorReceived(Exception? e, string message)
         {
             LogUtility.Error($"Archipelago Error: {message}");
             if (e != null)
@@ -1208,7 +1230,7 @@ namespace StS2AP
         ///
         /// And yeah, there are probably more elegant ways to check this - feel free to refactor in the future :)
         /// </summary>
-        private static bool IsConnectionTerminatingError(Exception e, string message)
+        private static bool IsConnectionTerminatingError(Exception? e, string message)
         {
             if (e == null || string.IsNullOrEmpty(message))
                 return false;
@@ -1380,7 +1402,7 @@ namespace StS2AP
         /// <summary>
         /// Get all of the Player's Settings for their Archipelago Slot
         /// </summary>
-        private static ArchipelagoSettings GetPlayerSettings()
+        private static ArchipelagoSettings GetPlayerSettings(System.Version apWorldVersion)
         {
             // Use the SlotData that was already retrieved during login
             // instead of calling Session.DataStorage.GetSlotData() which performs
@@ -1392,11 +1414,10 @@ namespace StS2AP
                 LogUtility.Error("No slot data found for this player!");
                 throw new InvalidDataException("No slot data found for this player!");
             }
-            ArchipelagoSettings settings = new();
-
-            if(slotData.ContainsKey("mod_compat_version"))
-                if(System.Version.TryParse(Convert.ToString(slotData["mod_compat_version"]), out var apworldVersion))
-                    settings.APWorldVersion = apworldVersion;
+            ArchipelagoSettings settings = new()
+            {
+                APWorldVersion = apWorldVersion,
+            };
 
             // Apply all found settings
             if (slotData.ContainsKey("seeded"))
@@ -1429,9 +1450,12 @@ namespace StS2AP
                 // so each entry arrives as a JObject, NOT a Dictionary<string, object>.
                 foreach (var charData in charsList)
                 {
-                    if (charData is JObject)
+                    if (charData is JObject characterData)
                     {
-                        var config = CharacterConfig.fromJObject(charData as JObject, settings.APWorldVersion);
+                        var config = CharacterConfig.fromJObject(
+                            characterData,
+                            settings.APWorldVersion
+                        );
                         if (config != null)
                         {
                             settings.Characters.Add(config.OfficialName, config);

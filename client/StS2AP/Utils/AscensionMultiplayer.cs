@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Archipelago.MultiClient.Net;
 using Archipelago.MultiClient.Net.Models;
 using Godot;
 using MegaCrit.Sts2.Core.Commands;
@@ -219,7 +220,14 @@ public static class AscensionMultiplayer
             return;
         }
 
-        IReadOnlyList<ItemInfo> receivedItems = ArchipelagoClient.Session.Items.AllItemsReceived;
+        ArchipelagoSession? session = ArchipelagoClient.Session;
+        if (session == null)
+        {
+            Fail("could not reconcile Ascension Down receipts: no active AP session");
+            return;
+        }
+
+        IReadOnlyList<ItemInfo> receivedItems = session.Items.AllItemsReceived;
         var handled = shared.HandledAscensionDownReceiptIndexes.ToHashSet();
         for (int index = 0; index < receivedItems.Count; index++)
         {

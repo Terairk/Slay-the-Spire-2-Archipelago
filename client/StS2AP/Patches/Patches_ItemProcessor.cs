@@ -1,4 +1,5 @@
 
+using Archipelago.MultiClient.Net;
 using Archipelago.MultiClient.Net.Models;
 using Godot;
 using HarmonyLib;
@@ -107,6 +108,12 @@ namespace StS2AP.Patches
 
             var Progress = ArchipelagoClient.Progress;
             var Settings = ArchipelagoClient.Settings;
+            if (Settings == null)
+            {
+                const string message = "Cannot process an AP item because slot settings are unavailable.";
+                LogUtility.Error(message);
+                throw new InvalidOperationException(message);
+            }
             var item = indexedInfo.Item;
             var index = indexedInfo.Index;
             // Log the item
@@ -138,7 +145,7 @@ namespace StS2AP.Patches
                     /// refresh the appropriate button without waiting for OnSubmenuOpened.
                     var offset = item.GetCharacterOffset();
                     LogUtility.Info("After offset acquisition");
-                    var config = ArchipelagoClient.Settings.Characters.Values.FirstOrDefault(
+                    var config = Settings.Characters.Values.FirstOrDefault(
                         config => config.CharOffset == offset
                     );
                     LogUtility.Info("After Settings check");
@@ -274,7 +281,8 @@ namespace StS2AP.Patches
                     catch (KeyNotFoundException e)
                     {
                         LogUtility.Error(
-                            $"GoldItemAmounts does not have a value for this item! ({item.ItemDisplayName} from {item.Player.Name})"
+                            $"GoldItemAmounts does not have a value for this item! "
+                                + $"({item.ItemDisplayName} from {item.Player.Name}): {e}"
                         );
                     }
                     catch
@@ -317,7 +325,10 @@ namespace StS2AP.Patches
                         }
                         catch (KeyNotFoundException e)
                         {
-                            LogUtility.Error($"Shop slot tracker does not have a value for this character! ({item.ItemDisplayName} from {item.Player.Name})");
+                            LogUtility.Error(
+                                $"Shop slot tracker does not have a value for this character! "
+                                    + $"({item.ItemDisplayName} from {item.Player.Name}): {e}"
+                            );
                         }
                         catch
                         {
@@ -438,7 +449,8 @@ namespace StS2AP.Patches
             catch (KeyNotFoundException e)
             {
                 LogUtility.Error(
-                    $"{name} does not have a value for this character! ({item.ItemDisplayName} from {item.Player.Name})"
+                    $"{name} does not have a value for this character! "
+                        + $"({item.ItemDisplayName} from {item.Player.Name}): {e}"
                 );
             }
             catch
@@ -491,14 +503,20 @@ namespace StS2AP.Patches
             Paused = true;
             try
             {
+                ArchipelagoSession? session = ArchipelagoClient.Session;
+                if (session == null)
+                {
+                    LogUtility.Error("Cannot reprocess AP items without an active session.");
+                    return;
+                }
                 ClearQueue();
                 for (
                     global::System.Int32 i = 0;
-                    i < ArchipelagoClient.Session.Items.AllItemsReceived.Count;
+                    i < session.Items.AllItemsReceived.Count;
                     i++
                 )
                 {
-                    ItemInfo info = ArchipelagoClient.Session.Items.AllItemsReceived[i];
+                    ItemInfo info = session.Items.AllItemsReceived[i];
 
                     // i+1 because the index from multiclient .net is essentially 1 based, not 0
                     ProcessItem(new IndexedItemInfo(info, i + 1), false);

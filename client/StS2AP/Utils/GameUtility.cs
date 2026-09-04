@@ -1,4 +1,5 @@
-﻿using Archipelago.MultiClient.Net.BounceFeatures.DeathLink;
+﻿using Archipelago.MultiClient.Net;
+using Archipelago.MultiClient.Net.BounceFeatures.DeathLink;
 using Archipelago.MultiClient.Net.Models;
 using Godot;
 using MegaCrit.Sts2.Core.Commands;
@@ -257,7 +258,15 @@ namespace StS2AP.Utils
                 .ToList();
 
             var rewardOrdinal = orderedCardRewardIndices.IndexOf(index);
-            var shuffleAllCards = ArchipelagoClient.Settings.ShouldShuffleAllCards;
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (settings == null)
+            {
+                LogUtility.Error(
+                    $"Could not map Card Reward item index {index}: AP slot settings are unavailable"
+                );
+                return null;
+            }
+            var shuffleAllCards = settings.ShouldShuffleAllCards;
             var actOneCount = shuffleAllCards ? 7 : 3;
             var actTwoCount = shuffleAllCards ? 7 : 4;
             var totalCount = shuffleAllCards
@@ -365,7 +374,15 @@ namespace StS2AP.Utils
                         break;
                     default:
                         LogUtility.Info($"Default case");
-                        var config = ArchipelagoClient.Settings.Characters.Values.FirstOrDefault(c => c.CharOffset == (int)item.GetCharacterOffset());
+                        ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                        if (settings == null)
+                        {
+                            LogUtility.Error(
+                                $"Cannot unlock {item.ItemName}: AP slot settings are unavailable"
+                            );
+                            return;
+                        }
+                        var config = settings.Characters.Values.FirstOrDefault(c => c.CharOffset == (int)item.GetCharacterOffset());
                         LogUtility.Warn($"Got item unlock but character not configured {item.ItemName}");
                         if (config != null)
                         {
@@ -386,7 +403,7 @@ namespace StS2AP.Utils
             }
             catch(Exception ex)
             {
-                LogUtility.Error(ex.StackTrace);
+                LogUtility.Error(ex.ToString());
             }
         }
 
@@ -398,6 +415,11 @@ namespace StS2AP.Utils
         {
             if (!ArchipelagoClient.IsConnected) return;
             var session = ArchipelagoClient.Session;
+            if (session == null)
+            {
+                LogUtility.Warn("Cannot restore goaled characters without an active AP session.");
+                return;
+            }
 
             // Debug: Let's see the goal progress before we try to restore it
             try
@@ -466,6 +488,11 @@ namespace StS2AP.Utils
         public static async Task SetupOnChangedSaves()
         {
             var session = ArchipelagoClient.Session;
+            if (session == null)
+            {
+                LogUtility.Warn("Cannot watch AP saves without an active AP session.");
+                return;
+            }
             try
             {
                 LogUtility.Info("Setting up StS Saves on the server");
@@ -538,9 +565,11 @@ namespace StS2AP.Utils
             {
                 var session = ArchipelagoClient.Session;
                 var settings = ArchipelagoClient.Settings;
-                if (settings == null)
+                if (session == null || settings == null)
                 {
-                    LogUtility.Warn("TrySetGoalAchieved: Settings is null");
+                    LogUtility.Warn(
+                        "TrySetGoalAchieved: the AP session or slot settings are unavailable"
+                    );
                     return;
                 }
 
@@ -551,7 +580,7 @@ namespace StS2AP.Utils
                 // Add to local cache HashSet.Add returns false if already present
                 var extras = new List<string>();
                 bool wasNew = _goaledCharacters.Add(charName);
-                foreach(var unrecognized in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
+                foreach(var unrecognized in settings.UnrecognizedCharacters.Values)
                 {
                     wasNew |= _goaledCharacters.Add(unrecognized.OfficialName);
                     extras.Add(unrecognized.OfficialName);
@@ -664,7 +693,14 @@ namespace StS2AP.Utils
 
         public static void TrySendPressStartCheck(bool includeUnrecognizedCharacters = true)
         {
-            TrySendPressStartCheckFor(CurrentPlayer.Character, includeUnrecognizedCharacters);
+            Player? currentPlayer = CurrentPlayer;
+            if (currentPlayer == null)
+            {
+                LogUtility.Warn("Cannot send the Press Start check without an active player");
+                return;
+            }
+
+            TrySendPressStartCheckFor(currentPlayer.Character, includeUnrecognizedCharacters);
         }
 
         public static void TrySendPressStartCheckFor(
@@ -682,7 +718,13 @@ namespace StS2AP.Utils
             {
                 return;
             }
-            var _locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
+            ArchipelagoSession? session = ArchipelagoClient.Session;
+            if (session == null)
+            {
+                LogUtility.Warn($"Cannot send location '{checkName}' without an active AP session.");
+                return;
+            }
+            var _locationId = session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
             SendCheck(_locationId);
         }
 
@@ -707,7 +749,16 @@ namespace StS2AP.Utils
             }
             if(includeUnrecognizedChars)
             {
-                foreach(var otherChar in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
+                ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                if (settings == null)
+                {
+                    LogUtility.Warn(
+                        $"Cannot mirror location {locationId} to unrecognized characters: "
+                            + "AP slot settings are unavailable"
+                    );
+                    return;
+                }
+                foreach(var otherChar in settings.UnrecognizedCharacters.Values)
                 {
                     // - 1 because locations are offset from items by 1
                     long newLocationId = (locationId % 10000L) + (10000L * (otherChar.CharOffset - 1));
@@ -762,7 +813,6 @@ namespace StS2AP.Utils
 
                 NGame.Instance?.ReturnToMainMenuAfterRun();
             };
-            NModalContainer.Instance.Add(popup.Popup);
             popup.Show();
         }
 

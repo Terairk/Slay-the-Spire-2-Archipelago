@@ -268,7 +268,17 @@ namespace StS2AP.Patches
             }
             else
             {
-                settings = ArchipelagoClient.Settings;
+                ArchipelagoSettings? currentSettings = ArchipelagoClient.Settings;
+                if (currentSettings == null)
+                {
+                    LogUtility.Error(
+                        "Could not construct AP Ancient options because slot settings are unavailable."
+                    );
+                    __result = new List<EventOption> { CreateFakeOption(__instance) };
+                    return;
+                }
+
+                settings = currentSettings;
                 characterOffset = player.GetCharacterOffset() ?? -1;
                 ArchipelagoClient.Progress.ProgressiveAncients.TryGetValue(
                     characterOffset,

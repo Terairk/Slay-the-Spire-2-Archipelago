@@ -7,6 +7,7 @@
 		<LangVersion>14.0</LangVersion>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<WarningsAsErrors>$(WarningsAsErrors);nullable;CS8509;CS0612;CS0618;CS4014;CS0162;CS1998;CS0108;CS0114;CS1717</WarningsAsErrors>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 
 		<!-- One source tree is compiled against each explicitly supported game API. -->

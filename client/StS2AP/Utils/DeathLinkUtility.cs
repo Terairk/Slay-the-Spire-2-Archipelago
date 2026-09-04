@@ -191,15 +191,23 @@ namespace StS2AP.Utils
                     return;
 
                 // Determine if we need to Enable or Disable Death Link
+                DeathLinkService? deathLinkController = ArchipelagoClient.DeathLinkController;
+                if (deathLinkController == null)
+                {
+                    LogUtility.Error(
+                        "Cannot apply changed Death Link settings because the service is unavailable."
+                    );
+                    return;
+                }
                 if (IsDeathLinkEnabled)
                 {
                     LogUtility.Info("Enabling Death Link");
-                    ArchipelagoClient.DeathLinkController.EnableDeathLink();
+                    deathLinkController.EnableDeathLink();
                 }
                 else
                 {
                     LogUtility.Info("Disabling Death Link");
-                    ArchipelagoClient.DeathLinkController.DisableDeathLink();
+                    deathLinkController.DisableDeathLink();
                 }
             }
         }

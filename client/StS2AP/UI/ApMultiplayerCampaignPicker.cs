@@ -263,7 +263,11 @@ public sealed partial class ApMultiplayerCampaignPicker : Control, IScreenContex
                 throw new InvalidDataException($"The activated save could not be loaded: {read.Status}");
 
             Close();
-            MenuUtility.SubmenuStack.GetSubmenuType<NMultiplayerSubmenu>()
+            NSubmenuStack submenuStack = MenuUtility.SubmenuStack
+                ?? throw new InvalidOperationException(
+                    "The main-menu submenu stack is unavailable."
+                );
+            submenuStack.GetSubmenuType<NMultiplayerSubmenu>()
                 .StartHost(read.SaveData);
         }
         catch (Exception ex)

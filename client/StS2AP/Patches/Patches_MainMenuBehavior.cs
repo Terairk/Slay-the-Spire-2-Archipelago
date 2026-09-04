@@ -578,7 +578,15 @@ namespace StS2AP.Patches
                 // Vanilla bypasses NMultiplayerHostSubmenu for a profile's first-ever run.
                 // Always route AP hosting through the mode submenu so save selection cannot
                 // skip the campaign picker.
-                MenuUtility.SubmenuStack.PushSubmenuType<NMultiplayerHostSubmenu>();
+                NSubmenuStack? submenuStack = MenuUtility.SubmenuStack;
+                if (submenuStack == null)
+                {
+                    const string reason = "The main-menu submenu stack is unavailable.";
+                    LogUtility.Error(reason);
+                    NotificationUtility.ShowRawText(reason);
+                    return false;
+                }
+                submenuStack.PushSubmenuType<NMultiplayerHostSubmenu>();
                 return false;
             }
         }

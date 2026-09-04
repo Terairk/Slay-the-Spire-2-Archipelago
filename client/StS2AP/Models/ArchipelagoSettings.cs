@@ -155,7 +155,7 @@ namespace StS2AP.Models
         /// </summary>
         public int DeathLinkDamagePercent { get; set; }
 
-        public Version? APWorldVersion { get; set;}
+        public Version APWorldVersion { get; set; } = new(0, 0, 0);
 
         #endregion
 

@@ -140,8 +140,10 @@ namespace StS2AP.Patches
         private static (string itemName, string playerName, ApItemClassification classification) ResolveApItem(
             ShopCheckTarget target)
         {
-            ScoutedItemInfo info;
-            if (ArchipelagoClient.ScoutedLocations.TryGetValue(target.LocationId, out info))
+            if (ArchipelagoClient.ScoutedLocations.TryGetValue(
+                    target.LocationId,
+                    out ScoutedItemInfo? info)
+                && info != null)
             {
                 var classification =
                     info.Trap() ? ApItemClassification.Trap :
@@ -187,8 +189,12 @@ namespace StS2AP.Patches
 
             if (!MultiplayerSupport.IsRealMultiplayerRun)
             {
-                settings = ArchipelagoClient.Settings;
-                return settings != null;
+                ArchipelagoSettings? currentSettings = ArchipelagoClient.Settings;
+                if (currentSettings == null)
+                    return false;
+
+                settings = currentSettings;
+                return true;
             }
 
             if (player.RunState is not RunState runState
@@ -681,8 +687,9 @@ namespace StS2AP.Patches
                 }
 
                 if (!ApCheckTargets.TryGetValue(
-                    __instance,
-                    out ShopCheckTarget target))
+                        __instance,
+                        out ShopCheckTarget? target)
+                    || target == null)
                 {
                     LogUtility.Error(
                         $"ShopSanity: AP entry for location {locationId} has no bound check "

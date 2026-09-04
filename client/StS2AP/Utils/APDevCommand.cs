@@ -1,4 +1,5 @@
-﻿using MegaCrit.Sts2.Core.DevConsole;
+﻿using Archipelago.MultiClient.Net;
+using MegaCrit.Sts2.Core.DevConsole;
 using MegaCrit.Sts2.Core.DevConsole.ConsoleCommands;
 using MegaCrit.Sts2.Core.Entities.Players;
 using StS2AP.UI;
@@ -33,9 +34,10 @@ namespace StS2AP.Utils
             if (args[0].StartsWith("!", StringComparison.Ordinal))
             {
                 string sendMe = string.Join(" ", args);
-                if (!ArchipelagoClient.IsConnected)
+                ArchipelagoSession? session = ArchipelagoClient.Session;
+                if (!ArchipelagoClient.IsConnected || session == null)
                     return new CmdResult(false, "Not connected to AP");
-                ArchipelagoClient.Session.Say(sendMe);
+                session.Say(sendMe);
                 return new CmdResult(true);
             }
 

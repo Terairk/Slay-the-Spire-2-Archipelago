@@ -24,6 +24,7 @@ public static class ApGrantDispatcher
     /// <summary>Rebuilds the raw per-character bank from authoritative AP history.</summary>
     public static void RebuildGoldBank(IReadOnlyList<ItemInfo> receivedItems)
     {
+        ArchipelagoSettings settings = RequireSettings("rebuild the AP gold bank");
         var rebuilt = new Dictionary<long, int>();
         int buffCount = 0;
         foreach (ItemInfo item in receivedItems)
@@ -46,7 +47,7 @@ public static class ApGrantDispatcher
 
         UniversalBuffGold.AddToBank(
             rebuilt,
-            ArchipelagoClient.Settings.Characters.Values.Select(config => (long)config.CharOffset),
+            settings.Characters.Values.Select(config => (long)config.CharOffset),
             previousBuffCount: 0,
             addedBuffCount: buffCount
         );
@@ -66,15 +67,27 @@ public static class ApGrantDispatcher
     /// </summary>
     public static int AddUniversalBuffGold()
     {
+        ArchipelagoSettings settings = RequireSettings("convert a universal buff into AP gold");
         var progress = ArchipelagoClient.Progress;
         int amount = UniversalBuffGold.AddToBank(
             progress.GoldReceived,
-            ArchipelagoClient.Settings.Characters.Values.Select(config => (long)config.CharOffset),
+            settings.Characters.Values.Select(config => (long)config.CharOffset),
             progress.UniversalBuffsConvertedToGold,
             addedBuffCount: 1
         );
         progress.UniversalBuffsConvertedToGold++;
         return amount;
+    }
+
+    private static ArchipelagoSettings RequireSettings(string operation)
+    {
+        ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+        if (settings != null)
+            return settings;
+
+        string message = $"Cannot {operation} because AP slot settings are unavailable.";
+        LogUtility.Error(message);
+        throw new InvalidOperationException(message);
     }
 
     /// <summary>Binds the host-owned per-player cursor to the launched local STS run.</summary>

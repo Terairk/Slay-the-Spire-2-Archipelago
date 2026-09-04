@@ -320,7 +320,7 @@ namespace StS2AP.Models
         /// <param name="index">The index of the specific item sent from the Multiworld.</param>
         /// <param name="player">The current player, needed by PotionFactory.</param>
         /// <returns>The assigned PotionModel, or null if no player is provided or the factory fails.</returns>
-        public PotionModel? GetOrAssignPotion(int index, Player player)
+        public PotionModel? GetOrAssignPotion(int index, Player? player)
         {
             if( PotionAssignments.TryGetValue(index,out var existing))
             {
@@ -330,6 +330,7 @@ namespace StS2AP.Models
             if(player == null)
             {
                 LogUtility.Warn($"Cannot assign potion for item w/ index {index}; no active player");
+                return null;
             }
 
             try
@@ -362,7 +363,15 @@ namespace StS2AP.Models
         public void InitializeFromServer(Player player)
         {
             RefreshCheckedCampfiresFromClient();
-            Ascensions.Initialize(GameUtility.CurrentConfig);
+            CharacterConfig? currentConfig = GameUtility.CurrentConfig;
+            if (currentConfig == null)
+            {
+                const string message =
+                    "Cannot initialize AP progress without a current character configuration";
+                LogUtility.Error(message);
+                throw new InvalidOperationException(message);
+            }
+            Ascensions.Initialize(currentConfig);
             LogUtility.Info($"Starting game with ascension levels {string.Join(",", Ascensions.CurrentAscension)}");
         }
 
@@ -666,12 +675,19 @@ namespace StS2AP.Models
         /// <returns>The highest Act (one-based) that the character can redeem Progressive Ancients at</returns>
         public int MaxProgressiveAncientLevel(long offset)
         {
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (settings == null)
+            {
+                const string message = "Cannot calculate Progressive Ancient access without AP slot settings.";
+                LogUtility.Error(message);
+                throw new InvalidOperationException(message);
+            }
             int count;
             if(!ProgressiveAncients.TryGetValue(offset, out count))
             {
                 count = 0;
             }
-            if(!ArchipelagoClient.Settings.NeowSanity)
+            if(!settings.NeowSanity)
             {
                 count++;
             }
@@ -871,7 +887,11 @@ namespace StS2AP.Models
 
             var ascensionLevels = saveData.Ascensions?.Select((level) => (AscensionLevel)level).ToHashSet() ?? new HashSet<AscensionLevel>();
 
-            progress.Ascensions.Initialize(GameUtility.CurrentConfig, ascensionLevels);
+            CharacterConfig currentConfig = GameUtility.CurrentConfig
+                ?? throw new InvalidDataException(
+                    "Cannot restore AP progress without a current character configuration"
+                );
+            progress.Ascensions.Initialize(currentConfig, ascensionLevels);
 
             progress.CardAssignments = cardRewards;
 

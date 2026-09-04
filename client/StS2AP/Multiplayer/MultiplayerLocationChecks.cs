@@ -1,3 +1,4 @@
+using Archipelago.MultiClient.Net;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Runs;
@@ -268,9 +269,16 @@ public static class MultiplayerLocationChecks
         if (!IsCheckWriter(player))
             return -1;
 
+        ArchipelagoSession? session = ArchipelagoClient.Session;
+        if (session == null)
+        {
+            LogUtility.Warn($"Could not resolve AP location '{locationName}': no active AP session");
+            return -1;
+        }
+
         try
         {
-            return ArchipelagoClient.Session.Locations.GetLocationIdFromName(
+            return session.Locations.GetLocationIdFromName(
                 "Slay the Spire II",
                 locationName
             );

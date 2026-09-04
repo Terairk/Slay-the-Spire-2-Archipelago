@@ -323,7 +323,15 @@ namespace StS2AP.Utils
             if (!ArchipelagoClient.IsConnected)
                 return;
 
-            ArchipelagoSession session = ArchipelagoClient.Session;
+            ArchipelagoSession? session = ArchipelagoClient.Session;
+            if (session == null)
+            {
+                LogUtility.Warn(
+                    $"Could not submit location check {locationId} without persistence: "
+                        + "no active AP session"
+                );
+                return;
+            }
             _ = SendWithoutPersistenceAsync(session, locationId);
         }
 

@@ -1,3 +1,5 @@
+using Archipelago.MultiClient.Net;
+using Archipelago.MultiClient.Net.BounceFeatures.DeathLink;
 using Archipelago.MultiClient.Net.Models;
 using Godot;
 using MegaCrit.Sts2.Core.Combat;
@@ -184,10 +186,18 @@ public static class MultiplayerSupport
         // Death Link service aligned with the newly selected capability profile.
         if (ArchipelagoClient.IsConnected)
         {
-            if (DeathLinkUtility.IsDeathLinkEnabled)
-                ArchipelagoClient.DeathLinkController.EnableDeathLink();
+            DeathLinkService? deathLinkController = ArchipelagoClient.DeathLinkController;
+            if (deathLinkController == null)
+            {
+                LogUtility.Error(
+                    "Cannot update Death Link for the selected play destination because "
+                        + "the service is unavailable."
+                );
+            }
+            else if (DeathLinkUtility.IsDeathLinkEnabled)
+                deathLinkController.EnableDeathLink();
             else
-                ArchipelagoClient.DeathLinkController.DisableDeathLink();
+                deathLinkController.DisableDeathLink();
 
             if (destination == ApPlayDestination.Singleplayer)
                 PendingCheckUtility.ReconcileAndSend();
@@ -799,10 +809,21 @@ public static class MultiplayerSupport
     /// staging uses this instead of the connection-time snapshot so receipts received while the
     /// character screen is open are included before launch.
     /// </summary>
-    public static IReadOnlyList<ItemInfo> GetCurrentOwnSlotReceivedItems() =>
-        ArchipelagoClient.IsConnected
-            ? ArchipelagoClient.Session.Items.AllItemsReceived
-            : _preparedReceivedItems;
+    public static IReadOnlyList<ItemInfo> GetCurrentOwnSlotReceivedItems()
+    {
+        if (!ArchipelagoClient.IsConnected)
+            return _preparedReceivedItems;
+
+        ArchipelagoSession? session = ArchipelagoClient.Session;
+        if (session == null)
+        {
+            const string message = "Cannot read current AP receipts without an active session.";
+            LogUtility.Error(message);
+            throw new InvalidOperationException(message);
+        }
+
+        return session.Items.AllItemsReceived;
+    }
 
     public static bool RestorePreparedReceiptView(out string reason)
     {
@@ -816,8 +837,17 @@ public static class MultiplayerSupport
         // history. The launch boundary is later and must refresh an own-slot participant from
         // the authoritative SDK list instead of restoring the early connection snapshot.
         IReadOnlyList<ItemInfo> receivedItems = _preparedReceivedItems;
+        ArchipelagoSession? session = ArchipelagoClient.Session;
         if (IsLocalOwnApSlot && ArchipelagoClient.IsConnected)
-            receivedItems = ArchipelagoClient.Session.Items.AllItemsReceived.ToArray();
+        {
+            if (session == null)
+            {
+                reason = "The active AP session disappeared before receipt restoration.";
+                LogUtility.Error(reason);
+                return false;
+            }
+            receivedItems = session.Items.AllItemsReceived.ToArray();
+        }
 
         if (!PrepareApSession(
             identity.RoomSeed,

@@ -36,7 +36,16 @@ namespace StS2AP.Patches
             public static void Prefix(CharacterModel character, ref int ascensionLevel, ref string seed)
             {
                 var officialName = character.Id.Entry;
-                GameUtility.CurrentConfig = ArchipelagoClient.Settings.Characters[officialName];
+                ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                if (settings == null
+                    || !settings.Characters.TryGetValue(officialName, out CharacterConfig? config))
+                {
+                    string message = $"Cannot start the AP run because character settings for "
+                        + $"'{officialName}' are unavailable.";
+                    LogUtility.Error(message);
+                    throw new InvalidOperationException(message);
+                }
+                GameUtility.CurrentConfig = config;
                 if(GameUtility.CurrentConfig.Ascension.Count == 0)
                 {
                     ascensionLevel = 0;
@@ -195,7 +204,15 @@ namespace StS2AP.Patches
                 }
 
                 string officialName = localPlayer.Character.Id.Entry;
-                if (!ArchipelagoClient.Settings.Characters.TryGetValue(
+                ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                if (settings == null)
+                {
+                    const string reason = "AP slot settings are unavailable for the local multiplayer player";
+                    LogUtility.Error(reason);
+                    MultiplayerSupport.InvalidateRunClaims(reason);
+                    return;
+                }
+                if (!settings.Characters.TryGetValue(
                     officialName,
                     out CharacterConfig? config
                 ))

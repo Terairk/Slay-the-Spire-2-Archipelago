@@ -910,7 +910,8 @@ public static class DeathLinkMultiplayer
         string characterName,
         string floorCause)
     {
-        if (!ArchipelagoClient.IsConnected)
+        DeathLinkService? deathLinkController = ArchipelagoClient.DeathLinkController;
+        if (!ArchipelagoClient.IsConnected || deathLinkController == null)
         {
             LogUtility.Warn(
                 $"Discarded host-authorized DeathLink {eventId} for {playerNetId}; that AP "
@@ -930,7 +931,7 @@ public static class DeathLinkMultiplayer
                 deathLink.Timestamp.ToUnixTimeStamp()).Ticks;
             lock (StateLock)
                 EventLedger.RecordSent(deathLink.Source, wireTimestampTicks);
-            ArchipelagoClient.DeathLinkController.SendDeathLink(deathLink);
+            deathLinkController.SendDeathLink(deathLink);
             LogUtility.Info(
                 $"Sent host-authorized DeathLink {eventId} for player {playerNetId}."
             );

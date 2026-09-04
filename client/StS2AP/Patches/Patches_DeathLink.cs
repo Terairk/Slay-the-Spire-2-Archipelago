@@ -79,7 +79,13 @@ namespace StS2AP.Patches
                 string causeMsg = $"{ArchipelagoClient.PlayerName} was Slain on {floorCause}";
 
                 // Send a Death Link Trigger
-                ArchipelagoClient.DeathLinkController.SendDeathLink(new DeathLink(ArchipelagoClient.PlayerName, causeMsg));
+                DeathLinkService? deathLinkController = ArchipelagoClient.DeathLinkController;
+                if (deathLinkController == null)
+                {
+                    LogUtility.Error("Could not send Death Link because the service is unavailable.");
+                    return true;
+                }
+                deathLinkController.SendDeathLink(new DeathLink(ArchipelagoClient.PlayerName, causeMsg));
 
                 // Finally, return control to the function
                 return true;

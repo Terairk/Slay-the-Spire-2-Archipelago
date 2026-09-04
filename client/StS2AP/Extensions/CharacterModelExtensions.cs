@@ -18,7 +18,9 @@ namespace StS2AP.Extensions
         /// <example>An Ironclad instance returns "Ironclad", because items for that character include "Ironclad Card Reward", "Ironclad Relic", etc.</example>
         public static string APName(this CharacterModel character)
         {
-            if(ArchipelagoClient.Settings.Characters.TryGetValue(character.Id.Entry, out var config))
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (settings != null
+                && settings.Characters.TryGetValue(character.Id.Entry, out var config))
             {
                 return config.Name;
             }
@@ -36,7 +38,9 @@ namespace StS2AP.Extensions
 
         public static long? GetCharacterOffset(this CharacterModel character)
         {
-            if (ArchipelagoClient.Settings.Characters.TryGetValue(character.Id.Entry, out var config))
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (settings != null
+                && settings.Characters.TryGetValue(character.Id.Entry, out var config))
             {
                 return config.CharOffset;
             }
@@ -56,17 +60,16 @@ namespace StS2AP.Extensions
         /// </summary>
         public static long GetAPLocationCharID(this CharacterModel character)
         {
-            var config = ArchipelagoClient.Settings.Characters[character.Id.Entry];
-            if (config != null)
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (settings != null
+                && settings.Characters.TryGetValue(character.Id.Entry, out var config))
             {
                 return config.CharOffset;
             }
-            else
-            {
-                var msg = $"Character {character.APName()} does not have a valid APItemCharID. It's likely that a new character was added that we aren't handling properly.";
-                LogUtility.Error(msg);
-                throw new NullReferenceException(msg);
-            }
+
+            var msg = $"Character {character.APName()} does not have a valid APItemCharID. It's likely that a new character was added that we aren't handling properly.";
+            LogUtility.Error(msg);
+            throw new InvalidOperationException(msg);
         }
 
         /// <summary>

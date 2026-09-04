@@ -1,4 +1,5 @@
-﻿using MegaCrit.Sts2.Core.Models;
+﻿using Archipelago.MultiClient.Net;
+using MegaCrit.Sts2.Core.Models;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using System;
@@ -71,8 +72,14 @@ namespace StS2AP.Data
         /// <returns>A list of location IDs for the specified character's Card Rewards.</returns>
         public static List<long> GetCardRewardLocations(CharacterModel character)
         {
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (settings == null)
+            {
+                LogUtility.Error("Cannot enumerate Card Reward locations without AP slot settings.");
+                return new List<long>();
+            }
             // Get the number of Card Rewards based on user settings
-            var numCardRewards = ArchipelagoClient.Settings.ShouldShuffleAllCards ? ArchipelagoProgress._maxCardRewards : (ArchipelagoProgress._maxCardRewards / 2);
+            var numCardRewards = settings.ShouldShuffleAllCards ? ArchipelagoProgress._maxCardRewards : (ArchipelagoProgress._maxCardRewards / 2);
             return GetLocationsByPattern($"{character.APName()} Card Reward #", numCardRewards);
         }
 
@@ -113,7 +120,13 @@ namespace StS2AP.Data
         /// <returns>A list of location IDs for the specified character's Ancient Rewards.</returns>
         public static List<long> GetAncientRewardLocations(CharacterModel character)
         {
-            var start = ArchipelagoClient.Settings.NeowSanity ? 1 : 2;
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (settings == null)
+            {
+                LogUtility.Error("Cannot enumerate Ancient Reward locations without AP slot settings.");
+                return new List<long>();
+            }
+            var start = settings.NeowSanity ? 1 : 2;
             return GetLocationsByPattern($"{character.APName()} Ancient Act #", ArchipelagoProgress._maxAncientChecks, start);
         }
 
@@ -145,6 +158,12 @@ namespace StS2AP.Data
         public static List<long> GetCampfiresanityLocations(CharacterModel character)
         {
             List<long> ids = new();
+            ArchipelagoSession? session = ArchipelagoClient.Session;
+            if (session == null)
+            {
+                LogUtility.Error("Cannot enumerate Campfiresanity locations without an AP session.");
+                return ids;
+            }
             const int acts = 3;
             const int campfiresPerAct = 2;
             for(int a = 1; a <= acts; a++)
@@ -153,7 +172,7 @@ namespace StS2AP.Data
                 {
                     try
                     {
-                        var id = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", $"{character.APName()} Act {a} Campfire {c}");
+                        var id = session.Locations.GetLocationIdFromName("Slay the Spire II", $"{character.APName()} Act {a} Campfire {c}");
                         ids.Add(id);
                     } 
                     catch 
@@ -188,9 +207,15 @@ namespace StS2AP.Data
         }
         public static List<long> GetShopsanityLocations(CharacterModel character)
         {
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (settings == null)
+            {
+                LogUtility.Error("Cannot enumerate ShopSanity locations without AP slot settings.");
+                return new List<long>();
+            }
             return GetLocationsByPattern(
                 $"{character.APName()} Shop Slot #",
-                ArchipelagoClient.Settings.TotalShopLocations);
+                settings.TotalShopLocations);
         }
 
         /// <summary>
@@ -202,11 +227,17 @@ namespace StS2AP.Data
         private static List<long> GetLocationsByPattern(string pattern, int count, int start = 1 )
         {
             List<long> ids = new();
+            ArchipelagoSession? session = ArchipelagoClient.Session;
+            if (session == null)
+            {
+                LogUtility.Error($"Cannot enumerate locations matching '{pattern}' without an AP session.");
+                return ids;
+            }
             for(int i = start; i <= count; i++)
             {
                 try
                 {
-                    var id = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", pattern.Replace("#", i.ToString()));
+                    var id = session.Locations.GetLocationIdFromName("Slay the Spire II", pattern.Replace("#", i.ToString()));
                     ids.Add(id);
                 } catch { }
             }
