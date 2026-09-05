@@ -3,6 +3,7 @@ using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Logging;
+using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -362,11 +363,12 @@ namespace StS2AP.Patches
                         {
                             try
                             {
-                                // Run the APWorld installation
-                                var modDirectory = Path.GetDirectoryName(
-                                    typeof(ModEntry).Assembly.Location
-                                );
-                                var apWorldPath = Path.Combine(modDirectory!, "spire2.apworld");
+                                // Shared bundle files live at the registered mod root, even
+                                // when this assembly was loaded from lib/<game-version>.
+                                var mod = ModManager.GetLoadedMods()
+                                    .Single(mod => mod.manifest?.id == ModEntry.ModId);
+                                var apWorldPath = Path.Combine(mod.path, "spire2.apworld");
+                                LogUtility.Info($"Launching APWorld installer: {apWorldPath}");
                                 Process.Start(
                                     new ProcessStartInfo
                                     {
