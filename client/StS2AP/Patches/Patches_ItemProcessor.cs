@@ -117,14 +117,14 @@ namespace StS2AP.Patches
             /// Universal items (IDs < 10000) are character-agnostic and handled separately.
             /// The 10k ID gap ensures universal IDs never collide with character-specific IDs,
             /// no matter how many characters we add in the future.
-            if (item.ItemId < 10000)
+            if (ArchipelagoIdCodec.IsUniversalItemId(item.ItemId))
             {
                 HandleUniversalItem(item, index);
                 return;
             }
 
-            // Character-specific items (IDs >=ExitReadLock 10000): strip the character offset to get the base item type.
-            switch (item.GetCharacterSpecificItemID())
+            // Character-specific items use one-based 10,000-ID blocks. Decode the block-local item type.
+            switch (item.GetCharacterItemType())
             {
                 // Character Unlocks
                 case APItem.Unlock:
@@ -136,7 +136,7 @@ namespace StS2AP.Patches
                     /// Fire the CharacterUnlocked event on the Godot main thread.
                     /// This allows the character select screen (if open) to immediately
                     /// refresh the appropriate button without waiting for OnSubmenuOpened.
-                    var offset = item.GetCharacterOffset();
+                    var offset = item.GetAPCharacterNumber();
                     LogUtility.Info("After offset acquisition");
                     var config = ArchipelagoClient.Settings.Characters.Values.FirstOrDefault(
                         config => config.CharOffset == offset
@@ -169,7 +169,7 @@ namespace StS2AP.Patches
                     {
                         // NeowSanity's first progressive unlock still controls the normal Act 1 Neow reward.
                         // Every Act 2/3 unlock becomes a per-run, linked Ancient choice in the AP reward menu.
-                        var characterOffset = item.GetCharacterOffset();
+                        var characterOffset = item.GetAPCharacterNumber();
                         Progress.ProgressiveAncients.TryGetValue(characterOffset, out var unlockCount);
                         if (!Settings.NeowSanity || unlockCount > 1)
                             Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
@@ -191,13 +191,13 @@ namespace StS2AP.Patches
                 {
                     HandleThreshholdItem(item, Progress.ProgressiveStarterCards, "Progressive Starter Cards");
                     Progress.ProgressiveStarterCards.TryGetValue(
-                        item.GetCharacterOffset(),
+                        item.GetAPCharacterNumber(),
                         out int receivedCount
                     );
                     HandleProgressiveStarterReceipt(
                         liveDelivery,
                         index,
-                        item.GetCharacterOffset(),
+                        item.GetAPCharacterNumber(),
                         ApProgressiveStarterActionMessage.StarterKind.Card,
                         receivedCount
                     );
@@ -207,13 +207,13 @@ namespace StS2AP.Patches
                 {
                     HandleThreshholdItem(item, Progress.ProgressiveStarterRelics, "Progressive Starter Relics");
                     Progress.ProgressiveStarterRelics.TryGetValue(
-                        item.GetCharacterOffset(),
+                        item.GetAPCharacterNumber(),
                         out int receivedCount
                     );
                     HandleProgressiveStarterReceipt(
                         liveDelivery,
                         index,
-                        item.GetCharacterOffset(),
+                        item.GetAPCharacterNumber(),
                         ApProgressiveStarterActionMessage.StarterKind.Relic,
                         receivedCount
                     );
@@ -233,10 +233,10 @@ namespace StS2AP.Patches
                     Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
 
                     var player = GameUtility.CurrentPlayer;
-                    var characterOffset = player?.Character.GetCharacterOffset();
+                    var characterOffset = player?.Character.GetAPCharacterNumber();
                     if (player == null
                         || !characterOffset.HasValue
-                        || item.GetCharacterOffset() != characterOffset.Value)
+                        || item.GetAPCharacterNumber() != characterOffset.Value)
                     {
                         return;
                     }
@@ -259,8 +259,8 @@ namespace StS2AP.Patches
                 case APItem.BossGold:
                 {
                     // Get the IDs for storing the item
-                    var charOffset = item.GetCharacterOffset();
-                    var itemId = item.GetCharacterSpecificItemID();
+                    var charOffset = item.GetAPCharacterNumber();
+                    var itemId = item.GetCharacterItemType();
 
                     // Add the Gold to the amount we've received
                     try
@@ -294,8 +294,8 @@ namespace StS2AP.Patches
                 case APItem.ProgressiveShopRemove:
                     {
                         // Get the IDs for storing the item
-                        var itemId = item.GetCharacterSpecificItemID();
-                        var playerId = item.GetCharacterOffset();
+                        var itemId = item.GetCharacterItemType();
+                        var playerId = item.GetAPCharacterNumber();
 
                         // Route to the matching per-category tracker
                         var source = itemId switch
@@ -386,7 +386,7 @@ namespace StS2AP.Patches
             }
 
             // Cast ItemId directly � no modulo needed since universal items have no character offset.
-            var universalId = (APItem)item.ItemId;
+            var universalId = item.GetUniversalItemId();
             switch (universalId)
             {
                 case APItem.FreeAttack:
@@ -423,8 +423,8 @@ namespace StS2AP.Patches
         )
         {
             // Get the IDs for storing the item
-            var itemId = item.GetCharacterSpecificItemID();
-            var offset = item.GetCharacterOffset();
+            var itemId = item.GetCharacterItemType();
+            var offset = item.GetAPCharacterNumber();
 
             // Increment the reward
             try

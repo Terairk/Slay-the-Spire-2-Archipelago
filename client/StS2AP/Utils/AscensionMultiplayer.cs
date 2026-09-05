@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Runs;
+using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Persistence;
@@ -97,8 +98,8 @@ public static class AscensionMultiplayer
         for (int index = 0; index < receivedItems.Count; index++)
         {
             ItemInfo item = receivedItems[index];
-            if (item.ItemId < 10000
-                || item.GetCharacterOffset() != hostCharacterOffset
+            if (ArchipelagoIdCodec.IsUniversalItemId(item.ItemId)
+                || item.GetAPCharacterNumber() != hostCharacterOffset
                 || !TryGetAscensionLevel(item, out AscensionLevel level))
             {
                 continue;
@@ -226,8 +227,8 @@ public static class AscensionMultiplayer
             int receivedItemIndex = index + 1;
             ItemInfo item = receivedItems[index];
             if (handled.Contains(receivedItemIndex)
-                || item.ItemId < 10000
-                || item.GetCharacterOffset() != shared.HostCharacterOffset
+                || ArchipelagoIdCodec.IsUniversalItemId(item.ItemId)
+                || item.GetAPCharacterNumber() != shared.HostCharacterOffset
                 || !TryGetAscensionLevel(item, out _))
             {
                 continue;
@@ -352,13 +353,13 @@ public static class AscensionMultiplayer
             return;
         }
         if (receipt.Index <= 0
-            || receipt.Item.ItemId < 10000
+            || ArchipelagoIdCodec.IsUniversalItemId(receipt.Item.ItemId)
             || !TryGetAscensionLevel(receipt.Item, out AscensionLevel level))
         {
             Fail($"could not author invalid Ascension Down receipt {receipt.Index}");
             return;
         }
-        if (receipt.Item.GetCharacterOffset() != shared.HostCharacterOffset)
+        if (receipt.Item.GetAPCharacterNumber() != shared.HostCharacterOffset)
         {
             LogUtility.Info(
                 $"Banked Ascension Down receipt {receipt.Index}; it does not belong to the "
@@ -509,7 +510,7 @@ public static class AscensionMultiplayer
             || !ValidateSharedState(shared, out _)
             || shared.RunId != message.RunId
             || shared.HostCharacterOffset != message.CharacterOffset
-            || owner.GetCharacterOffset() != message.CharacterOffset
+            || owner.GetAPCharacterNumber() != message.CharacterOffset
             || !ApRunData.TryGetPlayerState(current, owner.NetId, out ApPlayerRunState ownerState)
             || ownerState.Participation != ApParticipationKind.OwnApSlot
             || ownerState.ApSlotId != message.ApSlotId)
@@ -607,10 +608,10 @@ public static class AscensionMultiplayer
     private static bool TryGetAscensionLevel(ItemInfo item, out AscensionLevel level)
     {
         level = AscensionLevel.None;
-        if (item.ItemId < 10000)
+        if (ArchipelagoIdCodec.IsUniversalItemId(item.ItemId))
             return false;
 
-        APItem itemId = item.GetCharacterSpecificItemID();
+        APItem itemId = item.GetCharacterItemType();
         if (itemId is < APItem.SwarmingElites or > APItem.DoubleBoss)
             return false;
 

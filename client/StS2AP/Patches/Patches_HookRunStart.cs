@@ -249,7 +249,7 @@ namespace StS2AP.Patches
                 if (MultiplayerSupport.IsLocalOwnApSlot
                     && MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.PressStartCheck))
                 {
-                    GameUtility.TrySendPressStartCheck(includeUnrecognizedCharacters: false);
+                    GameUtility.TrySendPressStartCheck();
                 }
 
                 LogUtility.Info(

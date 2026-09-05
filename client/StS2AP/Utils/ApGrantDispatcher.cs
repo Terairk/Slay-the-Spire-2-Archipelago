@@ -28,18 +28,18 @@ public static class ApGrantDispatcher
         int buffCount = 0;
         foreach (ItemInfo item in receivedItems)
         {
-            if (item.ItemId < 10000)
+            if (ArchipelagoIdCodec.IsUniversalItemId(item.ItemId))
             {
                 if (ItemTable.IsUniversalCombatBuff(item.ItemId))
                     buffCount++;
                 continue;
             }
 
-            APItem itemId = item.GetCharacterSpecificItemID();
+            APItem itemId = item.GetCharacterItemType();
             if (!ItemTable.GoldItemAmounts.TryGetValue(itemId, out int amount))
                 continue;
 
-            long characterOffset = item.GetCharacterOffset();
+            long characterOffset = item.GetAPCharacterNumber();
             rebuilt.TryGetValue(characterOffset, out int previous);
             rebuilt[characterOffset] = previous + amount;
         }

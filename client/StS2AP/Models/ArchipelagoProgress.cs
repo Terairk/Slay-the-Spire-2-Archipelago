@@ -7,7 +7,6 @@ using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
 using StS2AP.Data;
 using StS2AP.Utils;
-using static StS2AP.Data.CharTable;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Ascension;
@@ -250,10 +249,10 @@ namespace StS2AP.Models
             // Anytime mode; with Neow Sanity enabled, it omits the first unlock because
             // that remains Neow's start-of-run reward. Sorting the remaining entries by
             // AP item index maps ordinal 0 to Act 2 and ordinal 1 to Act 3.
-            var characterOffset = player.GetCharacterOffset();
+            var characterOffset = player.GetAPCharacterNumber();
             var orderedAncientItemIndices = AllReceivedItems
-                .Where(item => item.Item.GetCharacterOffset() == characterOffset &&
-                               item.Item.GetCharacterSpecificItemID() == APItem.ProgressiveAncient)
+                .Where(item => item.Item.GetAPCharacterNumber() == characterOffset &&
+                               item.Item.GetCharacterItemType() == APItem.ProgressiveAncient)
                 .OrderBy(item => item.Index)
                 .Select(item => item.Index)
                 .ToList();
@@ -448,8 +447,8 @@ namespace StS2AP.Models
         /// </summary>
         public bool IsAvailableInRewardMenu(IndexedItemInfo item, Player player)
         {
-            var itemId = item.Item.GetCharacterSpecificItemID();
-            return item.Item.GetCharacterOffset() == GameUtility.CurrentCharacterID
+            var itemId = item.Item.GetCharacterItemType();
+            return item.Item.GetAPCharacterNumber() == GameUtility.CurrentAPCharacterNumber
                 && !UsedItems.Contains(item.Index)
                 && itemId.CanBePickedUp()
                 && (
@@ -774,9 +773,9 @@ namespace StS2AP.Models
         public Dictionary<long, List<int>> GetRelicReceiptIndexSnapshot() =>
             AllReceivedItems
                 .Where(receipt =>
-                    receipt.Item.ItemId >= 10000
-                    && receipt.Item.GetCharacterSpecificItemID() == APItem.Relic)
-                .GroupBy(receipt => receipt.Item.GetCharacterOffset())
+                    ArchipelagoIdCodec.IsCharacterItemId(receipt.Item.ItemId)
+                    && receipt.Item.GetCharacterItemType() == APItem.Relic)
+                .GroupBy(receipt => receipt.Item.GetAPCharacterNumber())
                 .ToDictionary(
                     group => group.Key,
                     group => group.Select(receipt => receipt.Index).Distinct().Order().ToList()

@@ -226,7 +226,7 @@ public static class MultiplayerLocationChecks
         Player player,
         ApRunProgressState progress)
     {
-        long? characterOffset = player.GetCharacterOffset();
+        long? characterOffset = player.GetAPCharacterNumber();
         if (!characterOffset.HasValue)
             return Array.Empty<int>();
 

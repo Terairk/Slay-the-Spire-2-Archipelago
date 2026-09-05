@@ -117,13 +117,15 @@ namespace StS2AP
         public static ArchipelagoSettings Settings { get; private set; }
 
         /// <summary>Restores the fixed host's frozen settings on its own process.</summary>
-        internal static void UseMultiplayerHostSettings(ArchipelagoSettings settings)
+        internal static bool TryUseMultiplayerHostSettings(
+            ArchipelagoSettings settings,
+            out string reason)
         {
             ArgumentNullException.ThrowIfNull(settings);
 
             // RitsuLib's JSON round-trip does not preserve the comparer from the initialized
             // ConcurrentDictionary. Native character IDs are upper-case while AP slot-data keys
-            // use title case, so normalize both maps again whenever frozen settings are installed.
+            // use title case, so normalize the map again whenever frozen settings are installed.
             settings.Characters = new System.Collections.Concurrent.ConcurrentDictionary<
                 string,
                 CharacterConfig
@@ -131,12 +133,43 @@ namespace StS2AP
                 settings.Characters,
                 StringComparer.InvariantCultureIgnoreCase
             );
-            settings.UnrecognizedCharacters =
-                new System.Collections.Concurrent.ConcurrentDictionary<string, CharacterConfig>(
-                    settings.UnrecognizedCharacters,
-                    StringComparer.InvariantCultureIgnoreCase
-                );
+
+            if (!TryValidateConfiguredCharacters(settings, out reason))
+                return false;
+
             Settings = settings;
+            return true;
+        }
+
+        internal static bool TryValidateConfiguredCharacters(
+            ArchipelagoSettings settings,
+            out string reason)
+        {
+            var installedCharacterIds = ModelDb.AllCharacters
+                .Select(character => character.Id.Entry)
+                .ToHashSet(StringComparer.InvariantCultureIgnoreCase);
+            var missingCharacterIds = settings.Characters.Values
+                .Select(config => config.OfficialName)
+                .Where(characterId =>
+                    string.IsNullOrWhiteSpace(characterId)
+                    || !installedCharacterIds.Contains(characterId)
+                )
+                .Distinct(StringComparer.InvariantCultureIgnoreCase)
+                .Order(StringComparer.InvariantCultureIgnoreCase)
+                .ToArray();
+
+            if (missingCharacterIds.Length > 0)
+            {
+                reason = "The AP slot configures character model(s) that are not loaded: "
+                    + string.Join(", ", missingCharacterIds.Select(characterId =>
+                        string.IsNullOrWhiteSpace(characterId) ? "<missing id>" : characterId
+                    ))
+                    + ". Enable the matching character mod(s) and reconnect.";
+                return false;
+            }
+
+            reason = string.Empty;
+            return true;
         }
 
         internal static void RebuildUnlockedCharactersFromSettings()
@@ -250,8 +283,8 @@ namespace StS2AP
                 int relicsAvailableAnytime = Progress.RelicRewardsAvailableAnytimeForRun;
                 int deferredMultiplayerItems =
                     MultiplayerSupport.PendingUnsupportedItems.Count(item =>
-                        item.Item.ItemId < 10000
-                        || item.Item.GetCharacterOffset() == characterOffset
+                        ArchipelagoIdCodec.IsUniversalItemId(item.Item.ItemId)
+                        || item.Item.GetAPCharacterNumber() == characterOffset
                     );
 
                 if (ReferenceEquals(_rewardCountProgress, Progress) &&
@@ -658,6 +691,11 @@ namespace StS2AP
                 }
 
                 Settings = GetPlayerSettings();
+                if (!TryValidateConfiguredCharacters(Settings, out string characterError))
+                {
+                    RejectIncompatibleConnection(characterError, wasAutomaticReconnect);
+                    return;
+                }
 
                 int apWorldAgeComparison = CompareMajorMinor(
                     bundledApWorldVersion,
@@ -1439,20 +1477,6 @@ namespace StS2AP
                     }
                 }
 
-                foreach (var config in settings.Characters.Values)
-                {
-                    var model = ModelDb.AllCharacters.FirstOrDefault(model =>
-                        string.Equals(
-                            model.Id.Entry,
-                            config.OfficialName,
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    );
-                    if (model == null)
-                    {
-                        settings.UnrecognizedCharacters[config.OfficialName] = config;
-                    }
-                }
             }
 
             if (slotData.ContainsKey("neow_sanity"))

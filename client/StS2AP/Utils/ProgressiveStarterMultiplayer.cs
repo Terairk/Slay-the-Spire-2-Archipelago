@@ -120,7 +120,7 @@ public static class ProgressiveStarterMultiplayer
 
         try
         {
-            if (localPlayer.GetCharacterOffset() != characterOffset || !IsEnabledFor(localPlayer, kind))
+            if (localPlayer.GetAPCharacterNumber() != characterOffset || !IsEnabledFor(localPlayer, kind))
                 return;
 
             ApProgressiveStarterKindState specification = GetOrCaptureSpecification(localPlayer, kind);
@@ -161,7 +161,7 @@ public static class ProgressiveStarterMultiplayer
         Player player,
         ICollection<ApProgressiveStarterActionMessage.Target> targets)
     {
-        long? offset = player.GetCharacterOffset();
+        long? offset = player.GetAPCharacterNumber();
         if (!offset.HasValue)
             return;
 
@@ -505,7 +505,7 @@ public static class ProgressiveStarterMultiplayer
             if (message.Reason == ApProgressiveStarterActionMessage.ActionReason.LiveReceipt
                 && (message.ReceivedItemIndex <= 0
                     || !message.CharacterOffset.HasValue
-                    || player.GetCharacterOffset() != message.CharacterOffset
+                    || player.GetAPCharacterNumber() != message.CharacterOffset
                     || (target.Specification.Supported
                         && target.TargetTier is not (
                             ProgressiveStarterTier.Basic

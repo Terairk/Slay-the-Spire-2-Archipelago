@@ -34,9 +34,9 @@ namespace StS2AP.Extensions
         }
 
         /// <summary>
-        /// Returns this player's AP character offset using that player's multiplayer AP context.
+        /// Returns this player's one-based AP character number using their multiplayer AP context.
         /// </summary>
-        public static long? GetCharacterOffset(this Player player)
+        public static long? GetAPCharacterNumber(this Player player)
         {
             if (ApPlayerContextResolver.TryGetCharacterConfig(
                     player,
@@ -47,7 +47,7 @@ namespace StS2AP.Extensions
             }
 
             LogUtility.Warn(
-                $"Could not resolve AP character offset for player {player.NetId} "
+                $"Could not resolve AP character number for player {player.NetId} "
                     + $"with character id '{player.getInternalName()}'"
             );
             return null;

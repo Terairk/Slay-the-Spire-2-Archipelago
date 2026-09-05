@@ -24,7 +24,6 @@ using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Utils;
-using static StS2AP.Data.CharTable;
 
 namespace StS2AP.Patches
 {
@@ -539,7 +538,7 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                long? charId = player.GetCharacterOffset();
+                long? charId = player.GetAPCharacterNumber();
                 if (!charId.HasValue)
                 {
                     LogUtility.Error(
@@ -711,7 +710,7 @@ namespace StS2AP.Patches
         {
             if (!MultiplayerSupport.IsRealMultiplayerRun)
             {
-                GameUtility.SendCheck(target.LocationId);
+                GameUtility.QueueCheck(target.LocationId);
                 return;
             }
 

@@ -11,30 +11,38 @@ namespace StS2AP.Data
 {
     public static class LocationData
     {
-        private const long CharacterLocationStride = 10000;
         private const long FirstCampfireBaseId = 89;
         private const int CampfiresPerAct = 2;
 
         /// <summary>
-        /// Combines a base Location ID with a character's offset ID
+        /// Combines a base location ID with a one-based AP character number.
         /// </summary>
         /// <param name="locationId">The base ID of a location</param>
-        /// <param name="character">The character to offset the location by</param>
+        /// <param name="character">The character whose AP location block should be used</param>
         /// <returns>The combined location ID.</returns>
-        /// <example>If characterOffset=1 and locationId=88, then we'd return 10088</example>
+        /// <example>If the AP character number is 1 and locationId is 88, this returns 88.</example>
         private static long CombineLocationAndCharacterIds(long locationId, CharacterModel character)
         {
-            // Character offset (for locations this is zero-based, so it needs to be shifted)
-            long? _characterOffset = character.GetCharacterOffset();
-            if(_characterOffset == null)
+            var apCharacterNumber = character.GetAPCharacterNumber();
+            if (!apCharacterNumber.HasValue)
             {
                 LogUtility.Error($"Got unsupported character {character.APName()}");
                 return -1;
             }
 
-            // AP character offsets are one-based while location blocks are zero-based:
-            // Ironclad=0xxxx, Silent=1xxxx, Defect=2xxxx, etc.
-            return ((_characterOffset.Value - 1) * CharacterLocationStride) + locationId;
+            if (!ArchipelagoIdCodec.TryComposeLocationId(
+                locationId,
+                apCharacterNumber.Value,
+                out var combinedLocationId
+            ))
+            {
+                LogUtility.Error(
+                    $"Could not compose location {locationId} for AP character #{apCharacterNumber.Value}"
+                );
+                return -1;
+            }
+
+            return combinedLocationId;
         }
 
         /// <summary>
@@ -50,18 +58,15 @@ namespace StS2AP.Data
         
         /// <summary>
         /// Returns whether or not the character has a "Press Start" location.
-        /// Locked characters have this location.
+        /// The slot-data lock flag is authoritative; scouting completes asynchronously and is
+        /// therefore not a reliable way to decide whether the location exists.
         /// </summary>
         public static bool DoesThisCharacterHavePressStartLocation(CharacterModel character)
         {
-            // Get the location ID
-            long id = GetPressStartLocation(character);
-
-            // If the ID isn't valid, assume the location doesn't exist
-            if (id == -1) return false;
-
-            // If it's valid, see if it's in our Scouted Locations
-            return ArchipelagoClient.ScoutedLocations.ContainsKey(id);
+            return ArchipelagoClient.Settings.Characters.TryGetValue(
+                character.Id.Entry,
+                out var config
+            ) && config.Locked;
         }
 
         /// <summary>
@@ -169,20 +174,24 @@ namespace StS2AP.Data
         /// Resolves a Campfiresanity location without consulting a process-local AP session.
         /// Every multiplayer replica can therefore construct the same owner-specific option list.
         /// </summary>
-        public static long GetCampfireLocationId(long characterOffset, int act, int campfire)
+        public static long GetCampfireLocationId(long apCharacterNumber, int act, int campfire)
         {
-            if (characterOffset < 1 || act is < 1 or > 3 || campfire is < 1 or > 2)
+            if (apCharacterNumber < 1 || act is < 1 or > 3 || campfire is < 1 or > 2)
                 return -1;
 
             long baseId = FirstCampfireBaseId
                 + ((act - 1) * CampfiresPerAct)
                 + (campfire - 1);
-            return ((characterOffset - 1) * CharacterLocationStride) + baseId;
+            return ArchipelagoIdCodec.TryComposeLocationId(
+                baseId,
+                apCharacterNumber,
+                out var locationId
+            ) ? locationId : -1;
         }
 
         public static bool IsCampfireLocationId(long locationId)
         {
-            long baseId = Math.Abs(locationId) % CharacterLocationStride;
+            long baseId = ArchipelagoIdCodec.GetBaseLocationId(locationId);
             return baseId is >= FirstCampfireBaseId
                 and < FirstCampfireBaseId + (3 * CampfiresPerAct);
         }

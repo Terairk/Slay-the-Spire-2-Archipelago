@@ -821,8 +821,8 @@ public static class ApMirroredRewardDispatcher
                 continue;
             }
 
-            bool belongsToCharacter = receipt.Item.ItemId < 10000
-                || receipt.Item.GetCharacterOffset() == player.GetCharacterOffset();
+            bool belongsToCharacter = ArchipelagoIdCodec.IsUniversalItemId(receipt.Item.ItemId)
+                || receipt.Item.GetAPCharacterNumber() == player.GetAPCharacterNumber();
             if (!MultiplayerSupport.IsMultiplayerScope
                 || !belongsToCharacter
                 || ArchipelagoClient.Progress.UsedItems.Contains(receipt.Index))
@@ -877,7 +877,7 @@ public static class ApMirroredRewardDispatcher
         {
             case ApMirroredRewardKind.Card:
             {
-                bool rare = receipt.Item.GetCharacterSpecificItemID() == ItemTable.APItem.RareCardReward;
+                bool rare = receipt.Item.GetCharacterItemType() == ItemTable.APItem.RareCardReward;
                 spec.IsRareCardReward = rare;
                 spec.CardRewardActIndex = rare ? null : GameUtility.GetCardRewardActIndex(itemIndex, player);
                 bool isNew = !ArchipelagoClient.Progress.CardAssignments.TryGetValue(
@@ -1166,7 +1166,7 @@ public static class ApMirroredRewardDispatcher
             player.RunState.Rng.StringSeed,
             spec.ApSlotId,
             player.RunState.GetPlayerSlotIndex(player),
-            player.GetCharacterOffset(),
+            player.GetAPCharacterNumber(),
             spec.ReceivedItemIndex
         );
         byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(seedMaterial));
@@ -1799,9 +1799,9 @@ public static class ApMirroredRewardDispatcher
         out ApMirroredRewardKind kind)
     {
         kind = default;
-        if (receipt.Item.ItemId < 10000)
+        if (ArchipelagoIdCodec.IsUniversalItemId(receipt.Item.ItemId))
             return false;
-        switch (receipt.Item.GetCharacterSpecificItemID())
+        switch (receipt.Item.GetCharacterItemType())
         {
             case ItemTable.APItem.CardReward:
             case ItemTable.APItem.RareCardReward:

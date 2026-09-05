@@ -64,7 +64,7 @@ public sealed class ApRestSiteOption : RestSiteOption
         if (!MultiplayerSupport.IsRealMultiplayerRun)
         {
             ArchipelagoClient.Progress.CheckedCampfireLocationIds.Add(_locationId);
-            GameUtility.SendCheck(_locationId);
+            GameUtility.QueueCheck(_locationId);
         }
         else if (MultiplayerLocationChecks.IsCheckWriter(Owner))
         {

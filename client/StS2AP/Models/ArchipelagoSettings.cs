@@ -42,8 +42,6 @@ namespace StS2AP.Models
 
         private IDictionary<string, CharacterConfig> _characters =
             CreateCharacterMap();
-        private IDictionary<string, CharacterConfig> _unrecognizedCharacters =
-            CreateCharacterMap();
 
         // TODO: update to be a set
         public int AscensionLevel { get; set; }
@@ -70,15 +68,6 @@ namespace StS2AP.Models
         {
             get => _characters;
             set => _characters = CreateCharacterMap(value);
-        }
-
-        /// <summary>
-        /// The collection of characters that are unrecognized by the mod.  Needed so we can send out unlocks.
-        /// </summary>
-        public IDictionary<string, CharacterConfig> UnrecognizedCharacters
-        {
-            get => _unrecognizedCharacters;
-            set => _unrecognizedCharacters = CreateCharacterMap(value);
         }
 
         public bool NeowSanity { get; set; }

@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Runs;
+using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Patches;
@@ -239,12 +240,12 @@ public static class MultiplayerSupport
     public static MultiplayerFeature GetFeatureForItem(IndexedItemInfo indexedItem)
     {
         var item = indexedItem.Item;
-        if (item.ItemId < 10000)
+        if (ArchipelagoIdCodec.IsUniversalItemId(item.ItemId))
             return IsUniversalCombatBuff(item.ItemId)
                 ? MultiplayerFeature.GoldRewards
                 : MultiplayerFeature.UnknownReceivedItems;
 
-        return item.GetCharacterSpecificItemID() switch
+        return item.GetCharacterItemType() switch
         {
             APItem.Unlock => MultiplayerFeature.CharacterUnlocks,
             APItem.OneGold or APItem.FiveGold or APItem.CombatGold or APItem.EliteGold
@@ -346,6 +347,12 @@ public static class MultiplayerSupport
             reason = "The AP slot did not provide any usable character settings.";
             return false;
         }
+        if (!ArchipelagoClient.TryValidateConfiguredCharacters(
+                ArchipelagoClient.Settings,
+                out reason))
+        {
+            return false;
+        }
 
         var identity = new ApSessionIdentity(roomSeed, apTeamId, apSlotId);
         string sessionKey = identity.ToString();
@@ -388,10 +395,10 @@ public static class MultiplayerSupport
             {
                 DeferItem(indexedItem);
             }
-            else if (item.ItemId >= 10000
-                && item.GetCharacterSpecificItemID() == APItem.ProgressiveAncient)
+            else if (ArchipelagoIdCodec.IsCharacterItemId(item.ItemId)
+                && item.GetCharacterItemType() == APItem.ProgressiveAncient)
             {
-                long characterOffset = item.GetCharacterOffset();
+                long characterOffset = item.GetAPCharacterNumber();
                 ancientCounts.TryGetValue(characterOffset, out int count);
                 count++;
                 ancientCounts[characterOffset] = count;
@@ -403,9 +410,10 @@ public static class MultiplayerSupport
                     ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
                 }
             }
-            else if (feature == MultiplayerFeature.RestSites && item.ItemId >= 10000)
+            else if (feature == MultiplayerFeature.RestSites
+                && ArchipelagoIdCodec.IsCharacterItemId(item.ItemId))
             {
-                Dictionary<long, int>? counts = item.GetCharacterSpecificItemID() switch
+                Dictionary<long, int>? counts = item.GetCharacterItemType() switch
                 {
                     APItem.ProgressiveRest => ArchipelagoClient.Progress.ProgressiveRests,
                     APItem.ProgressiveSmith => ArchipelagoClient.Progress.ProgressiveSmiths,
@@ -413,15 +421,15 @@ public static class MultiplayerSupport
                 };
                 if (counts != null)
                 {
-                    long characterOffset = item.GetCharacterOffset();
+                    long characterOffset = item.GetAPCharacterNumber();
                     counts.TryGetValue(characterOffset, out int count);
                     counts[characterOffset] = count + 1;
                 }
             }
             else if (feature == MultiplayerFeature.ProgressiveStarters
-                && item.ItemId >= 10000)
+                && ArchipelagoIdCodec.IsCharacterItemId(item.ItemId))
             {
-                Dictionary<long, int>? counts = item.GetCharacterSpecificItemID() switch
+                Dictionary<long, int>? counts = item.GetCharacterItemType() switch
                 {
                     APItem.ProgressiveStarterCard =>
                         ArchipelagoClient.Progress.ProgressiveStarterCards,
@@ -431,14 +439,15 @@ public static class MultiplayerSupport
                 };
                 if (counts != null)
                 {
-                    long characterOffset = item.GetCharacterOffset();
+                    long characterOffset = item.GetAPCharacterNumber();
                     counts.TryGetValue(characterOffset, out int count);
                     counts[characterOffset] = count + 1;
                 }
             }
-            else if (feature == MultiplayerFeature.Shops && item.ItemId >= 10000)
+            else if (feature == MultiplayerFeature.Shops
+                && ArchipelagoIdCodec.IsCharacterItemId(item.ItemId))
             {
-                Dictionary<long, int>? counts = item.GetCharacterSpecificItemID() switch
+                Dictionary<long, int>? counts = item.GetCharacterItemType() switch
                 {
                     APItem.ShopCardSlot => ArchipelagoClient.Progress.ShopCardSlotsReceived,
                     APItem.NeutralShopCardSlot =>
@@ -451,7 +460,7 @@ public static class MultiplayerSupport
                 };
                 if (counts != null)
                 {
-                    long characterOffset = item.GetCharacterOffset();
+                    long characterOffset = item.GetAPCharacterNumber();
                     counts.TryGetValue(characterOffset, out int count);
                     counts[characterOffset] = count + 1;
                 }
@@ -744,7 +753,12 @@ public static class MultiplayerSupport
             && ApRunData.TryGetSharedState(runState, out ApRunSharedState hostShared)
             && hostShared.HostSettings != null)
         {
-            ArchipelagoClient.UseMultiplayerHostSettings(hostShared.HostSettings);
+            if (!ArchipelagoClient.TryUseMultiplayerHostSettings(
+                    hostShared.HostSettings,
+                    out string settingsReason))
+            {
+                InvalidateRunClaims(settingsReason);
+            }
         }
 
         LogUtility.Info(
@@ -891,8 +905,6 @@ public static class MultiplayerSupport
 
         foreach ((string key, CharacterConfig config) in source.Characters)
             snapshot.Characters[key] = CloneCharacterConfig(config);
-        foreach ((string key, CharacterConfig config) in source.UnrecognizedCharacters)
-            snapshot.UnrecognizedCharacters[key] = CloneCharacterConfig(config);
         return snapshot;
     }
 
@@ -918,7 +930,12 @@ public static class MultiplayerSupport
         {
             return;
         }
-        ArchipelagoClient.UseMultiplayerHostSettings(shared.HostSettings);
+        if (!ArchipelagoClient.TryUseMultiplayerHostSettings(
+                shared.HostSettings,
+                out string settingsReason))
+        {
+            InvalidateRunClaims(settingsReason);
+        }
     }
 
     private static CharacterConfig CloneCharacterConfig(CharacterConfig source) => new()

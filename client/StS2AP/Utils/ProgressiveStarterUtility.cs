@@ -395,7 +395,7 @@ namespace StS2AP.Utils
             Dictionary<long, int> received,
             Player player)
         {
-            var offset = player.GetCharacterOffset();
+            var offset = player.GetAPCharacterNumber();
             if (offset == null)
             {
                 LogUtility.Warn(

@@ -92,7 +92,7 @@ namespace StS2AP.Models
         /// </summary>
         public String OptionName { get; set; }
         /// <summary>
-        /// The offset for item and location ids for this character
+        /// The one-based AP character number read from the slot-data key "char_offset".
         /// </summary>
         public int CharOffset { get; set; }
         /// <summary>

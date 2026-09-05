@@ -24,7 +24,6 @@ using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Patches;
 using StS2AP.UI;
-using static StS2AP.Data.CharTable;
 using static StS2AP.Data.ItemTable;
 
 namespace StS2AP.Utils
@@ -81,40 +80,20 @@ namespace StS2AP.Utils
         public static Dictionary<string, string> APSaves { get; set; } = new Dictionary<string, string>();
 
         /// <summary>
-        /// Returns the Current Player's `APItemCharID`
+        /// Returns the current player's one-based AP character number.
         /// </summary>
-        public static long? CurrentCharacterID
+        public static long? CurrentAPCharacterNumber
         {
             get
             {
                 if (CurrentConfig == null)
                 {
-                    LogUtility.Warn("Attempted to get CurrentCharacterID but there is no active player");
+                    LogUtility.Warn("Attempted to get CurrentAPCharacterNumber without an active character configuration");
                     return null;
                 }
                 return CurrentConfig.CharOffset;
-                // var charName = CurrentPlayer.APName();
-                // return GetCharacterIDByName(charName);
             }
         }
-
-        // /// <summary>
-        // /// Gets the `APItemCharID` for a character by their AP Name.
-        // /// </summary>
-        // /// <param name="name">The name of a character, as recognized by the Archipelago World. Usually found by calling `.APName()` on a `CharacterModel` or `Player`.</param>
-        // /// <returns>The `APItemCharID` for a given character, by it's name. Returns `null` if the character name is invalid or unknown.</returns>
-        // public static APItemCharID? GetCharacterIDByName(string name)
-        // {
-        //     return name switch
-        //     {
-        //         "Ironclad" => APItemCharID.Ironclad,
-        //         "Silent" => APItemCharID.Silent,
-        //         "Defect" => APItemCharID.Defect,
-        //         "Regent" => APItemCharID.Regent,
-        //         "Necrobinder" => APItemCharID.Necrobinder,
-        //         _ => null
-        //     };
-        // }
 
         #region Receiving Items
 
@@ -246,11 +225,11 @@ namespace StS2AP.Utils
             if (index < 0)
                 return null;
 
-            var characterOffset = player.GetCharacterOffset();
+            var characterOffset = player.GetAPCharacterNumber();
             var orderedCardRewardIndices = ArchipelagoClient.Progress.AllReceivedItems
                 .Where(item =>
-                    item.Item.GetCharacterOffset() == characterOffset
-                    && item.Item.GetCharacterSpecificItemID() == APItem.CardReward
+                    item.Item.GetAPCharacterNumber() == characterOffset
+                    && item.Item.GetCharacterItemType() == APItem.CardReward
                 )
                 .OrderBy(item => item.Index)
                 .Select(item => item.Index)
@@ -344,39 +323,31 @@ namespace StS2AP.Utils
         {
             try
             {
-                CharacterModel? characterToUnlock = null;
-                LogUtility.Info($"Before switch");
-                switch (item.GetCharacterOffset())
+                var apCharacterNumber = item.GetAPCharacterNumber();
+                var config = ArchipelagoClient.Settings.Characters.Values.FirstOrDefault(
+                    candidate => candidate.CharOffset == apCharacterNumber
+                );
+                if (config == null)
                 {
-                    case (int)APItemCharID.Ironclad:
-                        characterToUnlock = ModelDb.Character<Ironclad>();
-                        break;
-                    case (int)APItemCharID.Silent:
-                        characterToUnlock = ModelDb.Character<Silent>();
-                        break;
-                    case (int)APItemCharID.Defect:
-                        characterToUnlock = ModelDb.Character<Defect>();
-                        break;
-                    case (int)APItemCharID.Regent:
-                        characterToUnlock = ModelDb.Character<Regent>();
-                        break;
-                    case (int)APItemCharID.Necrobinder:
-                        characterToUnlock = ModelDb.Character<Necrobinder>();
-                        break;
-                    default:
-                        LogUtility.Info($"Default case");
-                        var config = ArchipelagoClient.Settings.Characters.Values.FirstOrDefault(c => c.CharOffset == (int)item.GetCharacterOffset());
-                        LogUtility.Warn($"Got item unlock but character not configured {item.ItemName}");
-                        if (config != null)
-                        {
-                            characterToUnlock = ModelDb.AllCharacters.FirstOrDefault(c => string.Equals(c.Id.Entry, config.OfficialName, StringComparison.OrdinalIgnoreCase));
-                        }
-                        break;
+                    LogUtility.Warn(
+                        $"Got unlock item {item.ItemName} for unconfigured AP character #{apCharacterNumber}"
+                    );
+                    return;
                 }
+
+                var characterToUnlock = ModelDb.AllCharacters.FirstOrDefault(character =>
+                    string.Equals(
+                        character.Id.Entry,
+                        config.OfficialName,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                );
 
                 if (characterToUnlock == null)
                 {
-                    LogUtility.Warn($"Could not find character to unlock for item {item.ItemName} (Char ID Parsed: {item.GetCharacterOffset()})");
+                    LogUtility.Warn(
+                        $"Could not find installed character '{config.OfficialName}' for unlock item {item.ItemName}"
+                    );
                     return;
                 }
 
@@ -549,13 +520,7 @@ namespace StS2AP.Utils
                 LogUtility.Debug($"TrySetGoalAchieved: charName - {charName}");
 
                 // Add to local cache HashSet.Add returns false if already present
-                var extras = new List<string>();
                 bool wasNew = _goaledCharacters.Add(charName);
-                foreach(var unrecognized in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
-                {
-                    wasNew |= _goaledCharacters.Add(unrecognized.OfficialName);
-                    extras.Add(unrecognized.OfficialName);
-                }
                 LogUtility.Debug($"TrySetGoalAchieved: wasNew - {wasNew.ToString()}");
 
                 if (wasNew)
@@ -568,10 +533,6 @@ namespace StS2AP.Utils
                         .Initialize(new Newtonsoft.Json.Linq.JObject());
 
                     var updateDict = new Dictionary<string, bool> { { charName, true } };
-                    foreach(var extra in extras)
-                    {
-                        updateDict[extra] = true;
-                    }
  
                     session.DataStorage[
                         Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
@@ -584,11 +545,6 @@ namespace StS2AP.Utils
                     {
                         await TryReleaseAllCharacterChecks(player.APName());
                         if (!ReferenceEquals(session, ArchipelagoClient.Session)) return;
-                        foreach(var unrecognized in settings.UnrecognizedCharacters.Values)
-                        {
-                            await TryReleaseAllCharacterChecks(unrecognized.Name);
-                            if (!ReferenceEquals(session, ArchipelagoClient.Session)) return;
-                        }
                     }
                     else
                     {
@@ -634,9 +590,12 @@ namespace StS2AP.Utils
 
         public static async Task TryReleaseAllCharacterChecks(string charName)
         {
-            // Grab all locations whose name contains the character's name (e.g. "Ironclad")
+            // Location names begin with the AP character name (for example, "Ironclad").
             var characterLocations = ArchipelagoClient.ScoutedLocations
-                .Where(kvp => kvp.Value.LocationName.Contains(charName, StringComparison.OrdinalIgnoreCase))
+                .Where(kvp => kvp.Value.LocationName.StartsWith(
+                    $"{charName} ",
+                    StringComparison.OrdinalIgnoreCase
+                ))
                 .Select(kvp => kvp.Key)
                 .ToList();
 
@@ -655,43 +614,34 @@ namespace StS2AP.Utils
                 if (!ArchipelagoClient.CheckedLocations.Contains(locationId) && locationId != -1 && ArchipelagoClient.ScoutedLocations.ContainsKey(locationId))
                 {
                     // Check the location off and let the server know
-                    GameUtility.SendCheck(locationId);
+                    QueueCheck(locationId);
                 }
             }
 
             await Task.CompletedTask;
         }
 
-        public static void TrySendPressStartCheck(bool includeUnrecognizedCharacters = true)
+        public static void TrySendPressStartCheck()
         {
-            TrySendPressStartCheckFor(CurrentPlayer.Character, includeUnrecognizedCharacters);
+            TrySendPressStartCheckFor(CurrentPlayer.Character);
         }
 
-        public static void TrySendPressStartCheckFor(
-            CharacterModel character,
-            bool includeUnrecognizedCharacters = true)
+        public static void TrySendPressStartCheckFor(CharacterModel character)
         {
             var locationId = LocationData.GetPressStartLocation(character);
-            SendCheck(locationId, includeUnrecognizedCharacters);
+            QueueCheck(locationId);
         }
 
-        public static void SendCheck(string checkName)
+        public static void QueueCheck(string checkName)
         {
-            if (MultiplayerSupport.IsMultiplayerScope
-                && !MultiplayerSupport.IsLocalOwnApSlot)
-            {
-                return;
-            }
-            var _locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
-            SendCheck(_locationId);
+            var locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName(
+                "Slay the Spire II",
+                checkName
+            );
+            QueueCheck(locationId);
         }
 
-        public static void SendCheck(long locationId)
-        {
-            SendCheck(locationId, true);
-        }
-
-        private static void SendCheck(long locationId, bool includeUnrecognizedChars)
+        public static void QueueCheck(long locationId)
         {
             if (MultiplayerSupport.IsMultiplayerScope
                 && !MultiplayerSupport.IsLocalOwnApSlot)
@@ -704,16 +654,6 @@ namespace StS2AP.Utils
                 // connection is timing out, it will be replayed after the next login.
                 ArchipelagoClient.CheckedLocations.Add(locationId);
                 PendingCheckUtility.RecordAndSend(locationId);
-            }
-            if(includeUnrecognizedChars)
-            {
-                foreach(var otherChar in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
-                {
-                    // - 1 because locations are offset from items by 1
-                    long newLocationId = (locationId % 10000L) + (10000L * (otherChar.CharOffset - 1));
-                    LogUtility.Info($"Sending location for unrecognized character {otherChar.OfficialName} {locationId} {newLocationId}");
-                    SendCheck(newLocationId, false);
-                }
             }
         }
 

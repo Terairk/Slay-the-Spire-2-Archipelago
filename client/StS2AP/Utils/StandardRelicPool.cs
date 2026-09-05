@@ -42,7 +42,7 @@ public static class StandardRelicPool
         var selectedIds = new HashSet<ModelId>();
         var choices = new List<RelicModel>(choiceCount);
         string runSeed = player.RunState.Rng.StringSeed;
-        long? characterOffset = player.GetCharacterOffset();
+        long? characterOffset = player.GetAPCharacterNumber();
 
         for (int ordinal = 0; ordinal < choiceCount; ordinal++)
         {

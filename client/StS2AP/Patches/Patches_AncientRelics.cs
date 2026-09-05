@@ -78,7 +78,7 @@ namespace StS2AP.Patches
             string locationName = $"{characterName} Ancient Act {currentAct}";
 
             if (!MultiplayerSupport.IsRealMultiplayerRun)
-                GameUtility.SendCheck(locationName);
+                GameUtility.QueueCheck(locationName);
             else
                 MultiplayerLocationChecks.QueueCheck(player, locationName);
         }
@@ -286,7 +286,7 @@ namespace StS2AP.Patches
             else
             {
                 settings = ArchipelagoClient.Settings;
-                characterOffset = player.GetCharacterOffset() ?? -1;
+                characterOffset = player.GetAPCharacterNumber() ?? -1;
                 ArchipelagoClient.Progress.ProgressiveAncients.TryGetValue(
                     characterOffset,
                     out receivedCount

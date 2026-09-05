@@ -250,12 +250,6 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                /// Build the expected button name from the APItemCharID (e.g. APItemCharID.Silent → "silent_button").
-                /// We use case-insensitive comparison as a safety net, since the game's Id.Entry casing
-                /// could vary (the node dump above will confirm the real casing in the logs).
-                // string buttonName = charId.ToString().ToLower() + "_button";
-                // LogUtility.Debug($"HandleCharacterUnlocked: Looking for button matching '{buttonName}' (case-insensitive)");
-
                 var button = container.GetChildren()
                     .OfType<NCharacterSelectButton>()
                     .FirstOrDefault(b => string.Equals(b.Character.Id.Entry, config.OfficialName, StringComparison.OrdinalIgnoreCase));

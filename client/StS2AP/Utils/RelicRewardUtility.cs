@@ -263,8 +263,8 @@ namespace StS2AP.Utils
         {
             var progress = ArchipelagoClient.Progress;
             if (progress.UsedItems.Contains(receipt.Index)
-                || receipt.Item.GetCharacterSpecificItemID() != APItem.Relic
-                || receipt.Item.GetCharacterOffset() != player.GetCharacterOffset())
+                || receipt.Item.GetCharacterItemType() != APItem.Relic
+                || receipt.Item.GetAPCharacterNumber() != player.GetAPCharacterNumber())
             {
                 return false;
             }
@@ -377,11 +377,11 @@ namespace StS2AP.Utils
 
         private static IEnumerable<IndexedItemInfo> GetRelicReceipts(Player player)
         {
-            var characterOffset = player.GetCharacterOffset();
+            var characterOffset = player.GetAPCharacterNumber();
             return ArchipelagoClient.Progress.AllReceivedItems
                 .Where(receipt =>
-                    receipt.Item.GetCharacterOffset() == characterOffset
-                    && receipt.Item.GetCharacterSpecificItemID() == APItem.Relic
+                    receipt.Item.GetAPCharacterNumber() == characterOffset
+                    && receipt.Item.GetCharacterItemType() == APItem.Relic
                 )
                 .OrderBy(receipt => receipt.Index);
         }

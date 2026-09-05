@@ -292,7 +292,7 @@ public static class ApMultiplayerCampaignStore
                     ? ArchipelagoClient.PlayerName ?? $"AP Slot {slotId}"
                     : $"AP Slot {slotId}",
             HostCharacterId = characterId,
-            HostCharacterOffset = TryGetCharacterOffset(characterId),
+            HostCharacterOffset = TryGetAPCharacterNumber(characterId),
             HostNetId = hostPlayer.NetId,
             Roster = importedRoster,
             CreatedAtUtc = now,
@@ -434,7 +434,7 @@ public static class ApMultiplayerCampaignStore
             ApSlotId = slotId,
             ApSlotName = ArchipelagoClient.PlayerName ?? string.Empty,
             HostCharacterId = characterId,
-            HostCharacterOffset = GameUtility.CurrentConfig?.CharOffset ?? TryGetCharacterOffset(characterId),
+            HostCharacterOffset = GameUtility.CurrentConfig?.CharOffset ?? TryGetAPCharacterNumber(characterId),
             HostNetId = hostNetId,
             Roster = BuildRuntimeRoster(runState),
             CreatedAtUtc = DateTimeOffset.UtcNow,
@@ -588,11 +588,9 @@ public static class ApMultiplayerCampaignStore
         }
     }
 
-    private static long? TryGetCharacterOffset(string characterId)
+    private static long? TryGetAPCharacterNumber(string characterId)
     {
         if (ArchipelagoClient.Settings?.Characters.TryGetValue(characterId, out CharacterConfig? config) == true)
-            return config.CharOffset;
-        if (ArchipelagoClient.Settings?.UnrecognizedCharacters.TryGetValue(characterId, out config) == true)
             return config.CharOffset;
         return null;
     }

@@ -141,7 +141,7 @@ namespace StS2AP.Patches
                     return;
                 }
                 // Get Character ID
-                long? checkMe = characterModel.GetCharacterOffset();
+                long? checkMe = characterModel.GetAPCharacterNumber();
                 LogUtility.Info($"Selected Character: {characterModel.APName()}, AP Char ID: {checkMe}");
 
                 // If (somehow) the character ID is null, stop
@@ -170,8 +170,8 @@ namespace StS2AP.Patches
 
                 // Count Card/Relic/Potion/Progressive Rewards
                 var itemCounts = ArchipelagoClient.Progress.AllReceivedItems
-                    .Where(i => i.Item.GetCharacterOffset() == offset)
-                    .GroupBy(i => i.Item.GetCharacterSpecificItemID())
+                    .Where(i => i.Item.GetAPCharacterNumber() == offset)
+                    .GroupBy(i => i.Item.GetCharacterItemType())
                     .ToDictionary(
                         g => g.Key,
                         g => g.Count());
