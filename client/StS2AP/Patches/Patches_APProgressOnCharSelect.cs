@@ -22,6 +22,12 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NCharacterSelectScreen __instance, NCharacterSelectButton charSelectButton, CharacterModel characterModel)
             {
+                Patches_AscensionOverride.UpdateCharacterSelectAscension(
+                    __instance,
+                    charSelectButton,
+                    characterModel
+                );
+
                 // OnSubmenuOpened selects the initial character before it injects the
                 // tracker. CreateUI performs that first refresh once the labels exist.
                 // Part of the fix to prevent the gold issue before character is ready

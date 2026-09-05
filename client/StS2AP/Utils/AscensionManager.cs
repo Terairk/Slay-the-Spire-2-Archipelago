@@ -102,7 +102,7 @@ namespace StS2AP.Utils
         {
             // Initialize on new run, save, and update in game.
             Reset();
-            
+
             foreach(var asc in currentConfig.Ascension)
             {
                 var check = GetLevel(asc);
