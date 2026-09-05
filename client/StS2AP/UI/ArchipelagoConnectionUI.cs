@@ -518,10 +518,12 @@ namespace StS2AP.UI
 
             if (ArchipelagoClient.HasSlotConnection)
             {
-                SetStatus(
-                    "Restart the game before connecting to a different Archipelago slot."
-                );
-                return;
+                // A failed or offline attempt may leave this form open with authenticated state
+                // from the previous slot. Apply the same departure boundary before retrying.
+                if (!ArchipelagoClient.TryLeaveSlot())
+                    return;
+                Show();
+                ArchipelagoNotificationUI.InjectUI();
             }
 
             // Begin Connecting
