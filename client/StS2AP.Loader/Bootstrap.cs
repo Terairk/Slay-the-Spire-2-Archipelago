@@ -18,10 +18,20 @@ public static class Bootstrap
     private const string VariantManifestName = "archipelago-variants.json";
     private const string VariantEntryType = "StS2AP.ModEntry";
     private const string VariantEntryMethod = "Initialize";
+    private const string RitsuLibAssemblyName = "STS2-RitsuLib";
     private static string? _modDirectory;
+    private static AssemblyLoadContext? _loadContext;
+    private static int _initializationStarted;
 
     public static void Initialize()
     {
+        // Initializers cannot safely be replayed after partial content registration.
+        if (Interlocked.Exchange(ref _initializationStarted, 1) != 0)
+        {
+            Log.Warn("[Archipelago.Loader] Ignoring repeated initialization.");
+            return;
+        }
+
         _modDirectory = Path.GetDirectoryName(typeof(Bootstrap).Assembly.Location);
         if (string.IsNullOrWhiteSpace(_modDirectory))
         {
@@ -29,7 +39,9 @@ public static class Bootstrap
             return;
         }
 
-        AssemblyLoadContext.Default.Resolving += ResolveRootDependency;
+        _loadContext = AssemblyLoadContext.GetLoadContext(typeof(Bootstrap).Assembly)
+            ?? AssemblyLoadContext.Default;
+        _loadContext.Resolving += ResolveDependency;
 
         string? hostVersionText = NormalizeGameVersion(ReleaseInfoManager.Instance.ReleaseInfo?.Version);
         if (hostVersionText is null || !Version.TryParse(hostVersionText, out Version? hostVersion))
@@ -65,7 +77,8 @@ public static class Bootstrap
                 selection.CompatTarget,
                 selection.Entry
             );
-            Assembly variantAssembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(variantPath);
+            Assembly variantAssembly = LoadVariantAssembly(variantPath);
+            Patches_VariantTypeDiscovery.Register(variantAssembly);
             InvokeVariantInitializer(variantAssembly);
             Log.Info(
                 $"[Archipelago.Loader] Loaded Archipelago {manifest.ModVersion} target " +
@@ -78,10 +91,17 @@ public static class Bootstrap
         }
     }
 
-    private static Assembly? ResolveRootDependency(AssemblyLoadContext context, AssemblyName name)
+    private static Assembly? ResolveDependency(AssemblyLoadContext context, AssemblyName name)
     {
         if (string.IsNullOrWhiteSpace(_modDirectory) || string.IsNullOrWhiteSpace(name.Name))
             return null;
+
+        // RitsuLib's Workshop package has a stable loader at the mod root and loads the
+        // game-compatible implementation from its own lib/<version> directory. Reuse that
+        // implementation even when the two mod loaders live in different load contexts.
+        // Loading another copy here would split RitsuLib's static registrations and type identity.
+        if (string.Equals(name.Name, RitsuLibAssemblyName, StringComparison.OrdinalIgnoreCase))
+            return ResolveLoadedRitsuLib(name);
 
         string candidate = Path.Combine(_modDirectory, name.Name + ".dll");
         if (!File.Exists(candidate))
@@ -95,6 +115,54 @@ public static class Bootstrap
         {
             return null;
         }
+    }
+
+    private static Assembly LoadVariantAssembly(string variantPath)
+    {
+        Assembly[] loaded = AppDomain.CurrentDomain.GetAssemblies()
+            .Where(assembly => string.Equals(assembly.GetName().Name, "Archipelago", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (loaded.Length == 0)
+            return _loadContext!.LoadFromAssemblyPath(variantPath);
+        if (loaded.Length == 1 && string.Equals(loaded[0].Location, variantPath, StringComparison.OrdinalIgnoreCase))
+            return loaded[0];
+
+        throw new InvalidOperationException(
+            "A different or duplicate Archipelago implementation is already loaded; refusing to split model type identity."
+        );
+    }
+
+    private static Assembly? ResolveLoadedRitsuLib(AssemblyName requestedName)
+    {
+        Version minimumVersion = requestedName.Version ?? new Version(0, 0);
+        Assembly? resolved = AppDomain.CurrentDomain.GetAssemblies()
+            .Where(assembly =>
+                string.Equals(
+                    assembly.GetName().Name,
+                    RitsuLibAssemblyName,
+                    StringComparison.OrdinalIgnoreCase
+                )
+                && (assembly.GetName().Version ?? new Version(0, 0)) >= minimumVersion
+            )
+            .OrderByDescending(assembly => assembly.GetName().Version)
+            .FirstOrDefault();
+
+        if (resolved is null)
+        {
+            Log.Error(
+                $"[Archipelago.Loader] RitsuLib {minimumVersion} or newer is not initialized. " +
+                "Install and enable the RitsuLib variant pack so its compatibility loader runs " +
+                "before Archipelago."
+            );
+            return null;
+        }
+
+        Version resolvedVersion = resolved.GetName().Version ?? new Version(0, 0);
+        Log.Info(
+            $"[Archipelago.Loader] Bound {requestedName.Name} {minimumVersion} to loaded " +
+            $"RitsuLib {resolvedVersion} from {resolved.Location}."
+        );
+        return resolved;
     }
 
     private static VariantManifest ReadManifest(string modDirectory)

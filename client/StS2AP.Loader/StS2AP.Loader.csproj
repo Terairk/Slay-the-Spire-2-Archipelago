@@ -26,6 +26,7 @@
   </Target>
 
   <ItemGroup>
+    <Reference Include="0Harmony" HintPath="$(STS2ReferenceDataDir)\0Harmony.dll" Private="false" />
     <Reference Include="GodotSharp" HintPath="$(STS2ReferenceDataDir)\GodotSharp.dll" Private="false" />
     <Reference Include="sts2" HintPath="$(STS2ReferenceDataDir)\sts2.dll" Private="false" />
   </ItemGroup>

@@ -234,7 +234,7 @@ dotnet/embed_build_outputs=false
 		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModsOutputDir)" />
 		<!-- Copy all dependency DLLs (NuGet packages) except game-provided assemblies -->
 		<ItemGroup>
-			<DependencyDlls Include="$(TargetDir)*.dll" Exclude="$(TargetDir)$(TargetFileName);$(TargetDir)GodotSharp.dll;$(TargetDir)0Harmony.dll;$(TargetDir)sts2.dll;$(TargetDir)STS2.RitsuLib*.dll" />
+			<DependencyDlls Include="$(TargetDir)*.dll" Exclude="$(TargetDir)$(TargetFileName);$(TargetDir)GodotSharp.dll;$(TargetDir)0Harmony.dll;$(TargetDir)sts2.dll;$(TargetDir)STS2.RitsuLib*.dll;$(TargetDir)STS2-RitsuLib*.dll" />
 		</ItemGroup>
 		<Copy SourceFiles="@(DependencyDlls)" DestinationFolder="$(ModsOutputDir)" />
 		<Copy SourceFiles="Archipelago.json" DestinationFiles="$(ModsOutputDir)\Archipelago.json" />
