@@ -285,7 +285,7 @@ namespace StS2AP
         private static readonly object _connectionStateLock = new();
         private static bool _currentAttemptIsAutomaticReconnect;
         private static ApSessionIdentity? _authenticatedIdentity;
-        private static Action<ReceivedItemsHelper>? _itemReceivedHandler;
+        private static ReceivedItemsHelper.ItemReceivedHandler? _itemReceivedHandler;
 
         internal static bool HasSlotConnection =>
             State != ConnectionState.Disconnected || Settings != null || ApReconnectController.IsActive;
@@ -415,7 +415,7 @@ namespace StS2AP
                 return;
             }
 
-            Action<ReceivedItemsHelper> itemReceivedHandler = helper =>
+            ReceivedItemsHelper.ItemReceivedHandler itemReceivedHandler = helper =>
                 OnItemReceived(connectionSession, helper);
             lock (_connectionStateLock)
             {
@@ -902,7 +902,7 @@ namespace StS2AP
         public static void Disconnect(bool showLostConnectionPrompt = true)
         {
             ArchipelagoSession? session;
-            Action<ReceivedItemsHelper>? itemReceivedHandler;
+            ReceivedItemsHelper.ItemReceivedHandler? itemReceivedHandler;
             lock (_connectionStateLock)
             {
                 if (State == ConnectionState.Disconnected)
