@@ -37,6 +37,13 @@ namespace StS2AP.Patches
         private static readonly MethodInfo? CloseInventoryMethod =
             AccessTools.Method(typeof(NMerchantInventory), "Close");
 
+        private const string ApNavIconPath = "res://images/APIcon.png";
+        private const string HsvShaderPath = "res://shaders/hsv.gdshader";
+        private static readonly Color ApNavArrowColor = new("62D68B");
+        private static readonly Color ShopNavArrowColor = new("86B8CC");
+        private static Texture2D? _apNavIconTexture;
+        private static Shader? _hsvShader;
+
         private static Control? _toApPageButton;
         private static Control? _toVanillaButton;
         private static bool _isCoordinatingClose;
@@ -121,6 +128,7 @@ namespace StS2AP.Patches
 
                     if (_toApPageButton is NBackButton apRealButton)
                     {
+                        ConfigureApNavArtwork(apRealButton);
                         FlipButtonArtwork(apRealButton);
                     }
                     commonParent.AddChildSafely(_toApPageButton);
@@ -131,6 +139,11 @@ namespace StS2AP.Patches
                         ShopPageUtility.ShowVanillaPage();
                         SyncNavButtonsToFrontPage();
                     });
+                    if (_toVanillaButton is NBackButton shopRealButton)
+                    {
+                        TintNavArrow(shopRealButton, ShopNavArrowColor, "shop");
+                        TintShopNavBackground(shopRealButton);
+                    }
                     commonParent.AddChildSafely(_toVanillaButton);
                     _toVanillaButton.Visible = false;
 
@@ -305,6 +318,95 @@ namespace StS2AP.Patches
                         LogUtility.Error($"ShopPages: couldn't find '{childName}' on the AP-checks button to flip, it may render pointing the wrong way.");
                     }
                 }
+            }
+
+            /// <summary>
+            /// Keeps the native arrow, hover outline, focus handling, and slide animation while
+            /// making the AP destination unmistakable with a green arrow and AP flower badge.
+            /// </summary>
+            private static void ConfigureApNavArtwork(NBackButton button)
+            {
+                if (!TintNavArrow(button, ApNavArrowColor, "AP checks"))
+                {
+                    return;
+                }
+
+                _apNavIconTexture ??= ResourceLoader.Load<Texture2D>(
+                    ApNavIconPath,
+                    null,
+                    ResourceLoader.CacheMode.Reuse);
+                if (_apNavIconTexture == null)
+                {
+                    LogUtility.Error($"ShopPages: failed to load AP navigation icon at {ApNavIconPath}.");
+                    return;
+                }
+
+                Vector2 buttonSize = button.Size;
+                if (buttonSize.X <= 0f || buttonSize.Y <= 0f)
+                {
+                    // Matches back_button.tscn's baked rect while the scene is still
+                    // waiting for its first layout pass.
+                    buttonSize = new Vector2(200f, 110f);
+                }
+
+                float iconSize = Mathf.Min(44f, buttonSize.Y * 0.4f);
+                var apIcon = new TextureRect
+                {
+                    Name = "ArchipelagoShopNavIcon",
+                    Texture = _apNavIconTexture,
+                    // Mirror the badge to the plaque's right side, clear of the
+                    // native directional arrow.
+                    Position = new Vector2(
+                        buttonSize.X - iconSize - (buttonSize.X * 0.01f),
+                        ((buttonSize.Y - iconSize) / 2f) - 4f),
+                    Size = new Vector2(iconSize, iconSize),
+                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                    MouseFilter = Control.MouseFilterEnum.Ignore,
+                };
+                button.AddChildSafely(apIcon);
+            }
+
+            private static bool TintNavArrow(NBackButton button, Color tint, string destination)
+            {
+                if (button.GetNodeOrNull<CanvasItem>("Image/Icon") is not CanvasItem arrow)
+                {
+                    LogUtility.Error($"ShopPages: couldn't find 'Image/Icon' on the {destination} navigation button, so its arrow tint was not applied.");
+                    return false;
+                }
+
+                arrow.SelfModulate = tint;
+                return true;
+            }
+
+            private static void TintShopNavBackground(NBackButton button)
+            {
+                if (button.GetNodeOrNull<TextureRect>("Image") is not TextureRect background)
+                {
+                    LogUtility.Error("ShopPages: couldn't find 'Image' on the shop navigation button, so its background was not recolored.");
+                    return;
+                }
+
+                _hsvShader ??= ResourceLoader.Load<Shader>(
+                    HsvShaderPath,
+                    null,
+                    ResourceLoader.CacheMode.Reuse);
+                if (_hsvShader == null)
+                {
+                    LogUtility.Error($"ShopPages: failed to load the navigation background shader at {HsvShaderPath}.");
+                    return;
+                }
+
+                var material = new ShaderMaterial
+                {
+                    Shader = _hsvShader,
+                };
+                // Shift the native red plaque toward blue while retaining its painted
+                // texture, shadows, hover outline, and cream arrow artwork.
+                material.SetShaderParameter("h", 0.34f);
+                material.SetShaderParameter("s", 0.8f);
+                material.SetShaderParameter("v", 0.9f);
+                background.Material = material;
             }
         }
 

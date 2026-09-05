@@ -4,10 +4,12 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Archipelago.MultiClient.Net.Enums;
 using Archipelago.MultiClient.Net.Models;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Gold;
 using MegaCrit.Sts2.Core.Entities.Merchant;
@@ -92,6 +94,35 @@ namespace StS2AP.Patches
             AccessTools.Field(typeof(MerchantEntry), nameof(MerchantEntry.EntryUpdated));
 
         private static readonly ConditionalWeakTable<MerchantInventory, MerchantInventory> ApInventories = new();
+
+        /// <summary>
+        /// Creates free server hints for the AP checks that are actually stocked on this visit's
+        /// shop page.
+        /// </summary>
+        private static void HintApInventory(MerchantInventory apInventory)
+        {
+            long[] locationIds = apInventory.AllEntries
+                .Select(entry => TryGetApLocationId(entry, out long locationId) ? locationId : -1)
+                .Where(locationId => locationId != -1)
+                .Distinct()
+                .ToArray();
+
+            if (locationIds.Length == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                ArchipelagoClient.Session.Hints.CreateHints(HintStatus.Unspecified, locationIds);
+                LogUtility.Info($"ShopSanity: automatically hinted {locationIds.Length} stocked shop check(s).");
+            }
+            catch (Exception ex)
+            {
+                // Hinting is QoL only. A transient AP/socket failure must not block shop entry.
+                LogUtility.Error($"ShopSanity: failed to automatically hint stocked shop checks; continuing without hints. {ex}");
+            }
+        }
 
         #region Unclaimed-Location Queue
         /// <summary>
@@ -462,6 +493,10 @@ namespace StS2AP.Patches
 
                     ApInventories.Remove(__result);
                     ApInventories.Add(__result, apInventory);
+                    if (ReferenceEquals(player, LocalContext.GetMe(player.RunState)))
+                    {
+                        HintApInventory(apInventory);
+                    }
                 }
                 catch (Exception ex)
                 {
