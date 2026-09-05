@@ -25,6 +25,7 @@ using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using StS2AP.Data;
+using StS2AP.DomainAdapters;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Patches;
@@ -1575,16 +1576,10 @@ public static class ApMirroredRewardDispatcher
 
             if (reward.Kind is ApMirroredRewardKind.Card or ApMirroredRewardKind.Potion)
             {
-                bool strict = reward.MaterializationStrategyId == ReplicaNativeStrategyId;
-                bool ownerFinal = reward.MaterializationStrategyId == OwnerFinalApRngStrategyId;
-                if (!strict && !ownerFinal)
-                    throw new InvalidOperationException(
-                        $"AP reward {reward.GrantId} used an unknown materialization strategy."
-                    );
-                if (reward.RequiresNativeMaterialization && !strict)
-                    throw new InvalidOperationException(
-                        $"AP reward {reward.GrantId} had an inconsistent materialization contract."
-                    );
+                _ = RewardMaterializationAdapter.Decode(
+                    reward.MaterializationStrategyId,
+                    reward.RequiresNativeMaterialization,
+                    reward.GrantId.ToString());
             }
             else if (reward.RequiresNativeMaterialization || reward.AppliedEffects.Count > 0)
             {

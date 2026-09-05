@@ -53,6 +53,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <ProjectReference Include="..\StS2AP.Domain\StS2AP.Domain.fsproj" />
 	  <PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.0" />
 	  <PackageReference Include="Book.StS2.RefLib" Version="$(Sts2RefLibPackageVersion)" PrivateAssets="all" Condition="'$(UseSts2RefLib)' == 'true' and '$(Sts2RefLibPackageVersion)' != ''" />
 	  <PackageReference Include="Krafs.Publicizer" Version="2.3.0" PrivateAssets="all" Condition="'$(UseSts2RefLib)' != 'true'" />
@@ -88,6 +89,13 @@
 	</ItemGroup>
 
 	<!-- Create steam_appid.txt for debugging outside Steam -->
+	<!-- Compile-only validation must embed the same manifests as Build. Without resource
+	     preparation, -t:Compile can replace the intermediate DLL with a resource-free one
+	     which a later incremental Build then copies into the compatibility bundle. -->
+	<Target Name="PrepareClientResourcesForCompile"
+	        BeforeTargets="_GenerateCompileInputs"
+	        DependsOnTargets="PrepareResources" />
+
 	<Target Name="ValidateSts2ApiCompat" BeforeTargets="ResolveAssemblyReferences">
 		<Error Condition="!$([System.String]::Copy(';$(SupportedSts2ApiCompats);').Contains(';$(Sts2ApiCompat);'))"
 		       Text="Unsupported Sts2ApiCompat '$(Sts2ApiCompat)'. Supported targets: $(SupportedSts2ApiCompats)." />

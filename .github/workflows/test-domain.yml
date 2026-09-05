@@ -1,10 +1,13 @@
-name: Test F# domain
+name: Test domain and C# interop
 
 on:
   push:
     paths:
       - 'client/StS2AP.Domain/**'
       - 'client/StS2AP.Domain.Tests/**'
+      - 'client/StS2AP.RegressionTests/**'
+      - 'client/StS2AP/DomainAdapters/**'
+      - 'client/StS2AP/Persistence/ApReplicaConstructionState.cs'
       - '.github/workflows/test-domain.yml'
   pull_request:
   workflow_dispatch:
@@ -29,3 +32,5 @@ jobs:
             10.0.x
       - name: Run unit and property tests without game dependencies
         run: dotnet test client/StS2AP.Domain.Tests/StS2AP.Domain.Tests.fsproj -c Release --logger "trx;LogFileName=domain-tests.trx"
+      - name: Run C# interop and replica construction tests
+        run: dotnet test client/StS2AP.RegressionTests/StS2AP.RegressionTests.csproj -c Release --filter "Category!=Manifest&Category!=Bundle" --logger "trx;LogFileName=interop-tests.trx"

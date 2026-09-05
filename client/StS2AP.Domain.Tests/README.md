@@ -31,5 +31,5 @@ enabled. Intentional unused inputs should be named `_` or `_description`. The do
 already treats emitted warnings as errors; turning warnings into errors does not enable
 warnings which are disabled by default.
 
-The separate C# regression executable continues to cover C# consumption and packaged loading
-in the current experiment. Keep language-boundary tests distinct from domain unit tests.
+The separate C# xUnit project, `StS2AP.RegressionTests`, checks adapter calls and packaging.
+Keep language-boundary tests distinct from domain unit tests.
