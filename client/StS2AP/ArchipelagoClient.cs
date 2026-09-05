@@ -170,6 +170,7 @@ namespace StS2AP
         /// Spinlock for processing incoming items to ensure that we don't have multiple threads trying to process items at the same time
         /// </summary>
         private static readonly object _itemLock = new();
+        private static LocationCheckHelper.CheckedLocationsUpdatedHandler? _checkedLocationsUpdatedHandler;
 
         // RitsuLib polls top-bar counts every frame. Cache the derived reward count and only
         // re-enumerate item history when one of its inexpensive inputs changes.
@@ -429,6 +430,9 @@ namespace StS2AP
 
             ReceivedItemsHelper.ItemReceivedHandler itemReceivedHandler = helper =>
                 OnItemReceived(connectionSession, helper);
+            // Capture the owning session so deferred !collect updates cannot affect a replacement.
+            LocationCheckHelper.CheckedLocationsUpdatedHandler checkedLocationsUpdatedHandler = locations =>
+                OnCheckedLocationsUpdated(connectionSession, locations);
             lock (_connectionStateLock)
             {
                 if (State is not ConnectionState.Connecting and not ConnectionState.Reconnecting)
@@ -440,6 +444,8 @@ namespace StS2AP
                 Session = connectionSession;
                 _itemReceivedHandler = itemReceivedHandler;
                 connectionSession.Items.ItemReceived += itemReceivedHandler;
+                _checkedLocationsUpdatedHandler = checkedLocationsUpdatedHandler;
+                connectionSession.Locations.CheckedLocationsUpdated += checkedLocationsUpdatedHandler;
             }
             PublishConnectionState();
 
@@ -1026,6 +1032,7 @@ namespace StS2AP
         {
             ArchipelagoSession? session;
             ReceivedItemsHelper.ItemReceivedHandler? itemReceivedHandler;
+            LocationCheckHelper.CheckedLocationsUpdatedHandler? checkedLocationsUpdatedHandler;
             lock (_connectionStateLock)
             {
                 if (State == ConnectionState.Disconnected)
@@ -1041,6 +1048,8 @@ namespace StS2AP
                 _currentAttemptIsAutomaticReconnect = false;
                 itemReceivedHandler = _itemReceivedHandler;
                 _itemReceivedHandler = null;
+                checkedLocationsUpdatedHandler = _checkedLocationsUpdatedHandler;
+                _checkedLocationsUpdatedHandler = null;
             }
 
             if (session != null)
@@ -1049,6 +1058,8 @@ namespace StS2AP
                 // intentional disconnect, and release the other session event handlers.
                 if (itemReceivedHandler != null)
                     session.Items.ItemReceived -= itemReceivedHandler;
+                if (checkedLocationsUpdatedHandler != null)
+                    session.Locations.CheckedLocationsUpdated -= checkedLocationsUpdatedHandler;
                 session.Socket.ErrorReceived -= OnErrorReceived;
                 session.Socket.SocketClosed -= OnSocketSessionEnd;
                 session.MessageLog.OnMessageReceived -= OnMessageReceived;
@@ -1183,6 +1194,35 @@ namespace StS2AP
             {
                 ConnectionLock.ReleaseReaderLock();
             }
+        }
+
+        private static void OnCheckedLocationsUpdated(
+            ArchipelagoSession session,
+            System.Collections.ObjectModel.ReadOnlyCollection<long> locations
+        )
+        {
+            long[] locationIds = locations.ToArray();
+            Callable.From(() =>
+            {
+                if (!ReferenceEquals(Session, session))
+                {
+                    return;
+                }
+
+                foreach (long locationId in locationIds)
+                {
+                    if (!CheckedLocations.Contains(locationId))
+                    {
+                        CheckedLocations.Add(locationId);
+                    }
+
+                    string? locationName = session.Locations.GetLocationNameFromId(locationId);
+                    if (locationName != null && Progress.CampfiresChecked.ContainsKey(locationName))
+                    {
+                        Progress.CampfiresChecked[locationName] = true;
+                    }
+                }
+            }).CallDeferred();
         }
 
         private static void OnMessageReceived(LogMessage message)
