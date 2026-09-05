@@ -49,13 +49,19 @@ namespace StS2AP.Patches
             /// </summary>
             public static void UpdateCheckedLocations(CharacterModel character)
             {
-                if(!ArchipelagoClient.Settings.Characters.ContainsKey(character.Id.Entry))
+                ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                if (settings == null)
+                {
+                    LogUtility.Error("Cannot update checked-location UI without AP slot settings.");
+                    return;
+                }
+                if(!settings.Characters.ContainsKey(character.Id.Entry))
                 {
                     return;
                 }
                 // Update Card Locations
                 var cardLocations = LocationData.GetCardRewardLocations(character);
-                SetCheckedLocation(ArchipelagoCharTrackerUI.CardChecks, cardLocations, ArchipelagoProgress._maxCardRewards / (ArchipelagoClient.Settings.ShouldShuffleAllCards ? 1 : 2));
+                SetCheckedLocation(ArchipelagoCharTrackerUI.CardChecks, cardLocations, ArchipelagoProgress._maxCardRewards / (settings.ShouldShuffleAllCards ? 1 : 2));
 
                 // Update Rare Card Locations
                 var rareCardLocations = LocationData.GetRareCardRewardLocations(character);
@@ -71,28 +77,28 @@ namespace StS2AP.Patches
 
 
                 // Update Floorsanity Locations
-                if (ArchipelagoClient.Settings.Floorsanity)
+                if (settings.Floorsanity)
                 {
                     var floorLocations = LocationData.GetFloorsanityLocations(character);
                     SetCheckedLocation(ArchipelagoCharTrackerUI.FloorsanityChecks, floorLocations, ArchipelagoProgress._maxFloorRewards);
                 }
 
                 // Update Campfiresanity Locations
-                if (ArchipelagoClient.Settings.CampfireSanity)
+                if (settings.CampfireSanity)
                 {
                     var campfireLocations = LocationData.GetCampfiresanityLocations(character);
                     SetCheckedLocation(ArchipelagoCharTrackerUI.CampfiresanityChecks, campfireLocations, ArchipelagoProgress._maxCampfireChecks);
                 }
 
                 // Update Goldsanity Locations
-                if (ArchipelagoClient.Settings.GoldSanity)
+                if (settings.GoldSanity)
                 {
                     var goldLocations = LocationData.GetGoldsanityLocations(character);
                     SetCheckedLocation(ArchipelagoCharTrackerUI.GoldsanityChecks, goldLocations, ArchipelagoProgress._maxGoldRewards);
                 }
 
                 // Update Potionsanity Locations
-                if (ArchipelagoClient.Settings.PotionSanity)
+                if (settings.PotionSanity)
                 {
                     var potionLocations = LocationData.GetPotionsanityLocations(character);
                     SetCheckedLocation(ArchipelagoCharTrackerUI.PotionsanityChecks, potionLocations, ArchipelagoProgress._maxPotionRewards);
@@ -107,7 +113,7 @@ namespace StS2AP.Patches
                 // Update Goal State
                 ArchipelagoCharTrackerUI.ClearedCheck?.SetText(character.HasCleared() ? "[green][sine]✓[/sine][/green]" : "[red]—[/red]");
 
-                if (ArchipelagoClient.Settings.ShopSanity)
+                if (settings.ShopSanity)
                 {
                     var shopLocations = LocationData.GetShopsanityLocations(character);
                     SetCheckedLocation(ArchipelagoCharTrackerUI.ShopsanityChecks, shopLocations, shopLocations.Count);
@@ -141,13 +147,19 @@ namespace StS2AP.Patches
             /// </summary>
             public static void UpdateReceivedItems(CharacterModel characterModel)
             {
-                if(!ArchipelagoClient.Settings.Characters.ContainsKey(characterModel.Id.Entry))
+                ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                if (settings == null)
+                {
+                    LogUtility.Error("Cannot update received-item UI without AP slot settings.");
+                    return;
+                }
+                if(!settings.Characters.ContainsKey(characterModel.Id.Entry))
                 {
                     // Not sure how this is getting called with something that doesn't belong, but just in case.
                     return;
                 }
                 // Get Character ID
-                long? checkMe = characterModel.GetCharacterOffset();
+                long? checkMe = characterModel.GetAPCharacterNumber();
                 LogUtility.Info($"Selected Character: {characterModel.APName()}, AP Char ID: {checkMe}");
 
                 // If (somehow) the character ID is null, stop
@@ -160,7 +172,7 @@ namespace StS2AP.Patches
                 LogUtility.Info($"Gold rewards received for character ID {offset}: {gold}");
                 ArchipelagoCharTrackerUI.GoldRewards?.SetText(gold.ToString());
 
-                if(ArchipelagoClient.Settings.CampfireSanity)
+                if(settings.CampfireSanity)
                 {
                     // Update Progressive Smiths/Rests
                     ArchipelagoCharTrackerUI.ProgressiveRestLabel?.SetText($"({ArchipelagoClient.Progress.MaxRestLevel(offset) ?? 0} / 3)");
@@ -176,8 +188,8 @@ namespace StS2AP.Patches
 
                 // Count Card/Relic/Potion/Progressive Rewards
                 var itemCounts = ArchipelagoClient.Progress.AllReceivedItems
-                    .Where(i => i.Item.GetCharacterOffset() == offset)
-                    .GroupBy(i => i.Item.GetCharacterSpecificItemID())
+                    .Where(i => i.Item.GetAPCharacterNumber() == offset)
+                    .GroupBy(i => i.Item.GetCharacterItemType())
                     .ToDictionary(
                         g => g.Key,
                         g => g.Count());
@@ -218,25 +230,25 @@ namespace StS2AP.Patches
                 }
 
                 // Update Shopsanity Item Unlocks (only tracked/shown when Shopsanity is enabled)
-                if (ArchipelagoClient.Settings.ShopSanity)
+                if (settings.ShopSanity)
                 {
                     int shopCardSlots = ArchipelagoClient.Progress.ShopCardSlotsReceived.TryGetValue(offset, out int cs) ? cs : 0;
                     ArchipelagoCharTrackerUI.ShopCardSlots?.SetText(
-                        $"({Math.Min(shopCardSlots, ArchipelagoClient.Settings.ShopCardSlots)} / {ArchipelagoClient.Settings.ShopCardSlots})");
+                        $"({Math.Min(shopCardSlots, settings.ShopCardSlots)} / {settings.ShopCardSlots})");
 
                     int shopNeutralSlots = ArchipelagoClient.Progress.ShopNeutralSlotsReceived.TryGetValue(offset, out int ns) ? ns : 0;
                     ArchipelagoCharTrackerUI.ShopNeutralSlots?.SetText(
-                        $"({Math.Min(shopNeutralSlots, ArchipelagoClient.Settings.ShopNeutralSlots)} / {ArchipelagoClient.Settings.ShopNeutralSlots})");
+                        $"({Math.Min(shopNeutralSlots, settings.ShopNeutralSlots)} / {settings.ShopNeutralSlots})");
 
                     int shopRelicSlots = ArchipelagoClient.Progress.ShopRelicSlotsReceived.TryGetValue(offset, out int rs) ? rs : 0;
                     ArchipelagoCharTrackerUI.ShopRelicSlots?.SetText(
-                        $"({Math.Min(shopRelicSlots, ArchipelagoClient.Settings.ShopRelicSlots)} / {ArchipelagoClient.Settings.ShopRelicSlots})");
+                        $"({Math.Min(shopRelicSlots, settings.ShopRelicSlots)} / {settings.ShopRelicSlots})");
 
                     int shopPotionSlots = ArchipelagoClient.Progress.ShopPotionSlotsReceived.TryGetValue(offset, out int ps) ? ps : 0;
                     ArchipelagoCharTrackerUI.ShopPotionSlots?.SetText(
-                        $"({Math.Min(shopPotionSlots, ArchipelagoClient.Settings.ShopPotionSlots)} / {ArchipelagoClient.Settings.ShopPotionSlots})");
+                        $"({Math.Min(shopPotionSlots, settings.ShopPotionSlots)} / {settings.ShopPotionSlots})");
 
-                    if (ArchipelagoClient.Settings.ShopRemoveSlots)
+                    if (settings.ShopRemoveSlots)
                     {
                         int shopRemoveLevel = ArchipelagoClient.Progress.MaxShopRemoveLevel(offset) ?? 0;
                         ArchipelagoCharTrackerUI.ShopRemoves?.SetText(

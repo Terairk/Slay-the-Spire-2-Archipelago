@@ -2,6 +2,8 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
@@ -34,7 +36,16 @@ namespace StS2AP.Patches
             public static void Prefix(CharacterModel character, ref int ascensionLevel, ref string seed)
             {
                 var officialName = character.Id.Entry;
-                GameUtility.CurrentConfig = ArchipelagoClient.Settings.Characters[officialName];
+                ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                if (settings == null
+                    || !settings.Characters.TryGetValue(officialName, out CharacterConfig? config))
+                {
+                    string message = $"Cannot start the AP run because character settings for "
+                        + $"'{officialName}' are unavailable.";
+                    LogUtility.Error(message);
+                    throw new InvalidOperationException(message);
+                }
+                GameUtility.CurrentConfig = config;
                 if(GameUtility.CurrentConfig.Ascension.Count == 0)
                 {
                     ascensionLevel = 0;
@@ -51,6 +62,41 @@ namespace StS2AP.Patches
                 }
             }
         }
+
+        /// <summary>
+        /// Marks the run as multiplayer before MegaCrit creates every Player. This also covers
+        /// invite/join paths that did not originate from the visible main-menu button.
+        /// </summary>
+        [HarmonyPatch(typeof(NGame), nameof(NGame.StartNewMultiplayerRun))]
+        public static class OnMultiplayerRunPreStart
+        {
+            [HarmonyPrefix]
+            public static void Prefix(StartRunLobby lobby)
+            {
+                MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
+                if (!MultiplayerSupport.CanEmbark(
+                        Sts2Compatibility.GetLocalCharacter(lobby),
+                        out string blockedReason))
+                {
+                    NotificationUtility.ShowRawText(blockedReason);
+                    throw new InvalidOperationException(
+                        $"AP multiplayer run launch refused: {blockedReason}"
+                    );
+                }
+
+                if (lobby.NetService.Type == NetGameType.Host
+                    && !AscensionMultiplayer.IsLobbyConstructionPrepared(
+                        lobby,
+                        out blockedReason))
+                {
+                    NotificationUtility.ShowRawText(blockedReason);
+                    throw new InvalidOperationException(
+                        $"AP multiplayer ascension staging failed: {blockedReason}"
+                    );
+                }
+            }
+        }
+
         /// <summary>
         /// Does a bunch of work we need when a run starts, including caching references, resetting game state/progress, and hooking event listeners.
         /// </summary>
@@ -60,6 +106,11 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(Player __result)
             {
+                // A multiplayer process creates every player before LocalContext is ready.
+                // Bind exactly once from RunManager.Launch instead.
+                if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
+                    return;
+
                 // Get rid of the tracker UI
                 ArchipelagoCharTrackerUI.RemoveUI();
                 ArchipelagoGoalTrackerUI.RemoveUI();
@@ -86,6 +137,146 @@ namespace StS2AP.Patches
         }
 
         /// <summary>
+        /// MegaCrit assigns LocalContext immediately before RunManager.Launch. This is the first
+        /// clean point at which each process can bind its one AP session to its local STS player.
+        /// </summary>
+        [HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]
+        public static class BindLocalMultiplayerPlayer
+        {
+            [HarmonyPrefix]
+            public static void Prefix(RunManager __instance)
+            {
+                if (__instance.NetService.Type == NetGameType.Singleplayer
+                    || MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer)
+                {
+                    return;
+                }
+
+                RunState? state = __instance.DebugOnlyGetState();
+                if (state == null)
+                {
+                    const string unavailableReason = "The STS multiplayer run state was unavailable.";
+                    NotificationUtility.ShowRawText(unavailableReason);
+                    throw new InvalidOperationException(
+                        $"AP multiplayer final launch check failed: {unavailableReason}"
+                    );
+                }
+
+                if (!MultiplayerSupport.CanLaunchRun(state, out string blockedReason))
+                {
+                    NotificationUtility.ShowRawText(blockedReason);
+                    throw new InvalidOperationException(
+                        $"AP multiplayer final launch check failed: {blockedReason}"
+                    );
+                }
+            }
+
+            [HarmonyPostfix]
+            public static void Postfix(RunState __result)
+            {
+                Player? localPlayer = MultiplayerSupport.BeginRun(__result);
+                if (localPlayer == null)
+                    return;
+                if (MultiplayerSupport.ClaimsInvalidated)
+                {
+                    LogUtility.Error(
+                        "Skipping AP multiplayer binding because the saved local identity did not match."
+                    );
+                    return;
+                }
+
+                AncientMultiplayer.BindRun(__result);
+                StandardRelicPool.BindRun(__result);
+
+                ArchipelagoCharTrackerUI.RemoveUI();
+                ArchipelagoGoalTrackerUI.RemoveUI();
+                GameUtility.CurrentPlayer = localPlayer;
+
+                if (MultiplayerSupport.IsLocalGuest)
+                {
+                    GameUtility.CurrentConfig = null;
+                    AscensionMultiplayer.BeginRun(__result, localPlayer);
+                    LogUtility.Info(
+                        $"Bound local multiplayer guest: netId={localPlayer.NetId}, "
+                            + $"character={localPlayer.Character.Id.Entry}"
+                    );
+                    return;
+                }
+
+                string officialName = localPlayer.Character.Id.Entry;
+                ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                if (settings == null)
+                {
+                    const string reason = "AP slot settings are unavailable for the local multiplayer player";
+                    LogUtility.Error(reason);
+                    MultiplayerSupport.InvalidateRunClaims(reason);
+                    return;
+                }
+                if (!settings.Characters.TryGetValue(
+                    officialName,
+                    out CharacterConfig? config
+                ))
+                {
+                    LogUtility.Error(
+                        $"Local multiplayer character {officialName} is not configured for "
+                            + "this AP slot; AP rewards are disabled for this run"
+                    );
+                    MultiplayerSupport.InvalidateRunClaims(
+                        $"local character {officialName} is not configured for this AP slot"
+                    );
+                    return;
+                }
+
+                GameUtility.CurrentConfig = config;
+                bool restoredProgress = ApRunData.RestoreLocalProgress(localPlayer);
+                if (!restoredProgress)
+                {
+                    ArchipelagoClient.Progress = new ArchipelagoProgress();
+                    ArchipelagoClient.Progress.ResetTrackers();
+                    ArchipelagoClient.Progress.Ascensions.Initialize(config);
+                }
+                if (!MultiplayerSupport.RestorePreparedReceiptView(out string receiptError))
+                {
+                    MultiplayerSupport.InvalidateRunClaims(receiptError);
+                    return;
+                }
+                AscensionMultiplayer.SyncLocalProjection(__result);
+                RelicCoupons.EnsureOwnedBy(localPlayer);
+                if (!ApRunData.PublishLocalProgress(localPlayer))
+                {
+                    MultiplayerSupport.InvalidateRunClaims(
+                        "initial AP progress could not be published to the host"
+                    );
+                    return;
+                }
+                if (!ApGrantDispatcher.BeginRun(__result, config.CharOffset, out string bindError))
+                {
+                    MultiplayerSupport.InvalidateRunClaims(bindError);
+                    return;
+                }
+                if (!ApMirroredRewardDispatcher.BeginRun(__result, out bindError))
+                {
+                    MultiplayerSupport.InvalidateRunClaims(bindError);
+                    return;
+                }
+                AscensionMultiplayer.BeginRun(__result, localPlayer);
+                ProgressiveStarterMultiplayer.BeginRun(__result, localPlayer);
+                if (MultiplayerSupport.IsLocalOwnApSlot)
+                    PendingCheckUtility.ReconcileAndSend();
+                if (MultiplayerSupport.IsLocalOwnApSlot
+                    && MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.PressStartCheck))
+                {
+                    GameUtility.TrySendPressStartCheck();
+                }
+
+                LogUtility.Info(
+                    $"Bound local AP multiplayer player: netId={localPlayer.NetId}, "
+                        + $"character={officialName}, slot={ArchipelagoClient.PlayerName}"
+                );
+            }
+        }
+
+        /// <summary>
         /// Reconciles progressive starters after the base game has finalized starting relic effects,
         /// but before it launches the run scene. At this point each player has a real RunState and
         /// relic removal can pair AfterRemoved with the base game's completed AfterObtained call.
@@ -102,6 +293,14 @@ namespace StS2AP.Patches
             private static async Task ReconcileProgressiveStarters(Task finalizeTask)
             {
                 await finalizeTask;
+
+                // Multiplayer authors concrete per-player recipes after AP ownership is bound in
+                // RunManager.Launch; its mutations travel through non-combat managed actions.
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                    return;
+
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
+                    return;
 
                 var player = GameUtility.CurrentPlayer;
                 var runState = RunManager.Instance.DebugOnlyGetState();
@@ -137,6 +336,7 @@ namespace StS2AP.Patches
             public static void Postfix()
             {
                 ArchipelagoRewardUI.RemoveUI();
+                MultiplayerSupport.EndRun();
                 GameUtility.CurrentPlayer = null;
                 GameUtility.CurrentConfig = null;
                 LogUtility.Info("CurrentPlayer cleared (returned to main menu)");

@@ -19,8 +19,8 @@ public static class ModSettingsRegistration
     // Keybindings
     private const string KeyBinds_APMenuId = "keybind_ap_menu";
 
-    // Controller.joystickPress was renamed to Controller.lStickPress in 0.108. Keep both
-    // action strings so the same mod binary can open the AP menu on 0.107.1 and 0.111.0.
+    // Controller.joystickPress was renamed to Controller.lStickPress in 0.108. Keeping both
+    // action strings lets the multiplayer branch retain the cross-version runtime binding.
     private const string LegacyControllerStickPress = "controller_joystick_press";
     private const string CurrentControllerStickPress = "controller_l_stick_press";
 

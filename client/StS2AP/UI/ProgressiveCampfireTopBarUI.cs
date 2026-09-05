@@ -23,7 +23,9 @@ public abstract class ProgressiveCampfireTopBarHandler(bool smith) : IModTopBarB
         if (ctx.Player == null)
             return false;
 
-        ArchipelagoSettings settings = ArchipelagoClient.Settings;
+        ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+        if (settings == null)
+            return false;
         if (!settings.Characters.TryGetValue(ctx.Player.Character.Id.Entry, out var character))
             return false;
 

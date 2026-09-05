@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
@@ -10,6 +9,7 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using StS2AP.Utils;
+using StS2AP.Models;
 
 namespace StS2AP.Patches
 {
@@ -18,25 +18,6 @@ namespace StS2AP.Patches
     /// </summary>
     public static class Patches_ShopPages
     {
-        // in the future these should probably try use RitsuLib's PrivateField helper
-        private static readonly FieldInfo? RugField =
-            AccessTools.Field(typeof(NMerchantSlot), "_merchantRug");
-
-        private static readonly FieldInfo? IsHoveredField =
-            AccessTools.Field(typeof(NMerchantSlot), "_isHovered");
-
-        private static readonly FieldInfo? ShowPosField =
-            AccessTools.Field(typeof(NBackButton), "_showPos");
-
-        private static readonly FieldInfo? HidePosField =
-            AccessTools.Field(typeof(NBackButton), "_hidePos");
-
-        private static readonly FieldInfo? MoveTweenField =
-            AccessTools.Field(typeof(NBackButton), "_moveTween");
-
-        private static readonly MethodInfo? CloseInventoryMethod =
-            AccessTools.Method(typeof(NMerchantInventory), "Close");
-
         private const string ApNavIconPath = "res://images/APIcon.png";
         private const string HsvShaderPath = "res://shaders/hsv.gdshader";
         private static readonly Color ApNavArrowColor = new("62D68B");
@@ -63,6 +44,10 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NMerchantInventory __instance, MerchantInventory inventory, MerchantDialogueSet dialogue)
             {
+                // AP_MP: AP shop pages wait for owner-only slots and synchronized purchases.
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
+                    return;
+
                 if (_isSpawning)
                 {
                     return;
@@ -80,9 +65,14 @@ namespace StS2AP.Patches
                 __instance.SetMeta("StS2AP_ApPageSpawned", true);
 
                 _isSpawning = true;
+                NMerchantInventory? spawnedApPage = null;
+                Control? spawnedToApButton = null;
+                Control? spawnedToVanillaButton = null;
                 try
                 {
                     ShopPageUtility.Reset();
+                    _toApPageButton = null;
+                    _toVanillaButton = null;
 
                     string? scenePath = __instance.SceneFilePath;
                     if (string.IsNullOrEmpty(scenePath))
@@ -99,6 +89,7 @@ namespace StS2AP.Patches
                     }
 
                     NMerchantInventory apPage = scene.Instantiate<NMerchantInventory>();
+                    spawnedApPage = apPage;
                     __instance.GetParent().AddChildSafely(apPage);
                     apPage.Initialize(apInventory, dialogue);
 
@@ -120,7 +111,7 @@ namespace StS2AP.Patches
 
                     Node commonParent = __instance.GetParent();
 
-                    _toApPageButton = BuildNavButton(__instance, "AP Checks >", () =>
+                    _toApPageButton = spawnedToApButton = BuildNavButton(__instance, "AP Checks >", () =>
                     {
                         ShopPageUtility.ShowApPage();
                         SyncNavButtonsToFrontPage();
@@ -134,7 +125,7 @@ namespace StS2AP.Patches
                     commonParent.AddChildSafely(_toApPageButton);
                     _toApPageButton.Visible = false;
 
-                    _toVanillaButton = BuildNavButton(apPage, "< Shop", () =>
+                    _toVanillaButton = spawnedToVanillaButton = BuildNavButton(apPage, "< Shop", () =>
                     {
                         ShopPageUtility.ShowVanillaPage();
                         SyncNavButtonsToFrontPage();
@@ -157,9 +148,34 @@ namespace StS2AP.Patches
                     TaskHelper.RunSafely(ParkApPageOffscreen(__instance, apPage));
                     TaskHelper.RunSafely(PositionEdgeButtonsDeferred(__instance, commonParent, _toApPageButton, _toVanillaButton));
                 }
+                catch (System.Exception ex)
+                {
+                    // The AP page is optional presentation. Never let a duplicate-scene or
+                    // fake-entry failure abort NMerchantRoom._Ready and strand the run behind
+                    // the room-transition blackout.
+                    LogUtility.Error(
+                        "ShopPages: AP page initialization failed; removing the partial AP "
+                            + $"page and continuing with the vanilla shop. {ex}"
+                    );
+
+                    ShopPageUtility.Reset();
+                    QueueFreeIfValid(spawnedToApButton);
+                    QueueFreeIfValid(spawnedToVanillaButton);
+                    QueueFreeIfValid(spawnedApPage);
+                    _toApPageButton = null;
+                    _toVanillaButton = null;
+                }
                 finally
                 {
                     _isSpawning = false;
+                }
+            }
+
+            private static void QueueFreeIfValid(Node? node)
+            {
+                if (node != null && GodotObject.IsInstanceValid(node))
+                {
+                    node.QueueFreeSafely();
                 }
             }
 
@@ -282,12 +298,12 @@ namespace StS2AP.Patches
                 {
                     // Override the internal show/hide positions so the button doesn't
                     // reset to its vanilla bottom-left spot.
-                    ShowPosField?.SetValue(backButton, targetShowPos);
-                    HidePosField?.SetValue(backButton, targetShowPos + hideOffset);
+                    backButton._showPos = targetShowPos;
+                    backButton._hidePos = targetShowPos + hideOffset;
 
                     // _Ready() already started a hide tween toward the old _hidePos; kill
                     // it now that we own positioning, or it'll fight the line below.
-                    if (MoveTweenField?.GetValue(backButton) is Tween staleTween)
+                    if (backButton._moveTween is Tween staleTween)
                     {
                         staleTween.Kill();
                     }
@@ -420,6 +436,10 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix()
             {
+                // AP_MP: AP shop presentation follows the synchronized purchase gate.
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
+                    return;
+
                 NMerchantInventory? apPage = ShopPageUtility.ApPageInstance;
                 if (ShopPageUtility.HasPages && apPage != null && GodotObject.IsInstanceValid(apPage) && !apPage.IsOpen)
                 {
@@ -610,14 +630,7 @@ namespace StS2AP.Patches
                 {
                     if (peerPage != null && GodotObject.IsInstanceValid(peerPage) && peerPage.IsOpen)
                     {
-                        if (CloseInventoryMethod == null)
-                        {
-                            LogUtility.Error("ShopPages: couldn't resolve NMerchantInventory.Close, so the peer page could not be closed.");
-                        }
-                        else
-                        {
-                            CloseInventoryMethod.Invoke(peerPage, null);
-                        }
+                        peerPage.Close();
                     }
                 }
                 catch (System.Exception ex)
@@ -669,14 +682,14 @@ namespace StS2AP.Patches
             public static bool Prefix(NMerchantSlot __instance)
             {
                 if (!ShopPageUtility.HasPages
-                    || RugField?.GetValue(__instance) is not NMerchantInventory rug
+                    || __instance._merchantRug is not NMerchantInventory rug
                     || (!ReferenceEquals(rug, ShopPageUtility.VanillaPageInstance)
                         && !ReferenceEquals(rug, ShopPageUtility.ApPageInstance)))
                 {
                     return true;
                 }
 
-                return IsHoveredField?.GetValue(__instance) is not true;
+                return !__instance._isHovered;
             }
         }
 
@@ -690,7 +703,7 @@ namespace StS2AP.Patches
             {
                 return;
             }
-            if (RugField?.GetValue(slot) is not NMerchantInventory rug)
+            if (slot._merchantRug is not NMerchantInventory rug)
             {
                 return;
             }

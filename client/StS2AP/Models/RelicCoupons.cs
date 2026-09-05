@@ -19,7 +19,6 @@ namespace StS2AP.Models;
 public sealed class RelicCoupons : ModRelicTemplate
 {
     private const string CouponIconPath = "res://images/APIcon.png";
-
     // This is AP run-state presentation, not a character starter relic. Touch of Orobas
     // selects the first owned Starter-rarity relic, so classifying the coupon as Starter
     // can make Touch replace it with Circlet instead of upgrading the real starter relic.

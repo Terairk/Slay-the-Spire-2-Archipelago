@@ -127,7 +127,7 @@ namespace StS2AP.Utils
                 // new run flow
                 foreach (var item in ArchipelagoClient.Progress.AllReceivedItems)
                 {
-                    var id = item.Item.GetCharacterSpecificItemID();
+                    var id = item.Item.GetCharacterItemType();
                     LogUtility.Info($"Checking if item is an ascension {item.Item.ItemName} {id}");
                     if (((int)id) >= 19 && ((int)id) <= 28)
                     {
@@ -141,12 +141,12 @@ namespace StS2AP.Utils
 
         public void ProcessAscensionLevel(CharacterConfig? config, ItemInfo item, bool initial)
         {
-            if(config?.CharOffset != (int) item.GetCharacterOffset())
+            if(config?.CharOffset != (int) item.GetAPCharacterNumber())
             {
                 // not for this character
                 return;
             }
-            var id = item.GetCharacterSpecificItemID();
+            var id = item.GetCharacterItemType();
             var level = ToAscensionLevel(id);
             if(level == AscensionLevel.None)
             {
@@ -169,7 +169,7 @@ namespace StS2AP.Utils
         /// <summary>
         /// Converts the Ascension Down item id to the appropriate AscensionLevel.
         /// </summary>
-        public AscensionLevel ToAscensionLevel(APItem rawItemId)
+        public static AscensionLevel ToAscensionLevel(APItem rawItemId)
         {
 
             switch(rawItemId)
@@ -203,13 +203,46 @@ namespace StS2AP.Utils
         /// <summary>
         /// Attempts to parse the AscensionLevel from the provided string, as the actual enum value.
         /// </summary>
-        public AscensionLevel? GetLevel(string level)
+        public static AscensionLevel? GetLevel(string level)
         {
             if(Enum.TryParse(typeof(AscensionLevel), level, true, out var result))
             {
                 return (AscensionLevel) result;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Replaces the process-local projection with a canonical configured/current pair.
+        /// Multiplayer gameplay reads its run-wide source from AP run data, but local AP reward
+        /// calculations and top-bar presentation still use this projection.
+        /// </summary>
+        public void ReplaceLevels(
+            IEnumerable<AscensionLevel> configuredLevels,
+            IEnumerable<AscensionLevel> currentLevels)
+        {
+            Reset();
+            ConfiguredAscension.UnionWith(configuredLevels);
+            CurrentAscension.UnionWith(currentLevels);
+            try
+            {
+                RefreshPresentation();
+            }
+            catch (Exception ex)
+            {
+                // Presentation is best-effort. The canonical shared set was already updated, so
+                // a missing top-bar node must not turn a valid managed action into a failed claim.
+                LogUtility.Warn($"Could not refresh the multiplayer ascension display: {ex.Message}");
+            }
+        }
+
+        public void RefreshPresentation()
+        {
+            _hoverTip = null;
+            if (GameUtility.CurrentPlayer != null)
+                UpdateHoverTip();
+            else
+                Patches_AscensionOverride.ChangeAscensionLabel(CurrentAscension.Count.ToString());
         }
 
         /// <summary>
@@ -254,6 +287,13 @@ namespace StS2AP.Utils
                     }
                     break;
                 case AscensionLevel.Poverty:
+                    // Multiplayer routes Ascension Downs through AscensionMultiplayer, which
+                    // refunds each player's tracked AP gold in the shared managed action.
+                    if (MultiplayerSupport.IsRealMultiplayerRun)
+                    {
+                        LogUtility.Warn("Ignored the single-player Poverty removal path in multiplayer");
+                        break;
+                    }
                     int refund = ArchipelagoClient.Progress.CalculatePovertyRefund();
                     if(refund > 0)
                     {

@@ -1,8 +1,10 @@
-﻿using Archipelago.MultiClient.Net.BounceFeatures.DeathLink;
+﻿using Archipelago.MultiClient.Net;
+using Archipelago.MultiClient.Net.BounceFeatures.DeathLink;
 using Archipelago.MultiClient.Net.Models;
 using Godot;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.DevConsole.ConsoleCommands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -18,11 +20,11 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.ValueProps;
 using Newtonsoft.Json.Linq;
+using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Patches;
 using StS2AP.UI;
-using static StS2AP.Data.CharTable;
 using static StS2AP.Data.ItemTable;
 
 namespace StS2AP.Utils
@@ -79,40 +81,20 @@ namespace StS2AP.Utils
         public static Dictionary<string, string> APSaves { get; set; } = new Dictionary<string, string>();
 
         /// <summary>
-        /// Returns the Current Player's `APItemCharID`
+        /// Returns the current player's one-based AP character number.
         /// </summary>
-        public static long? CurrentCharacterID
+        public static long? CurrentAPCharacterNumber
         {
             get
             {
                 if (CurrentConfig == null)
                 {
-                    LogUtility.Warn("Attempted to get CurrentCharacterID but there is no active player");
+                    LogUtility.Warn("Attempted to get CurrentAPCharacterNumber without an active character configuration");
                     return null;
                 }
                 return CurrentConfig.CharOffset;
-                // var charName = CurrentPlayer.APName();
-                // return GetCharacterIDByName(charName);
             }
         }
-
-        // /// <summary>
-        // /// Gets the `APItemCharID` for a character by their AP Name.
-        // /// </summary>
-        // /// <param name="name">The name of a character, as recognized by the Archipelago World. Usually found by calling `.APName()` on a `CharacterModel` or `Player`.</param>
-        // /// <returns>The `APItemCharID` for a given character, by it's name. Returns `null` if the character name is invalid or unknown.</returns>
-        // public static APItemCharID? GetCharacterIDByName(string name)
-        // {
-        //     return name switch
-        //     {
-        //         "Ironclad" => APItemCharID.Ironclad,
-        //         "Silent" => APItemCharID.Silent,
-        //         "Defect" => APItemCharID.Defect,
-        //         "Regent" => APItemCharID.Regent,
-        //         "Necrobinder" => APItemCharID.Necrobinder,
-        //         _ => null
-        //     };
-        // }
 
         #region Receiving Items
 
@@ -120,22 +102,64 @@ namespace StS2AP.Utils
         /// Grants the specified amount of gold to the current player
         /// </summary>
         /// <param name="amount">The amount of gold to grant.</param>
-        public static async Task GrantGold(int amount)
+        public static async Task<bool> GrantGold(int amount)
         {
             if (CurrentPlayer == null)
             {
                 LogUtility.Warn($"Cannot grant {amount} gold: no active player (not in a run)");
-                return;
+                return false;
+            }
+
+            if (!MultiplayerSupport.CanClaimGold(out string blockedReason))
+            {
+                LogUtility.Warn($"Cannot grant gold: {blockedReason}");
+                return false;
+            }
+
+            // EXPLAIN: this to me
+            if (MultiplayerSupport.IsRealMultiplayerRun && !LocalContext.IsMe(CurrentPlayer))
+            {
+                LogUtility.Error(
+                    $"Refusing to originate AP gold for non-local player {CurrentPlayer.NetId}"
+                );
+                return false;
             }
 
             try
             {
+                int goldBefore = CurrentPlayer.Gold;
                 await PlayerCmd.GainGold(amount, CurrentPlayer);
-                LogUtility.Success($"Granted {amount} gold to player");
+
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                {
+                    try
+                    {
+                        RunManager.Instance.RewardSynchronizer.SyncLocalObtainedGold(amount);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Gold is already authoritative on the local player. Retrying would
+                        // duplicate it, so consume once and fail closed for later claims.
+                        LogUtility.Error(
+                            $"AP gold was applied locally but multiplayer sync failed: {ex.Message}"
+                        );
+                        MultiplayerSupport.InvalidateRunClaims(
+                            "a locally applied AP gold reward could not be synchronized"
+                        );
+                    }
+                }
+
+                LogUtility.Success(
+                    $"AP gold claim applied: localNetId={CurrentPlayer.NetId}, amount={amount}, "
+                        + $"goldBefore={goldBefore}, goldAfter={CurrentPlayer.Gold}, syncSent="
+                        + MultiplayerSupport.IsRealMultiplayerRun
+                );
+                return true;
             }
             catch (Exception ex)
             {
                 LogUtility.Error($"Failed to grant gold: {ex.Message}");
+                return false;
             }
         }
 
@@ -154,7 +178,7 @@ namespace StS2AP.Utils
             try
             {
                 var rarity = rare ? CardRarityOddsType.BossEncounter : CardRarityOddsType.RegularEncounter;
-                var options = BetaMainCompatibility.WithCombatRewardCompatibility(
+                var options = Sts2Compatibility.WithCombatRewardCompatibility(
                     new CardCreationOptions(
                         new[] { player.Character.CardPool },
                         CardCreationSource.Encounter,
@@ -202,18 +226,26 @@ namespace StS2AP.Utils
             if (index < 0)
                 return null;
 
-            var characterOffset = player.Character.GetCharacterOffset();
+            var characterOffset = player.GetAPCharacterNumber();
             var orderedCardRewardIndices = ArchipelagoClient.Progress.AllReceivedItems
                 .Where(item =>
-                    item.Item.GetCharacterOffset() == characterOffset
-                    && item.Item.GetCharacterSpecificItemID() == APItem.CardReward
+                    item.Item.GetAPCharacterNumber() == characterOffset
+                    && item.Item.GetCharacterItemType() == APItem.CardReward
                 )
                 .OrderBy(item => item.Index)
                 .Select(item => item.Index)
                 .ToList();
 
             var rewardOrdinal = orderedCardRewardIndices.IndexOf(index);
-            var shuffleAllCards = ArchipelagoClient.Settings.ShouldShuffleAllCards;
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (settings == null)
+            {
+                LogUtility.Error(
+                    $"Could not map Card Reward item index {index}: AP slot settings are unavailable"
+                );
+                return null;
+            }
+            var shuffleAllCards = settings.ShouldShuffleAllCards;
             var actOneCount = shuffleAllCards ? 7 : 3;
             var actTwoCount = shuffleAllCards ? 7 : 4;
             var totalCount = shuffleAllCards
@@ -300,39 +332,40 @@ namespace StS2AP.Utils
         {
             try
             {
-                CharacterModel? characterToUnlock = null;
-                LogUtility.Info($"Before switch");
-                switch (item.GetCharacterOffset())
+                ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                if (settings == null)
                 {
-                    case (int)APItemCharID.Ironclad:
-                        characterToUnlock = ModelDb.Character<Ironclad>();
-                        break;
-                    case (int)APItemCharID.Silent:
-                        characterToUnlock = ModelDb.Character<Silent>();
-                        break;
-                    case (int)APItemCharID.Defect:
-                        characterToUnlock = ModelDb.Character<Defect>();
-                        break;
-                    case (int)APItemCharID.Regent:
-                        characterToUnlock = ModelDb.Character<Regent>();
-                        break;
-                    case (int)APItemCharID.Necrobinder:
-                        characterToUnlock = ModelDb.Character<Necrobinder>();
-                        break;
-                    default:
-                        LogUtility.Info($"Default case");
-                        var config = ArchipelagoClient.Settings.Characters.Values.FirstOrDefault(c => c.CharOffset == (int)item.GetCharacterOffset());
-                        LogUtility.Warn($"Got item unlock but character not configured {item.ItemName}");
-                        if (config != null)
-                        {
-                            characterToUnlock = ModelDb.AllCharacters.FirstOrDefault(c => string.Equals(c.Id.Entry, config.OfficialName, StringComparison.OrdinalIgnoreCase));
-                        }
-                        break;
+                    LogUtility.Error(
+                        $"Cannot unlock {item.ItemName}: AP slot settings are unavailable"
+                    );
+                    return;
                 }
+
+                var apCharacterNumber = item.GetAPCharacterNumber();
+                var config = settings.Characters.Values.FirstOrDefault(
+                    candidate => candidate.CharOffset == apCharacterNumber
+                );
+                if (config == null)
+                {
+                    LogUtility.Warn(
+                        $"Got unlock item {item.ItemName} for unconfigured AP character #{apCharacterNumber}"
+                    );
+                    return;
+                }
+
+                var characterToUnlock = ModelDb.AllCharacters.FirstOrDefault(character =>
+                    string.Equals(
+                        character.Id.Entry,
+                        config.OfficialName,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                );
 
                 if (characterToUnlock == null)
                 {
-                    LogUtility.Warn($"Could not find character to unlock for item {item.ItemName} (Char ID Parsed: {item.GetCharacterOffset()})");
+                    LogUtility.Warn(
+                        $"Could not find installed character '{config.OfficialName}' for unlock item {item.ItemName}"
+                    );
                     return;
                 }
 
@@ -342,7 +375,7 @@ namespace StS2AP.Utils
             }
             catch(Exception ex)
             {
-                LogUtility.Error(ex.StackTrace);
+                LogUtility.Error(ex.ToString());
             }
         }
 
@@ -353,12 +386,18 @@ namespace StS2AP.Utils
         public static async Task RestoreGoaledCharsFromStorage()
         {
             if (!ArchipelagoClient.IsConnected) return;
+            var session = ArchipelagoClient.Session;
+            if (session == null)
+            {
+                LogUtility.Warn("Cannot restore goaled characters without an active AP session.");
+                return;
+            }
 
             // Debug: Let's see the goal progress before we try to restore it
             try
             {
                 // Debug: Dump all values in the DataStorage
-                var ds = await ArchipelagoClient.Session.DataStorage[
+                var ds = await session.DataStorage[
                     Archipelago.MultiClient.Net.Enums.Scope.Slot, "StS2AP_GoaledChars"].GetAsync<Dictionary<string, bool>>();
                 if(ds == null)
                 {
@@ -383,38 +422,35 @@ namespace StS2AP.Utils
 
                 /// Initialize the key with an empty JObject (JSON object) if it doesn't exist yet.
                 /// Must use JObject, not Dictionary, to match the JSON structure stored on the server.
-                ArchipelagoClient.Session.DataStorage[
+                if (!ReferenceEquals(ArchipelagoClient.Session, session)) return;
+                session.DataStorage[
                     Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
                     .Initialize(new JObject());
 
                 // Read back whatever is stored and deserialize it as a Dictionary<string, bool>
-                var stored = await ArchipelagoClient.Session.DataStorage[
+                var stored = await session.DataStorage[
                     Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
                     .GetAsync<Dictionary<string, bool>>();
 
                 // Debug: Dump all values in the DataStorage
-                foreach (var x in stored)
+                foreach (var x in stored ?? new Dictionary<string, bool>())
                 {
                     LogUtility.Debug($"RestoreGoaledCharsFromStorage: Goaled DataStorage (After Restore Attempt) - Key: {x.Key} / Value: {x.Value.ToString()}");
                 }
 
                 LogUtility.Debug($"RestoreGoaledCharsFromStorage: stored is null? {stored == null}");
-                _goaledCharacters = stored != null
-                    ? new HashSet<string>(stored.Keys)
-                    : new HashSet<string>();
-
-                // Debug: Dump local cache of goaled chars
-                foreach (var x in _goaledCharacters)
+                ArchipelagoClient.RunForSession(session, () =>
                 {
-                    LogUtility.Debug($"RestoreGoaledCharsFromStorage: Local Cache Goaled Char - {x}");
-                }
-
-                LogUtility.Info($"Restored {_goaledCharacters.Count} goaled character(s) from DataStorage: {string.Join(", ", _goaledCharacters)}");
+                    _goaledCharacters = stored != null
+                        ? new HashSet<string>(stored.Keys)
+                        : new HashSet<string>();
+                    LogUtility.Info($"Restored {_goaledCharacters.Count} goaled character(s) from DataStorage: {string.Join(", ", _goaledCharacters)}");
+                });
             }
             catch (Exception ex)
             {
                 LogUtility.Warn($"Could not restore goaled characters from DataStorage: {ex.Message}. Starting with empty set.");
-                _goaledCharacters = new HashSet<string>();
+                ArchipelagoClient.RunForSession(session, () => _goaledCharacters = new HashSet<string>());
             }
         }
 
@@ -423,29 +459,40 @@ namespace StS2AP.Utils
         /// </summary>
         public static async Task SetupOnChangedSaves()
         {
+            var session = ArchipelagoClient.Session;
+            if (session == null)
+            {
+                LogUtility.Warn("Cannot watch AP saves without an active AP session.");
+                return;
+            }
             try
             {
                 LogUtility.Info("Setting up StS Saves on the server");
                 var storageKey = "StS2AP_Saves";
 
                 // Initialize the key with an empty dict if it doesn't exist yet
-                ArchipelagoClient.Session.DataStorage[
+                session.DataStorage[
                     Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
                     .Initialize(new JObject()); 
                 // replace inside () with `new Newtonsoft.Json.Linq.JObject()` in case it breaks not sure if this is correct
 
                 // Read back whatever is stored
-                ArchipelagoClient.Session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
+                session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
                     .OnValueChanged += (oldData, newData, additionalArguments) =>
                     {
                         if (newData != null)
                         {
-                            GameUtility.APSaves = newData?.ToObject<Dictionary<string, string>>() ?? GameUtility.APSaves;
-                            LogUtility.Info($"Loaded saves from datastorage; got characters {GameUtility.APSaves?.Keys}");
+                            var saves = newData.ToObject<Dictionary<string, string>>();
+                            ArchipelagoClient.RunForSession(session, () =>
+                            {
+                                APSaves = saves ?? new();
+                                LogUtility.Info($"Loaded saves from datastorage; got characters {string.Join(", ", APSaves.Keys)}");
+                            });
                         }
                     };
-                GameUtility.APSaves = await ArchipelagoClient.Session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
+                var loaded = await session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
                     .GetAsync<Dictionary<string, string>>();
+                ArchipelagoClient.RunForSession(session, () => APSaves = loaded ?? new());
             }
             catch(Exception ex)
             {
@@ -453,87 +500,81 @@ namespace StS2AP.Utils
             }
         }
 
+        internal static void ResetSlotState()
+        {
+            APSaves = new();
+            _goaledCharacters = new();
+            CurrentPlayer = null;
+            CurrentConfig = null;
+        }
+
         /// <summary>
         /// Checks whether the player has met the goal condition and sends SetGoalAchieved if so.
         /// Uses a local HashSet for deduplication to avoid DataStorage deserialization issues
         /// and then writes to DataStorage with Operation.Update for cross-session persistence.
         /// </summary>
-        public static async Task TrySetGoalAchieved()
+        public static async Task TrySetGoalAchieved(Player player)
         {
-            LogUtility.Debug("TrySetGoalAchieved() Called");
+            LogUtility.Debug($"TrySetGoalAchieved() called for player {player.NetId}");
 
-            if (CurrentPlayer == null || !ArchipelagoClient.IsConnected)
+            if (!ArchipelagoClient.IsConnected)
             {
-                LogUtility.Warn("TrySetGoalAchieved: no active player or not connected");
+                LogUtility.Warn("TrySetGoalAchieved: not connected");
+                return;
+            }
+
+            if (MultiplayerSupport.IsRealMultiplayerRun
+                && (!MultiplayerSupport.IsLocalOwnApSlot
+                    || !MultiplayerLocationChecks.IsLocalProgressOwner(player)))
+            {
+                LogUtility.Warn(
+                    $"Refusing to originate AP victory progress for non-local player {player.NetId}"
+                );
                 return;
             }
 
             try
             {
+                var session = ArchipelagoClient.Session;
                 var settings = ArchipelagoClient.Settings;
-                if (settings == null)
+                if (session == null || settings == null)
                 {
-                    LogUtility.Warn("TrySetGoalAchieved: Settings is null");
+                    LogUtility.Warn(
+                        "TrySetGoalAchieved: the AP session or slot settings are unavailable"
+                    );
                     return;
                 }
 
-                var charName = CurrentPlayer.Character.Id.Entry;
+                var charName = player.Character.Id.Entry;
                 const string storageKey = "StS2AP_GoaledChars";
                 LogUtility.Debug($"TrySetGoalAchieved: charName - {charName}");
 
                 // Add to local cache HashSet.Add returns false if already present
-                var extras = new List<string>();
                 bool wasNew = _goaledCharacters.Add(charName);
-                foreach(var unrecognized in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
-                {
-                    wasNew |= _goaledCharacters.Add(unrecognized.OfficialName);
-                    extras.Add(unrecognized.OfficialName);
-                }
                 LogUtility.Debug($"TrySetGoalAchieved: wasNew - {wasNew.ToString()}");
 
                 if (wasNew)
                 {
-                    // Debug: Dump all values in the DataStorage
-                    var ds = await ArchipelagoClient.Session.DataStorage[
-                        Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey].GetAsync<Dictionary<string, bool>>();
-                    foreach(var x in ds)
-                    {
-                        LogUtility.Debug($"TrySetGoalAchieved: Goaled DataStorage (Before Update) - Key: {x.Key} / Value: {x.Value.ToString()}");
-                    }
-
                     // Persist to DataStorage atomically
-                    ArchipelagoClient.Session.DataStorage[
+                    // Do not wait for diagnostic reads here: returning to the home screen
+                    // can now disconnect this slot while such a read is still in flight.
+                    session.DataStorage[
                         Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
                         .Initialize(new Newtonsoft.Json.Linq.JObject());
 
                     var updateDict = new Dictionary<string, bool> { { charName, true } };
-                    foreach(var extra in extras)
-                    {
-                        updateDict[extra] = true;
-                    }
  
-                    ArchipelagoClient.Session.DataStorage[
+                    session.DataStorage[
                         Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
                         += Operation.Update(updateDict);
-
-                    // Debug: Dump all values in the DataStorage
-                    var ds2 = await ArchipelagoClient.Session.DataStorage[
-                        Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey].GetAsync<Dictionary<string, bool>>();
-                    foreach (var x in ds2)
-                    {
-                        LogUtility.Debug($"TrySetGoalAchieved: Goaled DataStorage (After Update) - Key: {x.Key} / Value: {x.Value.ToString()}");
-                    }
 
                     LogUtility.Success($"TrySetGoalAchieved: Recorded goal for '{charName}'. Total goaled: {_goaledCharacters.Count}");
 
                     // Goal progress is independent from whether victory releases this character's checks.
                     if (settings.ReleaseOnVictory)
                     {
-                        await TryReleaseAllCharacterChecks(CurrentPlayer.APName());
-                        foreach(var unrecognized in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
-                        {
-                            await TryReleaseAllCharacterChecks(unrecognized.Name);
-                        }
+                        await TryReleaseAllCharacterChecks(player.APName());
+                        if (!ReferenceEquals(session, ArchipelagoClient.Session)) return;
                     }
                     else
                     {
@@ -548,7 +589,7 @@ namespace StS2AP.Utils
                 }
 
                 // Delete save from server as a good steward
-                ArchipelagoClient.Session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, "StS2AP_Saves"]
+                session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, "StS2AP_Saves"]
                     += Operation.Update(new Dictionary<string, string> { { charName, "" } });
 
                 // num_chars_goal == 0 means all characters in the slot must complete
@@ -561,7 +602,7 @@ namespace StS2AP.Utils
 
                 if (_goaledCharacters.Count >= required)
                 {
-                    ArchipelagoClient.Session.SetGoalAchieved();
+                    session.SetGoalAchieved();
                     LogUtility.Success("Goal achieved! SetGoalAchieved sent to Archipelago server.");
                     NotificationUtility.ShowRawText("Goal Complete! You have won....?");
                 }
@@ -579,9 +620,12 @@ namespace StS2AP.Utils
 
         public static async Task TryReleaseAllCharacterChecks(string charName)
         {
-            // Grab all locations whose name contains the character's name (e.g. "Ironclad")
+            // Location names begin with the AP character name (for example, "Ironclad").
             var characterLocations = ArchipelagoClient.ScoutedLocations
-                .Where(kvp => kvp.Value.LocationName.Contains(charName, StringComparison.OrdinalIgnoreCase))
+                .Where(kvp => kvp.Value.LocationName.StartsWith(
+                    $"{charName} ",
+                    StringComparison.OrdinalIgnoreCase
+                ))
                 .Select(kvp => kvp.Key)
                 .ToList();
 
@@ -600,7 +644,7 @@ namespace StS2AP.Utils
                 if (!ArchipelagoClient.CheckedLocations.Contains(locationId) && locationId != -1 && ArchipelagoClient.ScoutedLocations.ContainsKey(locationId))
                 {
                     // Check the location off and let the server know
-                    GameUtility.SendCheck(locationId);
+                    QueueCheck(locationId);
                 }
             }
 
@@ -609,44 +653,52 @@ namespace StS2AP.Utils
 
         public static void TrySendPressStartCheck()
         {
-            // Grab the Character Name
-            var name = GameUtility.CurrentPlayer.APName();
+            Player? currentPlayer = CurrentPlayer;
+            if (currentPlayer == null)
+            {
+                LogUtility.Warn("Cannot send the Press Start check without an active player");
+                return;
+            }
 
-            // Grab the check ID
-            var checkName = $"{name} Press Start";
-            SendCheck(checkName);
-
+            TrySendPressStartCheckFor(currentPlayer.Character);
         }
 
-        public static void SendCheck(string checkName)
+        public static void TrySendPressStartCheckFor(CharacterModel character)
         {
-            var _locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
-            SendCheck(_locationId);
+            var locationId = LocationData.GetPressStartLocation(character);
+            QueueCheck(locationId);
         }
 
-        public static void SendCheck(long locationId)
+        public static void QueueCheck(string checkName)
         {
-            SendCheck(locationId, true);
+            if (MultiplayerSupport.IsMultiplayerScope
+                && !MultiplayerSupport.IsLocalOwnApSlot)
+            {
+                return;
+            }
+            ArchipelagoSession? session = ArchipelagoClient.Session;
+            if (session == null)
+            {
+                LogUtility.Warn($"Cannot send location '{checkName}' without an active AP session.");
+                return;
+            }
+            var locationId = session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
+            QueueCheck(locationId);
         }
 
-        private static void SendCheck(long locationId, bool includeUnrecognizedChars)
+        public static void QueueCheck(long locationId)
         {
+            if (MultiplayerSupport.IsMultiplayerScope
+                && !MultiplayerSupport.IsLocalOwnApSlot)
+            {
+                return;
+            }
             if (!ArchipelagoClient.CheckedLocations.Contains(locationId) && locationId != -1 && ArchipelagoClient.ScoutedLocations.ContainsKey(locationId))
             {
                 // Record the location durably before attempting the socket write. If the
                 // connection is timing out, it will be replayed after the next login.
                 ArchipelagoClient.CheckedLocations.Add(locationId);
                 PendingCheckUtility.RecordAndSend(locationId);
-            }
-            if(includeUnrecognizedChars)
-            {
-                foreach(var otherChar in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
-                {
-                    // - 1 because locations are offset from items by 1
-                    long newLocationId = (locationId % 10000L) + (10000L * (otherChar.CharOffset - 1));
-                    LogUtility.Info($"Sending location for unrecognized character {otherChar.OfficialName} {locationId} {newLocationId}");
-                    SendCheck(newLocationId, false);
-                }
             }
         }
 
@@ -695,7 +747,6 @@ namespace StS2AP.Utils
 
                 NGame.Instance?.ReturnToMainMenuAfterRun();
             };
-            NModalContainer.Instance.Add(popup.Popup);
             popup.Show();
         }
 

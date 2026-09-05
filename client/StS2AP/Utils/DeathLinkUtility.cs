@@ -23,13 +23,18 @@ namespace StS2AP.Utils
         /// <summary>
         /// Based on both Client and Server settings, determines if Death Link is enabled for this player.
         /// </summary>
+        // AP_MP: multiplayer effects are enabled only through the reviewed synchronized transport.
         public static bool IsDeathLinkEnabled =>
-            ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
+            MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
+            && (!MultiplayerSupport.UsesFrozenHostSettings
+                && ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
                 ? ArchipelagoClient.LocalSettings.Value.EnableDeathLink
-                : (ArchipelagoClient.Settings?.IsDeathLinkEnabled ?? false);
+                : (ArchipelagoClient.Settings?.IsDeathLinkEnabled ?? false));
 
         public static void Initialize()
         {
+            DeathLinkMultiplayer.Initialize();
+
             // Subscribe to all mod settings value writes
             ModSettingsBindingWriteEvents.ValueWritten += OnSettingChanged;
         }
@@ -42,7 +47,8 @@ namespace StS2AP.Utils
         /// The percentage of your Max Health to use when calculating the damage you take from a Death Link.
         /// </summary>
         public static int DeathLinkDamagePercent =>
-            ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
+            !MultiplayerSupport.UsesFrozenHostSettings
+                && ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
                 ? ArchipelagoClient.LocalSettings.Value.DeathLinkPercentDamage
                 : ArchipelagoClient.Settings?.DeathLinkDamagePercent ?? 0;
 
@@ -53,10 +59,13 @@ namespace StS2AP.Utils
         /// <summary>
         /// Whether or not Death Fragments are enabled
         /// </summary>
+        // AP_MP: synchronized DeathLink damage is enabled separately from permanent deck mutation.
         public static bool AreDeathFragmentsEnabled =>
-            ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
+            MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathFragments)
+            && (!MultiplayerSupport.UsesFrozenHostSettings
+                && ArchipelagoClient.LocalSettings.Value.OverrideDeathLinkOptions
                 ? ArchipelagoClient.LocalSettings.Value.EnableDeathFragments
-                : (ArchipelagoClient.Settings?.EnableDeathFragments ?? false);
+                : (ArchipelagoClient.Settings?.EnableDeathFragments ?? false));
 
         /// <summary>
         /// Adds the Death Link Curse to the deck.
@@ -120,6 +129,12 @@ namespace StS2AP.Utils
             if (!GameUtility.IsInRun || GameUtility.CurrentPlayer == null)
                 return;
 
+            if (MultiplayerSupport.IsRealMultiplayerRun)
+            {
+                DeathLinkMultiplayer.Receive(info);
+                return;
+            }
+
             // Notify the User
             try
             {
@@ -176,15 +191,23 @@ namespace StS2AP.Utils
                     return;
 
                 // Determine if we need to Enable or Disable Death Link
+                DeathLinkService? deathLinkController = ArchipelagoClient.DeathLinkController;
+                if (deathLinkController == null)
+                {
+                    LogUtility.Error(
+                        "Cannot apply changed Death Link settings because the service is unavailable."
+                    );
+                    return;
+                }
                 if (IsDeathLinkEnabled)
                 {
                     LogUtility.Info("Enabling Death Link");
-                    ArchipelagoClient.DeathLinkController.EnableDeathLink();
+                    deathLinkController.EnableDeathLink();
                 }
                 else
                 {
                     LogUtility.Info("Disabling Death Link");
-                    ArchipelagoClient.DeathLinkController.DisableDeathLink();
+                    deathLinkController.DisableDeathLink();
                 }
             }
         }

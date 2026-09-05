@@ -9,7 +9,6 @@ using Archipelago.MultiClient.Net.Models;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Gold;
 using MegaCrit.Sts2.Core.Entities.Merchant;
@@ -21,11 +20,11 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Potions;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
+using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Utils;
-using static StS2AP.Data.CharTable;
 
 namespace StS2AP.Patches
 {
@@ -50,48 +49,10 @@ namespace StS2AP.Patches
             _ => 16,
         };
 
-        /// <summary>Reflected accessors</summary>
-        private static readonly PropertyInfo? CardCreationResultProp =
-            AccessTools.Property(typeof(MerchantCardEntry), nameof(MerchantCardEntry.CreationResult));
-
-        private static readonly PropertyInfo? RelicModelProp =
-            AccessTools.Property(typeof(MerchantRelicEntry), nameof(MerchantRelicEntry.Model));
-
-        private static readonly PropertyInfo? PotionModelProp =
-            AccessTools.Property(typeof(MerchantPotionEntry), nameof(MerchantPotionEntry.Model));
-
-        private static readonly FieldInfo? CostField =
-            AccessTools.Field(typeof(MerchantEntry), "_cost");
-
-        private static readonly FieldInfo? PlayerField =
-            AccessTools.Field(typeof(MerchantEntry), "_player");
-
-        private static readonly FieldInfo? CharacterCardEntriesField =
-            AccessTools.Field(typeof(MerchantInventory), "_characterCardEntries");
-
-        private static readonly FieldInfo? ColorlessCardEntriesField =
-            AccessTools.Field(typeof(MerchantInventory), "_colorlessCardEntries");
-
-        private static readonly FieldInfo? RelicEntriesField =
-            AccessTools.Field(typeof(MerchantInventory), "_relicEntries");
-
-        private static readonly FieldInfo? PotionEntriesField =
-            AccessTools.Field(typeof(MerchantInventory), "_potionEntries");
-
-        private static readonly PropertyInfo? CardRemovalEntryProp =
-            AccessTools.Property(typeof(MerchantInventory), nameof(MerchantInventory.CardRemovalEntry));
-
+        // This is the one intentional reflection boundary left in shop handling. The CLR clone
+        // preserves already-rolled entries without advancing the player's shop RNG a second time.
         private static readonly MethodInfo? MemberwiseCloneMethod =
             AccessTools.Method(typeof(object), "MemberwiseClone");
-
-        private static readonly FieldInfo? PurchaseCompletedField =
-            AccessTools.Field(typeof(MerchantEntry), nameof(MerchantEntry.PurchaseCompleted));
-
-        private static readonly FieldInfo? PurchaseFailedField =
-            AccessTools.Field(typeof(MerchantEntry), nameof(MerchantEntry.PurchaseFailed));
-
-        private static readonly FieldInfo? EntryUpdatedField =
-            AccessTools.Field(typeof(MerchantEntry), nameof(MerchantEntry.EntryUpdated));
 
         private static readonly ConditionalWeakTable<MerchantInventory, MerchantInventory> ApInventories = new();
 
@@ -101,6 +62,10 @@ namespace StS2AP.Patches
         /// </summary>
         private static void HintApInventory(MerchantInventory apInventory)
         {
+            var session = ArchipelagoClient.Session;
+            if (session == null || !ArchipelagoClient.IsConnected)
+                return;
+
             long[] locationIds = apInventory.AllEntries
                 .Select(entry => TryGetApLocationId(entry, out long locationId) ? locationId : -1)
                 .Where(locationId => locationId != -1)
@@ -114,7 +79,7 @@ namespace StS2AP.Patches
 
             try
             {
-                ArchipelagoClient.Session.Hints.CreateHints(HintStatus.Unspecified, locationIds);
+                session.Hints.CreateHints(HintStatus.Unspecified, locationIds);
                 LogUtility.Info($"ShopSanity: automatically hinted {locationIds.Length} stocked shop check(s).");
             }
             catch (Exception ex)
@@ -123,6 +88,7 @@ namespace StS2AP.Patches
                 LogUtility.Error($"ShopSanity: failed to automatically hint stocked shop checks; continuing without hints. {ex}");
             }
         }
+        private static readonly ConditionalWeakTable<MerchantEntry, ShopCheckTarget> ApCheckTargets = new();
 
         #region Unclaimed-Location Queue
         /// <summary>
@@ -131,12 +97,12 @@ namespace StS2AP.Patches
         /// </summary>
         private sealed class ShopVisitContext
         {
-            private readonly Queue<long> _missing = new();
-            public ShopVisitContext(Player player, int act)
+            private readonly Queue<ShopCheckTarget> _missing = new();
+            public ShopVisitContext(Player player, ArchipelagoSettings settings, int act)
             {
                 int ceiling = Math.Min(
                     SlotCeilingForAct(act),
-                    ArchipelagoClient.Settings.TotalShopLocations);
+                    settings.TotalShopLocations);
                 for (int slot = 1; slot <= ceiling; slot++)
                 {
                     string checkName = $"{player.APName()} Shop Slot {slot}";
@@ -149,12 +115,12 @@ namespace StS2AP.Patches
 
                     try
                     {
-                        long locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
+                        long locationId = ResolveLocationId(checkName);
                         if (isChecked || ArchipelagoClient.CheckedLocations.Contains(locationId))
                         {
                             continue;
                         }
-                        _missing.Enqueue(locationId);
+                        _missing.Enqueue(new ShopCheckTarget(locationId, checkName));
                     }
                     catch
                     {
@@ -167,7 +133,34 @@ namespace StS2AP.Patches
             public bool HasMore => _missing.Count > 0;
 
             /// <summary>Pops the next unclaimed location ID off the queue</summary>
-            public long GetNext() => _missing.Dequeue();
+            public ShopCheckTarget GetNext() => _missing.Dequeue();
+
+            private static long ResolveLocationId(string checkName)
+            {
+                if (ArchipelagoClient.Session != null)
+                {
+                    return ArchipelagoClient.Session.Locations.GetLocationIdFromName(
+                        "Slay the Spire II",
+                        checkName
+                    );
+                }
+
+                foreach ((long locationId, ScoutedItemInfo info) in
+                    ArchipelagoClient.ScoutedLocations)
+                {
+                    if (string.Equals(
+                        info.LocationName,
+                        checkName,
+                        StringComparison.Ordinal))
+                    {
+                        return locationId;
+                    }
+                }
+
+                throw new InvalidOperationException(
+                    $"No cached location identity exists for {checkName}."
+                );
+            }
         }
 
         #endregion
@@ -176,12 +169,13 @@ namespace StS2AP.Patches
         /// Looks up the item name, sending player, and classification for an
         /// archipelago location
         /// </summary>
-        private static (string itemName, string playerName, ApItemClassification classification) ResolveApItem(long locationId)
+        private static (string itemName, string playerName, ApItemClassification classification) ResolveApItem(
+            ShopCheckTarget target)
         {
-            string checkName = ArchipelagoClient.Session.Locations.GetLocationNameFromId(locationId);
-
-            ScoutedItemInfo info;
-            if (ArchipelagoClient.ScoutedLocations.TryGetValue(locationId, out info))
+            if (ArchipelagoClient.ScoutedLocations.TryGetValue(
+                    target.LocationId,
+                    out ScoutedItemInfo? info)
+                && info != null)
             {
                 var classification =
                     info.Trap() ? ApItemClassification.Trap :
@@ -191,15 +185,17 @@ namespace StS2AP.Patches
                 return (info.ItemName, info.Player.Alias, classification);
             }
 
-            LogUtility.Warn($"ShopSanity: no scouted info for location {locationId} ({checkName}), showing as generic Filler.");
-            return (checkName, "???", ApItemClassification.Filler);
+            LogUtility.Warn(
+                $"ShopSanity: no scouted info for location {target.LocationId} "
+                    + $"({target.LocationName}), showing as generic Filler."
+            );
+            return (target.LocationName, "???", ApItemClassification.Filler);
         }
 
         /// <summary>Records a shop slot's location as checked this session</summary>
-        private static void MarkShopSlotChecked(long locationId)
+        private static void MarkShopSlotChecked(ShopCheckTarget target)
         {
-            string checkName = ArchipelagoClient.Session.Locations.GetLocationNameFromId(locationId);
-            ArchipelagoClient.Progress.ShopSlotsChecked[checkName] = true;
+            ArchipelagoClient.Progress.ShopSlotsChecked[target.LocationName] = true;
         }
 
         /// <summary>How many of a category's slots are currently unlocked for real shop population</summary>
@@ -211,44 +207,91 @@ namespace StS2AP.Patches
             => source.TryGetValue(id, out int v) ? v : 0;
 
         /// <summary>
+        /// Resolves the frozen AP source settings for the local shop owner. Shared-slot AP
+        /// Guests use the host settings even when location-check scope is HostCharacterOnly;
+        /// that scope controls checks, not passive shop unlocks.
+        /// </summary>
+        private static bool TryGetLocalShopSettings(
+            Player player,
+            out ArchipelagoSettings settings)
+        {
+            settings = null!;
+            if (!MultiplayerSupport.ShouldApplyLocalShopUnlocks(player))
+                return false;
+
+            if (!MultiplayerSupport.IsRealMultiplayerRun)
+            {
+                ArchipelagoSettings? currentSettings = ArchipelagoClient.Settings;
+                if (currentSettings == null)
+                    return false;
+
+                settings = currentSettings;
+                return true;
+            }
+
+            if (player.RunState is not RunState runState
+                || !ApRunData.TryGetPlayerState(
+                    runState,
+                    player.NetId,
+                    out ApPlayerRunState playerState))
+            {
+                LogUtility.Error(
+                    $"ShopSanity: no frozen AP player state for local player {player.NetId}; "
+                        + "leaving this shop visit untouched."
+                );
+                return false;
+            }
+
+            if (playerState.Participation == ApParticipationKind.OwnApSlot
+                && playerState.SlotSettings != null)
+            {
+                settings = playerState.SlotSettings;
+                return true;
+            }
+
+            LogUtility.Error(
+                $"ShopSanity: no usable AP shop settings for local player {player.NetId}; "
+                    + "leaving this shop visit untouched."
+            );
+            return false;
+        }
+
+        /// <summary>
         /// Reads whatever CalcCost() just computed (the vanilla-style rarity-tiered
         /// baseline) and reduces it per the ShopSanityCosts option. Values match
         /// options.py exactly: 0=Fixed(15g), 1=Super_Discount_Tiered(20%),
         /// 2=Discount_Tiered(50%), 3=Tiered(full baseline, no discount).
         /// </summary>
-        private static void ApplyCostTier(MerchantEntry entry)
+        private static void ApplyCostTier(MerchantEntry entry, ArchipelagoSettings settings)
         {
-            if (CostField == null)
-            {
-                return;
-            }
-
-            int baseline = (int)CostField.GetValue(entry)!;
-            int final = ArchipelagoClient.Settings.ShopSanityCosts switch
+            int baseline = entry._cost;
+            int final = settings.ShopSanityCosts switch
             {
                 0 => 15,
                 1 => Math.Max(1, (int)Math.Round(baseline * 0.20f)),
                 2 => Math.Max(1, (int)Math.Round(baseline * 0.50f)),
                 _ => baseline,
             };
-            CostField.SetValue(entry, final);
+            entry._cost = final;
         }
 
         #region Slot Population
 
         private readonly record struct ApSlotCounts(int Cards, int Neutral, int Relics, int Potions);
 
+        private sealed record ShopCheckTarget(long LocationId, string LocationName);
+
         /// <summary>
         /// The configured category counts reserve AP-page positions. Card-removal sanity adds
         /// three generic checks, so let those borrow otherwise-unused positions in display order.
         /// </summary>
-        private static ApSlotCounts GetApSlotCounts()
+        private static ApSlotCounts GetApSlotCounts(ArchipelagoSettings settings)
         {
-            int cards = Math.Clamp(ArchipelagoClient.Settings.ShopCardSlots, 0, CardSlotMax);
-            int neutral = Math.Clamp(ArchipelagoClient.Settings.ShopNeutralSlots, 0, NeutralSlotMax);
-            int relics = Math.Clamp(ArchipelagoClient.Settings.ShopRelicSlots, 0, RelicSlotMax);
-            int potions = Math.Clamp(ArchipelagoClient.Settings.ShopPotionSlots, 0, PotionSlotMax);
-            int overflow = ArchipelagoClient.Settings.ShopRemoveSlots ? ArchipelagoProgress._maxShopRemoves : 0;
+            int cards = Math.Clamp(settings.ShopCardSlots, 0, CardSlotMax);
+            int neutral = Math.Clamp(settings.ShopNeutralSlots, 0, NeutralSlotMax);
+            int relics = Math.Clamp(settings.ShopRelicSlots, 0, RelicSlotMax);
+            int potions = Math.Clamp(settings.ShopPotionSlots, 0, PotionSlotMax);
+            int overflow = settings.ShopRemoveSlots ? ArchipelagoProgress._maxShopRemoves : 0;
             
             // ShopRemoveSlots don't have a dedicated page on the AP page so it 'overflows'
             // in the priority of cards, colourless cards, relics, then potions.
@@ -275,57 +318,59 @@ namespace StS2AP.Patches
             Player player,
             MerchantInventory vanillaInventory,
             ShopVisitContext ctx,
-            ApSlotCounts counts)
+            ApSlotCounts counts,
+            ArchipelagoSettings settings)
         {
-            EnsureInventoryReflectionAvailable();
+            EnsureCloneAvailable();
 
             var apInventory = new MerchantInventory(player);
             PopulateCardCategory(
                 vanillaInventory.CharacterCardEntries,
-                GetMutableEntries<MerchantCardEntry>(apInventory, CharacterCardEntriesField),
+                apInventory._characterCardEntries,
                 counts.Cards,
-                ctx);
+                ctx,
+                settings,
+                vanillaInventory);
             PopulateCardCategory(
                 vanillaInventory.ColorlessCardEntries,
-                GetMutableEntries<MerchantCardEntry>(apInventory, ColorlessCardEntriesField),
+                apInventory._colorlessCardEntries,
                 counts.Neutral,
-                ctx);
+                ctx,
+                settings,
+                vanillaInventory);
             PopulateRelicCategory(
                 vanillaInventory.RelicEntries,
-                GetMutableEntries<MerchantRelicEntry>(apInventory, RelicEntriesField),
+                apInventory._relicEntries,
                 counts.Relics,
-                ctx);
+                ctx,
+                settings,
+                vanillaInventory);
             PopulatePotionCategory(
                 vanillaInventory.PotionEntries,
-                GetMutableEntries<MerchantPotionEntry>(apInventory, PotionEntriesField),
+                apInventory._potionEntries,
                 counts.Potions,
-                ctx);
+                ctx,
+                settings,
+                vanillaInventory);
 
             // Initialize the cloned scene's removal node, then keep it permanently empty/hidden.
             MerchantCardRemovalEntry sourceRemovalEntry = vanillaInventory.CardRemovalEntry
                 ?? throw new InvalidOperationException("Normal merchant inventory had no card-removal entry.");
-            MerchantCardRemovalEntry removalEntry = CloneEntry(sourceRemovalEntry);
+            MerchantCardRemovalEntry removalEntry = CloneEntry(sourceRemovalEntry, vanillaInventory);
             removalEntry.SetUsed();
-            CardRemovalEntryProp!.SetValue(apInventory, removalEntry);
+            apInventory.CardRemovalEntry = removalEntry;
 
             return apInventory;
         }
-
-        private static List<T> GetMutableEntries<T>(MerchantInventory inventory, FieldInfo? field)
-            where T : MerchantEntry
-            => field?.GetValue(inventory) as List<T>
-               ?? throw new MissingFieldException(typeof(MerchantInventory).FullName, field?.Name ?? typeof(T).Name);
 
         /// <summary>
         /// Clone the already-rolled entry so the AP page gets independent state without rolling
         /// another shop and advancing the player's shop RNG.
         /// </summary>
-        private static T CloneEntry<T>(T source) where T : MerchantEntry
+        private static T CloneEntry<T>(T source, MerchantInventory vanillaInventory) where T : MerchantEntry
         {
             var clone = (T)MemberwiseCloneMethod!.Invoke(source, null)!;
-            PurchaseCompletedField!.SetValue(clone, null);
-            PurchaseFailedField!.SetValue(clone, null);
-            EntryUpdatedField!.SetValue(clone, null);
+            clone.PurchaseCompleted -= vanillaInventory.UpdateEntries;
             return clone;
         }
 
@@ -333,23 +378,31 @@ namespace StS2AP.Patches
             IReadOnlyList<MerchantCardEntry> vanillaEntries,
             List<MerchantCardEntry> apEntries,
             int candidateCount,
-            ShopVisitContext ctx)
+            ShopVisitContext ctx,
+            ArchipelagoSettings settings,
+            MerchantInventory vanillaInventory)
         {
             for (int i = 0; i < vanillaEntries.Count; i++)
             {
-                MerchantCardEntry entry = CloneEntry(vanillaEntries[i]);
+                MerchantCardEntry entry = CloneEntry(vanillaEntries[i], vanillaInventory);
                 if (i < candidateCount && ctx.HasMore)
                 {
-                    long locationId = ctx.GetNext();
-                    var (itemName, playerName, classification) = ResolveApItem(locationId);
-                    ApItemCardModelBase apCard = ApItemCardModelBase.CreateForSlot(itemName, playerName, classification, locationId);
-                    CardCreationResultProp!.SetValue(entry, new CardCreationResult(apCard));
+                    ShopCheckTarget target = ctx.GetNext();
+                    var (itemName, playerName, classification) = ResolveApItem(target);
+                    ApItemCardModelBase apCard = ApItemCardModelBase.CreateForSlot(
+                        itemName,
+                        playerName,
+                        classification,
+                        target.LocationId
+                    );
+                    entry.CreationResult = new CardCreationResult(apCard);
+                    ApCheckTargets.Add(entry, target);
                     entry.CalcCost();
-                    ApplyCostTier(entry);
+                    ApplyCostTier(entry, settings);
                 }
                 else
                 {
-                    CardCreationResultProp!.SetValue(entry, null);
+                    entry.CreationResult = null;
                 }
                 apEntries.Add(entry);
             }
@@ -359,22 +412,30 @@ namespace StS2AP.Patches
             IReadOnlyList<MerchantRelicEntry> vanillaEntries,
             List<MerchantRelicEntry> apEntries,
             int candidateCount,
-            ShopVisitContext ctx)
+            ShopVisitContext ctx,
+            ArchipelagoSettings settings,
+            MerchantInventory vanillaInventory)
         {
             for (int i = 0; i < vanillaEntries.Count; i++)
             {
-                MerchantRelicEntry entry = CloneEntry(vanillaEntries[i]);
+                MerchantRelicEntry entry = CloneEntry(vanillaEntries[i], vanillaInventory);
                 if (i < candidateCount && ctx.HasMore)
                 {
-                    long locationId = ctx.GetNext();
-                    var (itemName, playerName, classification) = ResolveApItem(locationId);
-                    RelicModelProp!.SetValue(entry, ApItemRelicModel.CreateForSlot(itemName, playerName, classification, locationId));
+                    ShopCheckTarget target = ctx.GetNext();
+                    var (itemName, playerName, classification) = ResolveApItem(target);
+                    entry.Model = ApItemRelicModel.CreateForSlot(
+                            itemName,
+                            playerName,
+                            classification,
+                            target.LocationId
+                        );
+                    ApCheckTargets.Add(entry, target);
                     entry.CalcCost();
-                    ApplyCostTier(entry);
+                    ApplyCostTier(entry, settings);
                 }
                 else
                 {
-                    RelicModelProp!.SetValue(entry, null);
+                    entry.Model = null;
                 }
                 apEntries.Add(entry);
             }
@@ -384,22 +445,30 @@ namespace StS2AP.Patches
             IReadOnlyList<MerchantPotionEntry> vanillaEntries,
             List<MerchantPotionEntry> apEntries,
             int candidateCount,
-            ShopVisitContext ctx)
+            ShopVisitContext ctx,
+            ArchipelagoSettings settings,
+            MerchantInventory vanillaInventory)
         {
             for (int i = 0; i < vanillaEntries.Count; i++)
             {
-                MerchantPotionEntry entry = CloneEntry(vanillaEntries[i]);
+                MerchantPotionEntry entry = CloneEntry(vanillaEntries[i], vanillaInventory);
                 if (i < candidateCount && ctx.HasMore)
                 {
-                    long locationId = ctx.GetNext();
-                    var (itemName, playerName, classification) = ResolveApItem(locationId);
-                    PotionModelProp!.SetValue(entry, ApItemPotionModel.CreateForSlot(itemName, playerName, classification, locationId));
+                    ShopCheckTarget target = ctx.GetNext();
+                    var (itemName, playerName, classification) = ResolveApItem(target);
+                    entry.Model = ApItemPotionModel.CreateForSlot(
+                            itemName,
+                            playerName,
+                            classification,
+                            target.LocationId
+                        );
+                    ApCheckTargets.Add(entry, target);
                     entry.CalcCost();
-                    ApplyCostTier(entry);
+                    ApplyCostTier(entry, settings);
                 }
                 else
                 {
-                    PotionModelProp!.SetValue(entry, null);
+                    entry.Model = null;
                 }
                 apEntries.Add(entry);
             }
@@ -407,35 +476,26 @@ namespace StS2AP.Patches
 
         private static void GateVanillaCategory<T>(
             IReadOnlyList<T> entries,
-            int availableSlots,
-            PropertyInfo itemProperty)
+            int availableSlots)
             where T : MerchantEntry
         {
             int lockedCount = Math.Clamp(entries.Count - availableSlots, 0, entries.Count);
             for (int i = 0; i < lockedCount; i++)
             {
-                itemProperty.SetValue(entries[i], null);
+                switch (entries[i])
+                {
+                    case MerchantCardEntry card: card.CreationResult = null; break;
+                    case MerchantRelicEntry relic: relic.Model = null; break;
+                    case MerchantPotionEntry potion: potion.Model = null; break;
+                }
             }
         }
 
-        private static void EnsureInventoryReflectionAvailable()
+        private static void EnsureCloneAvailable()
         {
-            if (CardCreationResultProp == null
-                || RelicModelProp == null
-                || PotionModelProp == null
-                || CostField == null
-                || PlayerField == null
-                || CharacterCardEntriesField == null
-                || ColorlessCardEntriesField == null
-                || RelicEntriesField == null
-                || PotionEntriesField == null
-                || CardRemovalEntryProp == null
-                || MemberwiseCloneMethod == null
-                || PurchaseCompletedField == null
-                || PurchaseFailedField == null
-                || EntryUpdatedField == null)
+            if (MemberwiseCloneMethod == null)
             {
-                throw new MissingMemberException("ShopSanity: required merchant inventory members could not be resolved.");
+                throw new MissingMemberException("ShopSanity: object.MemberwiseClone could not be resolved.");
             }
         }
 
@@ -451,60 +511,85 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(Player player, MerchantInventory __result)
             {
-                if (!ArchipelagoClient.Settings.ShopSanity)
+                if (!TryGetLocalShopSettings(player, out ArchipelagoSettings settings))
+                    return;
+
+                if (!settings.ShopSanity)
                 {
                     return;
                 }
 
-                var charId = GameUtility.CurrentCharacterID;
+                long? charId = player.GetAPCharacterNumber();
                 if (!charId.HasValue)
                 {
-                    LogUtility.Error("ShopSanity: couldn't resolve current character ID, leaving this shop visit untouched.");
+                    LogUtility.Error(
+                        "ShopSanity: couldn't resolve the local player's character ID, "
+                            + "leaving this shop visit untouched."
+                    );
                     return;
                 }
 
                 int act = Math.Min(player.RunState.CurrentActIndex + 1, 3);
-                var ctx = new ShopVisitContext(player, act);
 
-                int cardAvailable = AvailableSlots(CardSlotMax, ArchipelagoClient.Settings.ShopCardSlots,
+                int cardAvailable = AvailableSlots(CardSlotMax, settings.ShopCardSlots,
                     GetReceived(ArchipelagoClient.Progress.ShopCardSlotsReceived, charId.Value));
-                int neutralAvailable = AvailableSlots(NeutralSlotMax, ArchipelagoClient.Settings.ShopNeutralSlots,
+                int neutralAvailable = AvailableSlots(NeutralSlotMax, settings.ShopNeutralSlots,
                     GetReceived(ArchipelagoClient.Progress.ShopNeutralSlotsReceived, charId.Value));
-                int relicAvailable = AvailableSlots(RelicSlotMax, ArchipelagoClient.Settings.ShopRelicSlots,
+                int relicAvailable = AvailableSlots(RelicSlotMax, settings.ShopRelicSlots,
                     GetReceived(ArchipelagoClient.Progress.ShopRelicSlotsReceived, charId.Value));
-                int potionAvailable = AvailableSlots(PotionSlotMax, ArchipelagoClient.Settings.ShopPotionSlots,
+                int potionAvailable = AvailableSlots(PotionSlotMax, settings.ShopPotionSlots,
                     GetReceived(ArchipelagoClient.Progress.ShopPotionSlotsReceived, charId.Value));
 
-                ApSlotCounts apSlots = GetApSlotCounts();
+                bool showApChecks = MultiplayerSupport.ShouldShowLocalShopChecks(player);
+                ApSlotCounts apSlots = showApChecks
+                    ? GetApSlotCounts(settings)
+                    : new ApSlotCounts(0, 0, 0, 0);
 
                 LogUtility.Info(
-                    $"ShopSanity: act={act} "
+                    $"ShopSanity: player={player.NetId} act={act} checks={showApChecks} "
                     + $"vanilla(card={cardAvailable}/{CardSlotMax}, neutral={neutralAvailable}/{NeutralSlotMax}, relic={relicAvailable}/{RelicSlotMax}, potion={potionAvailable}/{PotionSlotMax}) "
                     + $"ap(card={apSlots.Cards}, neutral={apSlots.Neutral}, relic={apSlots.Relics}, potion={apSlots.Potions})");
 
                 try
                 {
-                    MerchantInventory apInventory = CreateApInventory(player, __result, ctx, apSlots);
-
-                    GateVanillaCategory(__result.CharacterCardEntries, cardAvailable, CardCreationResultProp!);
-                    GateVanillaCategory(__result.ColorlessCardEntries, neutralAvailable, CardCreationResultProp!);
-                    GateVanillaCategory(__result.RelicEntries, relicAvailable, RelicModelProp!);
-                    GateVanillaCategory(__result.PotionEntries, potionAvailable, PotionModelProp!);
-
-                    ApInventories.Remove(__result);
-                    ApInventories.Add(__result, apInventory);
-                    if (ReferenceEquals(player, LocalContext.GetMe(player.RunState)))
+                    EnsureCloneAvailable();
+                    MerchantInventory? apInventory = null;
+                    if (showApChecks)
                     {
+                        var ctx = new ShopVisitContext(player, settings, act);
+                        apInventory = CreateApInventory(
+                            player,
+                            __result,
+                            ctx,
+                            apSlots,
+                            settings
+                        );
+                    }
+
+                    GateVanillaCategory(__result.CharacterCardEntries, cardAvailable);
+                    GateVanillaCategory(__result.ColorlessCardEntries, neutralAvailable);
+                    GateVanillaCategory(__result.RelicEntries, relicAvailable);
+                    GateVanillaCategory(__result.PotionEntries, potionAvailable);
+
+                    if (apInventory != null)
+                    {
+                        ApInventories.Remove(__result);
+                        ApInventories.Add(__result, apInventory);
+                        // showApChecks already restricts this inventory to the local AP check
+                        // writer. Hint through that player's connection, never a remote replica.
                         HintApInventory(apInventory);
                     }
                 }
                 catch (Exception ex)
                 {
-                    LogUtility.Error($"ShopSanity: failed to prepare independent shop pages; leaving the vanilla shop untouched. {ex}");
+                    LogUtility.Error(
+                        $"ShopSanity: failed to prepare the local shop; leaving this visit "
+                            + $"untouched. {ex}"
+                    );
                     return;
                 }
 
-                if (ArchipelagoClient.Settings.ShopRemoveSlots)
+                if (settings.ShopRemoveSlots)
                 {
                     int? removeLevel = ArchipelagoClient.Progress.MaxShopRemoveLevel(charId.Value);
                     bool removeUnlocked = (removeLevel ?? 0) >= act;
@@ -561,20 +646,60 @@ namespace StS2AP.Patches
         {
             switch (entry)
             {
-                case MerchantCardEntry:
-                    CardCreationResultProp!.SetValue(entry, null);
+                case MerchantCardEntry card:
+                    card.CreationResult = null;
                     break;
-                case MerchantRelicEntry:
-                    RelicModelProp!.SetValue(entry, null);
+                case MerchantRelicEntry relic:
+                    relic.Model = null;
                     break;
-                case MerchantPotionEntry:
-                    PotionModelProp!.SetValue(entry, null);
+                case MerchantPotionEntry potion:
+                    potion.Model = null;
                     break;
             }
         }
 
-        /// <summary>Convenience wrapper for the shop pages
+        /// <summary>Convenience wrapper for the shop pages.</summary>
         internal static bool IsApSlot(MerchantEntry entry) => TryGetApLocationId(entry, out _);
+
+        /// <summary>
+        /// Validates the local shop check before gold is committed. Concurrent purchases from
+        /// another connection to the same slot are left to AP's location deduplication.
+        /// </summary>
+        private static bool CanPurchaseMultiplayerCheck(
+            Player player,
+            ShopCheckTarget target)
+        {
+            if (!MultiplayerLocationChecks.IsCheckWriter(player))
+            {
+                LogUtility.Error(
+                    $"ShopSanity: player {player.NetId} is not the local AP check writer."
+                );
+                return false;
+            }
+            if (ArchipelagoClient.CheckedLocations.Contains(target.LocationId))
+            {
+                LogUtility.Warn(
+                    $"ShopSanity: backing location {target.LocationId} was already checked; "
+                        + "rejecting the stale purchase."
+                );
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void SendShopCheck(
+            Player player,
+            ShopCheckTarget target)
+        {
+            if (!MultiplayerSupport.IsRealMultiplayerRun)
+            {
+                GameUtility.QueueCheck(target.LocationId);
+                return;
+            }
+
+            MultiplayerLocationChecks.QueueCheck(player, target.LocationName, target.LocationId);
+        }
 
         /// <summary>
         /// Intercepts every card/relic/potion purchase attempt. AP-fake entries
@@ -587,16 +712,38 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool Prefix(MerchantEntry __instance, MerchantInventory? inventory, bool ignoreCost, ref Task<bool> __result)
             {
+                // AP shop entries are local-only; their concrete gold loss is synchronized below.
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.Shops))
+                    return true;
+
                 if (!TryGetApLocationId(__instance, out long locationId))
                 {
                     return true; // Not an AP slot run vanilla purchase logic untouched.
                 }
 
-                __result = DoApPurchase(__instance, inventory, locationId, ignoreCost);
+                if (!ApCheckTargets.TryGetValue(
+                        __instance,
+                        out ShopCheckTarget? target)
+                    || target == null)
+                {
+                    LogUtility.Error(
+                        $"ShopSanity: AP entry for location {locationId} has no bound check "
+                            + "identity; rejecting the purchase."
+                    );
+                    __instance.InvokePurchaseFailed(PurchaseStatus.FailureOutOfStock);
+                    __result = Task.FromResult(false);
+                    return false;
+                }
+
+                __result = DoApPurchase(__instance, inventory, target, ignoreCost);
                 return false;
             }
 
-            private static async Task<bool> DoApPurchase(MerchantEntry entry, MerchantInventory? inventory, long locationId, bool ignoreCost)
+            private static async Task<bool> DoApPurchase(
+                MerchantEntry entry,
+                MerchantInventory? inventory,
+                ShopCheckTarget target,
+                bool ignoreCost)
             {
                 if (!entry.IsStocked)
                 {
@@ -609,9 +756,12 @@ namespace StS2AP.Patches
                     return false;
                 }
 
-                if (PlayerField?.GetValue(entry) is not Player player)
+                Player player = entry._player;
+
+                if (MultiplayerSupport.IsRealMultiplayerRun
+                    && !CanPurchaseMultiplayerCheck(player, target))
                 {
-                    LogUtility.Error("ShopSanity: couldn't resolve owning Player for this purchase, aborting.");
+                    entry.InvokePurchaseFailed(PurchaseStatus.FailureOutOfStock);
                     return false;
                 }
 
@@ -620,11 +770,13 @@ namespace StS2AP.Patches
                 {
                     goldSpent = entry.Cost;
                     await PlayerCmd.LoseGold(goldSpent, player, GoldLossType.Spent);
+                    if (MultiplayerSupport.IsRealMultiplayerRun)
+                        RunManager.Instance.RewardSynchronizer.SyncLocalGoldLost(goldSpent);
                 }
 
-                LogUtility.Info($"ShopSanity: sending check for location {locationId}");
-                GameUtility.SendCheck(locationId);
-                MarkShopSlotChecked(locationId);
+                LogUtility.Info($"ShopSanity: sending check for location {target.LocationId}");
+                SendShopCheck(player, target);
+                MarkShopSlotChecked(target);
 
                 // AP checks are single-use even when The Courier would refill vanilla entries.
                 ClearApEntry(entry);
@@ -643,19 +795,16 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(NMerchantCard), "OnSuccessfulPurchase")]
         public static class CardVisualFix
         {
-            private static readonly FieldInfo? CardNodeField = AccessTools.Field(typeof(NMerchantCard), "_cardNode");
-            private static readonly MethodInfo? UpdateVisualMethod = AccessTools.Method(typeof(NMerchantCard), "UpdateVisual");
-
             [HarmonyPrefix]
             public static bool Prefix(NMerchantCard __instance)
             {
-                if (CardNodeField?.GetValue(__instance) is not NCard cardNode || cardNode.Model is not ApItemCardModelBase)
+                if (__instance._cardNode is not NCard cardNode || cardNode.Model is not ApItemCardModelBase)
                 {
                     return true;
                 }
                 cardNode.QueueFree();
-                CardNodeField.SetValue(__instance, null);
-                UpdateVisualMethod?.Invoke(__instance, null);
+                __instance._cardNode = null;
+                __instance.Entry.OnMerchantInventoryUpdated();
                 return false;
             }
         }
@@ -664,19 +813,16 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(NMerchantRelic), "OnSuccessfulPurchase")]
         public static class RelicVisualFix
         {
-            private static readonly FieldInfo? RelicCacheField = AccessTools.Field(typeof(NMerchantRelic), "_relic");
-            private static readonly MethodInfo? UpdateVisualMethod = AccessTools.Method(typeof(NMerchantRelic), "UpdateVisual");
-
             [HarmonyPrefix]
             public static bool Prefix(NMerchantRelic __instance)
             {
-                if (RelicCacheField?.GetValue(__instance) is not ApItemRelicModel)
+                if (__instance._relic is not ApItemRelicModel)
                 {
                     return true;
                 }
 
-                UpdateVisualMethod?.Invoke(__instance, null);
-                RelicCacheField.SetValue(__instance, null);
+                __instance.Entry.OnMerchantInventoryUpdated();
+                __instance._relic = null;
                 return false;
             }
         }
@@ -685,19 +831,16 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(NMerchantPotion), "OnSuccessfulPurchase")]
         public static class PotionVisualFix
         {
-            private static readonly FieldInfo? PotionCacheField = AccessTools.Field(typeof(NMerchantPotion), "_potion");
-            private static readonly MethodInfo? UpdateVisualMethod = AccessTools.Method(typeof(NMerchantPotion), "UpdateVisual");
-
             [HarmonyPrefix]
             public static bool Prefix(NMerchantPotion __instance)
             {
-                if (PotionCacheField?.GetValue(__instance) is not ApItemPotionModel)
+                if (__instance._potion is not ApItemPotionModel)
                 {
                     return true;
                 }
 
-                UpdateVisualMethod?.Invoke(__instance, null);
-                PotionCacheField.SetValue(__instance, null);
+                __instance.Entry.OnMerchantInventoryUpdated();
+                __instance._potion = null;
                 return false;
             }
         }
@@ -736,7 +879,6 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(NPotion), "Reload")]
         public static class PotionIconOverride
         {
-            private static readonly FieldInfo? ModelField = AccessTools.Field(typeof(NPotion), "_model");
             private static Texture2D? _apLogoTexture;
             private const string ApLogoImportedPath = "res://.godot/imported/APIcon.png-b030ed7a050dcd9ae78eaea3be50ed9f.ctex";
 
@@ -757,7 +899,7 @@ namespace StS2AP.Patches
                 {
                     return;
                 }
-                if (ModelField?.GetValue(__instance) is not ApItemPotionModel)
+                if (__instance._model is not ApItemPotionModel)
                 {
                     return;
                 }

@@ -1,14 +1,17 @@
-﻿using Archipelago.MultiClient.Net.Enums;
+﻿using Archipelago.MultiClient.Net;
+using Archipelago.MultiClient.Net.Enums;
 using Archipelago.MultiClient.Net.Models;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Audio;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -32,54 +35,52 @@ namespace StS2AP.Patches
         public static class SaveRun
         {
             [HarmonyPrefix]
-            public static bool replaceSave(AbstractRoom? preFinishedRoom, ref Task __result)
+            public static bool replaceSave(RunSaveManager __instance, AbstractRoom? preFinishedRoom, ref Task __result)
             {
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                {
+                    // MegaCrit owns the multiplayer save and RitsuLib embeds the authoritative
+                    // shared/per-player AP payload into that same host checkpoint.
+                    if (RunManager.Instance.NetService.Type
+                        == MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Host)
+                    {
+                        if (!RunManager.Instance.ShouldSave)
+                        {
+                            __result = Task.CompletedTask;
+                            return false;
+                        }
+
+                        ApRunData.CaptureLocalHostProgressBeforeSave();
+                        // Every native floor save updates recovery. Only an eligible AP boundary
+                        // also advances the separate checkpoint; carry that decision across await.
+                        bool isApCheckpoint = TryGetCheckpointEligibility(preFinishedRoom, out _, out _, out _);
+                        SerializableRun snapshot = RunManager.Instance.ToSave(preFinishedRoom);
+                        __result = ApMultiplayerCampaignStore.SaveHostSnapshot(__instance, snapshot, isApCheckpoint);
+                        return false;
+                    }
+
+                    __result = Task.CompletedTask;
+                    return false;
+                }
+
                 LogUtility.Info($"Game attempted to save in room of type '{preFinishedRoom?.RoomType}'");
                 LogUtility.Info($"Current room type {RunManager.Instance.DebugOnlyGetState()?.CurrentRoom?.RoomType}");
                 LogUtility.Info($"Current Map node type {RunManager.Instance.DebugOnlyGetState()?.CurrentMapPoint?.PointType}");
                 LogUtility.Info($"Game thinks we should save: {RunManager.Instance.ShouldSave}");
 
-                var maxSaveAct = ArchipelagoClient.Progress.MaxProgressiveAncientLevel(
-                    GameUtility.CurrentConfig?.CharOffset ?? -1
-                );
-                var currentAct = (GameUtility.CurrentPlayer?.RunState.CurrentActIndex ?? 0) + 1;
-                var currentMapPointType = RunManager
-                    .Instance.DebugOnlyGetState()
-                    ?.CurrentMapPoint?.PointType;
-                // Act 3 has no later supported checkpoint. Preserve its treasure-room save
-                // instead of replacing it after either Act 3 boss.
-                var isBossAutosave =
-                    preFinishedRoom?.RoomType == RoomType.Boss
-                    && currentAct < 3;
-                var isTreasureAutosave = currentMapPointType == MapPointType.Treasure;
-                var isEligibleSaveLocation =
-                    isBossAutosave
-                    || isTreasureAutosave
-                    || (
-                        preFinishedRoom?.RoomType == RoomType.Event
-                        && currentMapPointType == MapPointType.Ancient
-                    );
-                var ancientRelicLocation = ArchipelagoClient.Settings?.AncientRelicLocation
-                    ?? AncientRelicLocation.Anytime;
-                var usesProgressiveAncients =
-                    ArchipelagoClient.Settings.APWorldVersion > Constants.VERSION_0_5_3;
-                var ancientIsLocked =
-                    usesProgressiveAncients
-                    && ancientRelicLocation == AncientRelicLocation.StartOfAct
-                    && currentAct > 1
-                    && maxSaveAct < currentAct;
-
-                LogUtility.Info(
-                    $"Max Act: {maxSaveAct} Current Act: {currentAct} " +
-                    $"AncientRelicLocation: {ancientRelicLocation}"
-                );
                 // Save after boss kills, in treasure rooms, and after ancient selections.
-                if (!RunManager.Instance.ShouldSave ||
-                    (RunManager.Instance.NetService.Type != MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Singleplayer && RunManager.Instance.NetService.Type != MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Host)
-                    || !isEligibleSaveLocation
-                    || ancientIsLocked)
+                bool isEligibleCheckpoint = TryGetCheckpointEligibility(
+                    preFinishedRoom,
+                    out bool isBossAutosave,
+                    out bool isTreasureAutosave,
+                    out string checkpointReason
+                );
+                if ((RunManager.Instance.NetService.Type != MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Singleplayer && RunManager.Instance.NetService.Type != MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Host)
+                    || !isEligibleCheckpoint)
                 {
-                    LogUtility.Info($"Skipping save {preFinishedRoom?.RoomType}");
+                    LogUtility.Info(
+                        $"Skipping save {preFinishedRoom?.RoomType}: {checkpointReason}"
+                    );
                     __result = Task.CompletedTask;
                     return false;
                 }
@@ -88,6 +89,63 @@ namespace StS2AP.Patches
                 SerializableRun saveMe = RunManager.Instance.ToSave(preFinishedRoom);
                 __result = asyncSave(saveMe, isBossAutosave || isTreasureAutosave);
                 return false;
+            }
+
+            private static bool TryGetCheckpointEligibility(
+                AbstractRoom? preFinishedRoom,
+                out bool isBossAutosave,
+                out bool isTreasureAutosave,
+                out string reason)
+            {
+                ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+                if (settings == null)
+                {
+                    isBossAutosave = false;
+                    isTreasureAutosave = false;
+                    reason = "the Archipelago slot settings are unavailable";
+                    return false;
+                }
+                int maxSaveAct = ArchipelagoClient.Progress.MaxProgressiveAncientLevel(
+                    GameUtility.CurrentConfig?.CharOffset ?? -1
+                );
+                int currentAct = (GameUtility.CurrentPlayer?.RunState.CurrentActIndex ?? 0) + 1;
+                MapPointType? currentMapPointType = RunManager
+                    .Instance.DebugOnlyGetState()
+                    ?.CurrentMapPoint?.PointType;
+                // Act 3 has no later supported checkpoint. Preserve its treasure-room save
+                // instead of replacing it after either Act 3 boss.
+                isBossAutosave = preFinishedRoom?.RoomType == RoomType.Boss && currentAct < 3;
+                isTreasureAutosave = currentMapPointType == MapPointType.Treasure;
+                bool isEligibleSaveLocation =
+                    isBossAutosave
+                    || isTreasureAutosave
+                    || (
+                        preFinishedRoom?.RoomType == RoomType.Event
+                        && currentMapPointType == MapPointType.Ancient
+                    );
+                AncientRelicLocation ancientRelicLocation = settings.AncientRelicLocation;
+                bool usesProgressiveAncients =
+                    settings.APWorldVersion > Constants.VERSION_0_5_3;
+                bool ancientIsLocked =
+                    usesProgressiveAncients
+                    && ancientRelicLocation == AncientRelicLocation.StartOfAct
+                    && currentAct > 1
+                    && maxSaveAct < currentAct;
+
+                LogUtility.Info(
+                    $"Max Act: {maxSaveAct} Current Act: {currentAct} "
+                        + $"AncientRelicLocation: {ancientRelicLocation}"
+                );
+
+                if (!RunManager.Instance.ShouldSave)
+                    reason = "the run is not currently saveable";
+                else if (!isEligibleSaveLocation)
+                    reason = "this room is not an AP checkpoint";
+                else if (ancientIsLocked)
+                    reason = "the progressive Ancient checkpoint is locked";
+                else
+                    reason = string.Empty;
+                return reason.Length == 0;
             }
 
             public static async Task asyncSave(
@@ -100,10 +158,16 @@ namespace StS2AP.Patches
                 {
                     return;
                 }
+                ArchipelagoSession? session = ArchipelagoClient.Session;
+                if (session == null)
+                {
+                    LogUtility.Error("Cannot upload an AP checkpoint without an active session.");
+                    return;
+                }
                 var saveDict = new Dictionary<string, string>();
                 saveDict[GameUtility.CurrentPlayer.getInternalName()] = zipped;
                 const string saveStorageKey = "StS2AP_Saves";
-                var saveOperation = ArchipelagoClient.Session.DataStorage[
+                var saveOperation = session.DataStorage[
                     Scope.Slot,
                     saveStorageKey
                 ];
@@ -124,7 +188,7 @@ namespace StS2AP.Patches
                         }
                     );
                 }
-                ArchipelagoClient.Session.DataStorage[Scope.Slot, saveStorageKey] = saveOperation;
+                session.DataStorage[Scope.Slot, saveStorageKey] = saveOperation;
             }
 
             /// <summary>
@@ -190,11 +254,14 @@ namespace StS2AP.Patches
             JsonElement? saveData = apSave?.SaveData;
             if (
                 apSave == null
+                || apSave.Progress is not { Initialized: true }
                 || saveData == null
                 || saveData.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
             )
             {
-                throw new InvalidDataException($"{saveDescription} was missing AP save data");
+                throw new InvalidDataException(
+                    $"{saveDescription} does not contain current AP run progress and save data"
+                );
             }
 
             ReadSaveResult<SerializableRun> runResult =
@@ -216,26 +283,50 @@ namespace StS2AP.Patches
             );
             SfxCmd.Play(runState.Players[0].Character.CharacterTransitionSfx);
 
-            GameUtility.CurrentPlayer = runState.Players[0];
-            GameUtility.CurrentConfig = ArchipelagoClient.Settings.Characters[
-                GameUtility.CurrentPlayer.getInternalName()
-            ];
+            Player currentPlayer = runState.Players[0];
+            GameUtility.CurrentPlayer = currentPlayer;
+            ArchipelagoSettings settings = ArchipelagoClient.Settings
+                ?? throw new InvalidOperationException(
+                    "Cannot continue the AP run because slot settings are unavailable"
+                );
+            if (!settings.Characters.TryGetValue(
+                    currentPlayer.getInternalName(),
+                    out CharacterConfig? currentConfig))
+            {
+                throw new InvalidDataException(
+                    $"Cannot continue the AP run because character settings for "
+                        + $"'{currentPlayer.getInternalName()}' are unavailable"
+                );
+            }
+            GameUtility.CurrentConfig = currentConfig;
             ArchipelagoClient.Progress = ArchipelagoProgress.FromSerializable(
                 apSave,
-                GameUtility.CurrentPlayer
+                currentPlayer
             );
-            RelicCoupons.EnsureOwnedBy(GameUtility.CurrentPlayer, silent: true);
+            RelicCoupons.EnsureOwnedBy(currentPlayer, silent: true);
+            // Rebuild these counts from AP history.
+            ArchipelagoClient.Progress.ProgressiveAncients.Clear();
+            ArchipelagoClient.Progress.ProgressiveRests.Clear();
+            ArchipelagoClient.Progress.ProgressiveSmiths.Clear();
             Patches_ItemProcessor.ReprocessItems();
-            RelicRewardUtility.ReconcileBankedRewards(GameUtility.CurrentPlayer);
-            ArchipelagoClient.Progress.InitializeFromServer(GameUtility.CurrentPlayer);
+            RelicRewardUtility.ReconcileBankedRewards(currentPlayer);
+            ArchipelagoClient.Progress.InitializeFromServer(currentPlayer);
 
-            await NGame.Instance.Transition.FadeOut(
+            NGame game = NGame.Instance
+                ?? throw new InvalidOperationException(
+                    "Cannot continue the AP run because the game singleton is unavailable"
+                );
+            var transition = game.Transition
+                ?? throw new InvalidOperationException(
+                    "Cannot continue the AP run because the game transition controller is unavailable"
+                );
+            await transition.FadeOut(
                 0.8f,
                 runState.Players[0].Character.CharacterSelectTransitionPath
             );
-            NGame.Instance.ReactionContainer.InitializeNetworking(new NetSingleplayerGameService());
-            await NGame.Instance.LoadRun(runState, serializableRun.PreFinishedRoom);
-            await NGame.Instance.Transition.FadeIn();
+            game.ReactionContainer.InitializeNetworking(new NetSingleplayerGameService());
+            await game.LoadRun(runState, serializableRun.PreFinishedRoom);
+            await transition.FadeIn();
         }
 
         [HarmonyPatch(typeof(NCharacterSelectScreen), "OnEmbarkPressed")]
@@ -245,8 +336,20 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool intercept(NCharacterSelectScreen __instance)
             {
+                if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
+                    return true;
 
-                var charName = BetaMainCompatibility.GetLocalCharacter(__instance.Lobby).Id.Entry;
+                var character = Sts2Compatibility.GetLocalCharacter(__instance.Lobby);
+                if (!ArchipelagoClient.CanSelectCharacter(character, out string blockedReason))
+                {
+                    __instance.Lobby.SetReady(ready: false);
+                    __instance.GetNode<NConfirmButton>("ConfirmButton").Disable();
+                    LogUtility.Warn($"Blocked AP singleplayer embark: {blockedReason}");
+                    NotificationUtility.ShowRawText(blockedReason);
+                    return false;
+                }
+
+                var charName = character.Id.Entry;
                 foreach(var entry in GameUtility.APSaves)
                 {
                     if (entry.Value.Length > 0)
@@ -280,7 +383,7 @@ namespace StS2AP.Patches
 
             private static async Task ContinueRun(NCharacterSelectScreen _charSelect)
             {
-                var charName = BetaMainCompatibility.GetLocalCharacter(_charSelect.Lobby).Id.Entry;
+                var charName = Sts2Compatibility.GetLocalCharacter(_charSelect.Lobby).Id.Entry;
                 if (!GameUtility.APSaves.TryGetValue(charName, out var saveStr))
                 {
                     LogUtility.Error(
@@ -313,6 +416,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix()
             {
+                if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
+                    return;
+
                 if (!ArchipelagoClient.IsConnected) return;
                 if (!GameUtility.HasRecoverySave()) return;
 

@@ -5,10 +5,6 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using StS2AP.Utils;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace StS2AP.Patches
 {
@@ -22,7 +18,7 @@ namespace StS2AP.Patches
         /// This prevents the infinite feedback loop where receiving a Death Link kill triggers us to send
         /// another one back, which kills the sender again, and so on.
         /// </summary>
-        private const double DeathLinkSuppressionWindowSeconds = 3.0;
+        private const double DeathLinkSuppressionWindowSeconds = 6.0;
 
         /// <summary>
         /// Fires when the player sees the "Game Over" screen.
@@ -33,11 +29,20 @@ namespace StS2AP.Patches
         {
             static bool Prefix(NRun __instance, SerializableRun serializableRun)
             {
+                // AP_MP: multiplayer uses a replicated individual-death boundary instead.
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink))
+                    return true;
+
+                // Multiplayer sends at the individual player's actual death boundary instead of
+                // waiting for the shared game-over screen.
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                    return true;
+
                 // If Death Link isn't enabled, there's nothing to do
                 if (!DeathLinkUtility.IsDeathLinkEnabled) return true;
 
                 // Grab the state of the Run
-                RunState? runState = Traverse.Create(__instance).Field<RunState>("_state").Value;
+                RunState? runState = __instance._state;
 
                 // Don't send death link if the player won (died to the Architect)
                 if (runState?.CurrentRoom?.IsVictoryRoom ?? false)
@@ -74,7 +79,13 @@ namespace StS2AP.Patches
                 string causeMsg = $"{ArchipelagoClient.PlayerName} was Slain on {floorCause}";
 
                 // Send a Death Link Trigger
-                ArchipelagoClient.DeathLinkController.SendDeathLink(new DeathLink(ArchipelagoClient.PlayerName, causeMsg));
+                DeathLinkService? deathLinkController = ArchipelagoClient.DeathLinkController;
+                if (deathLinkController == null)
+                {
+                    LogUtility.Error("Could not send Death Link because the service is unavailable.");
+                    return true;
+                }
+                deathLinkController.SendDeathLink(new DeathLink(ArchipelagoClient.PlayerName, causeMsg));
 
                 // Finally, return control to the function
                 return true;

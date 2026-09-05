@@ -11,6 +11,8 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Models;
 using StS2AP.Models;
+using StS2AP.Data;
+using StS2AP.Utils;
 
 namespace StS2AP.Patches
 {
@@ -31,6 +33,11 @@ namespace StS2AP.Patches
             [HarmonyPrefix]
             public static bool Prefix(NTopBarPortraitTip __instance)
             {
+                // AP_MP: Ascension presentation stays native until the shared set is staged.
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                        MultiplayerFeature.AscensionEffects))
+                    return true;
+
                 if(__instance.ShowTip)
                 {
                     NHoverTipSet.CreateAndShow(__instance, ArchipelagoClient.Progress.Ascensions.HoverTip)
@@ -71,8 +78,13 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void PostFix(MegaLabel ____ascensionLabel)
             {
+                // AP_MP: Ascension UI overrides require a host-authoritative shared set.
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                        MultiplayerFeature.AscensionEffects))
+                    return;
+
                 _ascensionLabel = ____ascensionLabel;
-                ChangeAscensionLabel(ArchipelagoClient.Progress.Ascensions.CurrentAscension.Count.ToString());
+                ChangeAscensionLabel(AscensionMultiplayer.GetCurrentCount().ToString());
             }
         }
 
@@ -88,12 +100,13 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(AscensionLevel level, ref bool __result)
             {
-                if(!RunManager.Instance.IsInProgress)
-                {
-                    // Not sure we can trust the CurrentAscension Set in this case or not.
+                // AP_MP: Ascension queries require a host-authoritative shared set.
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                        MultiplayerFeature.AscensionEffects))
                     return;
-                }
-                __result = ArchipelagoClient.Progress.Ascensions.HasLevel(level);
+
+                if (AscensionMultiplayer.TryHasLevel(level, out bool enabled))
+                    __result = enabled;
             }
         }
         
@@ -106,7 +119,15 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(ref MapPoint? __result)
             {
-                if (!ArchipelagoClient.Progress.Ascensions.CurrentAscension.Contains(AscensionLevel.DoubleBoss))
+                // AP_MP: Double-boss map changes must be identical on every peer.
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                        MultiplayerFeature.AscensionEffects))
+                    return;
+
+                if (AscensionMultiplayer.TryHasLevel(
+                        AscensionLevel.DoubleBoss,
+                        out bool enabled)
+                    && !enabled)
                 {
                     __result = null;
                 }
@@ -123,7 +144,15 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(ref SerializableMapPoint? __result)
             {
-                if (!ArchipelagoClient.Progress.Ascensions.CurrentAscension.Contains(AscensionLevel.DoubleBoss))
+                // AP_MP: Double-boss serialization waits for synchronized ascension state.
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                        MultiplayerFeature.AscensionEffects))
+                    return;
+
+                if (AscensionMultiplayer.TryHasLevel(
+                        AscensionLevel.DoubleBoss,
+                        out bool enabled)
+                    && !enabled)
                 {
                     __result = null;
                 }
@@ -140,7 +169,15 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(ref MapPoint? __result)
             {
-                if (!ArchipelagoClient.Progress.Ascensions.CurrentAscension.Contains(AscensionLevel.DoubleBoss))
+                // AP_MP: Double-boss restore waits for synchronized ascension state.
+                if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                        MultiplayerFeature.AscensionEffects))
+                    return;
+
+                if (AscensionMultiplayer.TryHasLevel(
+                        AscensionLevel.DoubleBoss,
+                        out bool enabled)
+                    && !enabled)
                 {
                     __result = null;
                 }
@@ -162,6 +199,11 @@ namespace StS2AP.Patches
             CharacterModel character
         )
         {
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (settings == null
+                || !MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.AscensionEffects))
+                return;
+
             var panel = AccessTools.Field(typeof(NCharacterSelectScreen), "_ascensionPanel")
                 ?.GetValue(screen) as NAscensionPanel;
             if (panel == null)
@@ -170,7 +212,7 @@ namespace StS2AP.Patches
             }
 
             if (characterButton.IsLocked
-                || !ArchipelagoClient.Settings.Characters.TryGetValue(
+                || !settings.Characters.TryGetValue(
                     character.Id.Entry,
                     out var config
                 ))
@@ -192,11 +234,10 @@ namespace StS2AP.Patches
 
         private static int CountEffectiveAscensions(CharacterConfig config)
         {
-            var ascensionManager = ArchipelagoClient.Progress.Ascensions;
             var effectiveAscensions = new HashSet<AscensionLevel>();
             foreach (var configuredAscension in config.Ascension)
             {
-                var level = ascensionManager.GetLevel(configuredAscension);
+                var level = Utils.AscensionManager.GetLevel(configuredAscension);
                 if (level.HasValue)
                 {
                     effectiveAscensions.Add(level.Value);
@@ -206,18 +247,19 @@ namespace StS2AP.Patches
             foreach (var receivedItem in ArchipelagoClient.Progress.AllReceivedItems)
             {
                 var item = receivedItem.Item;
-                if (item.GetCharacterOffset() != config.CharOffset)
+                if (!ArchipelagoIdCodec.IsCharacterItemId(item.ItemId)
+                    || item.GetAPCharacterNumber() != config.CharOffset)
                 {
                     continue;
                 }
 
-                var itemId = item.GetCharacterSpecificItemID();
+                var itemId = item.GetCharacterItemType();
                 if ((int)itemId < 19 || (int)itemId > 28)
                 {
                     continue;
                 }
 
-                effectiveAscensions.Remove(ascensionManager.ToAscensionLevel(itemId));
+                effectiveAscensions.Remove(Utils.AscensionManager.ToAscensionLevel(itemId));
             }
 
             return effectiveAscensions.Count;
@@ -233,11 +275,13 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NAscensionPanel __instance)
             {
+                // AP_MP: Ascension controls require host overwrite and mismatch diagnostics.
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.AscensionEffects))
+                    return;
+
                 // Access Left/Right Ascension Modifying Arrows
-                var leftField = AccessTools.Field(typeof(NAscensionPanel), "_leftArrow");
-                var rightField = AccessTools.Field(typeof(NAscensionPanel), "_rightArrow");
-                var leftObj = leftField?.GetValue(__instance) as Control;
-                var rightObj = rightField?.GetValue(__instance) as Control;
+                Control? leftObj = __instance._leftArrow;
+                Control? rightObj = __instance._rightArrow;
 
                 if (leftObj != null)
                 {

@@ -2,11 +2,11 @@
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Unlocks;
 using StS2AP.Models;
 using StS2AP.Utils;
-using System.Reflection;
 
 namespace StS2AP.Patches
 {
@@ -26,6 +26,19 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             static void Postfix(ref IEnumerable<CharacterModel> __result)
             {
+                if (!MultiplayerSupport.IsRealMultiplayerRun && MultiplayerSupport.IsLocalGuest)
+                {
+                    __result = ModelDb.AllCharacters;
+                    return;
+                }
+
+                // During the lobby this local override controls only this process's selectable
+                // characters. Once a multiplayer run launches, preserve each serialized remote
+                // player's own UnlockState instead of replacing it with the local AP list.
+                // CHANGE: please change this to actually use the AP progress of the individual people
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                    return;
+
                 LogUtility.Debug($"OverrideUnlockedCharacterData: Overriding unlocked characters. UnlockedCharacters count: {ArchipelagoClient.Progress.UnlockedCharacters.Count}");
                 __result = ArchipelagoClient.Progress.UnlockedCharacters;
             }
@@ -42,23 +55,49 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.OnSubmenuOpened), [])]
         public static class OverrideCharacterSelectMenuOptions
         {
-            private static readonly FieldInfo CharButtonContainerField =
-                typeof(NCharacterSelectScreen)
-                .GetField("_charButtonContainer", BindingFlags.NonPublic | BindingFlags.Instance)!;
-
             [HarmonyPostfix]
             public static void Postfix(NCharacterSelectScreen __instance)
             {
+                RefreshForCurrentParticipation(__instance);
+            }
+
+            internal static void RefreshForCurrentParticipation(
+                NCharacterSelectScreen __instance)
+            {
+                if (MultiplayerSupport.IsLocalGuest)
+                {
+                    if (__instance._charButtonContainer is Control guestContainer)
+                    {
+                        foreach (NCharacterSelectButton button in guestContainer
+                                     .GetChildren()
+                                     .OfType<NCharacterSelectButton>())
+                        {
+                            button.Visible = true;
+                            button.UnlockIfPossible();
+                        }
+                    }
+                    return;
+                }
+
+                if (ArchipelagoClient.Settings?.Characters == null)
+                {
+                    LogUtility.Warn(
+                        "OverrideCharacterSelectMenuOptions: AP settings are not available yet"
+                    );
+                    return;
+                }
+
                 LogUtility.Debug($"OverrideCharacterSelectMenuOptions: OnSubmenuOpened postfix fired. AvailableCharacters: [{string.Join(", ", ArchipelagoClient.Settings.Characters.Values)}]");
 
-                if (CharButtonContainerField.GetValue(__instance) is not Control container)
+                if (__instance._charButtonContainer is not Control container)
                 {
                     LogUtility.Debug("OverrideCharacterSelectMenuOptions: Could not find _charButtonContainer — skipping");
                     return;
                 }
 
                 LogUtility.Debug($"OverrideCharacterSelectMenuOptions: Found character button container '{container.Name}'. Iterating through buttons...");
-                foreach (NCharacterSelectButton button in container.GetChildren().OfType<NCharacterSelectButton>())
+                var buttons = container.GetChildren().OfType<NCharacterSelectButton>().ToArray();
+                foreach (NCharacterSelectButton button in buttons)
                 {
                     var charModel = button.Character;
                     LogUtility.Info($"Character Model id: {charModel.Id.Entry}");
@@ -70,12 +109,53 @@ namespace StS2AP.Patches
                     LogUtility.Info($"OverrideCharacterSelectMenuOptions: '{name}' isVisible={isVisible}");
                     LogUtility.Info($"Current Configured Characters: {string.Join(",", ArchipelagoClient.Settings.Characters.Keys)}");
 
-                    if (!isVisible)
+                    button.Visible = isVisible;
+
+                    // The main menu owns one character-select screen for the lifetime of the
+                    // process. UnlockIfPossible is intentionally one-way, so a character from a
+                    // departed AP slot otherwise remains unlocked on this reused button. Re-run
+                    // the native initialization against the current patched UnlockState first.
+                    bool wasLocked = button.IsLocked;
+                    button.Init(charModel, __instance);
+                    if (!wasLocked && button.IsLocked)
                     {
-                        LogUtility.Debug($"OverrideCharacterSelectMenuOptions: Hiding button for character '{name}' (character not in slot)");
-                        button.Visible = false;
+                        LogUtility.Info(
+                            $"Relocked stale character button {name} for the current AP slot"
+                        );
                     }
+                    if (!isVisible)
+                        LogUtility.Debug($"OverrideCharacterSelectMenuOptions: Hiding button for character '{name}' (character not in slot)");
+                    else
+                        button.UnlockIfPossible();
                 }
+
+                bool hasValidSelection = buttons.Any(button =>
+                    button.IsSelected
+                    && button.Visible
+                    && !button.IsRandom
+                    && ArchipelagoClient.CanSelectCharacter(button.Character, out _)
+                );
+                if (hasValidSelection)
+                    return;
+
+                NCharacterSelectButton? replacement = buttons.FirstOrDefault(button =>
+                    button.Visible
+                    && !button.IsRandom
+                    && ArchipelagoClient.CanSelectCharacter(button.Character, out _)
+                );
+                if (replacement != null)
+                {
+                    LogUtility.Info(
+                        $"Selecting {replacement.Character.Id.Entry} because the previous "
+                            + "character is unavailable for this AP slot"
+                    );
+                    replacement.Select();
+                    replacement.GrabFocus();
+                    return;
+                }
+
+                __instance.GetNode<NConfirmButton>("ConfirmButton").Disable();
+                LogUtility.Error("No selectable character is available for this AP slot");
             }
         }
 
@@ -92,10 +172,6 @@ namespace StS2AP.Patches
         [HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.OnSubmenuOpened), [])]
         public static class SubscribeToUnlockEventOnOpen
         {
-            private static readonly FieldInfo CharButtonContainerField =
-                typeof(NCharacterSelectScreen)
-                .GetField("_charButtonContainer", BindingFlags.NonPublic | BindingFlags.Instance)!;
-
             /// <summary>
             /// Per-screen-instance handler storage.
             /// Keyed on the screen instance so UnsubscribeFromUnlockEventOnClose can remove the exact delegate.
@@ -105,6 +181,9 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(NCharacterSelectScreen __instance)
             {
+                if (MultiplayerSupport.IsLocalGuest)
+                    return;
+
                 if (__instance == null)
                 {
                     LogUtility.Debug("SubscribeToUnlockEventOnOpen: __instance is null — skipping subscription");
@@ -131,10 +210,10 @@ namespace StS2AP.Patches
             /// Called when a character unlock item arrives while this screen is open.
             /// Finds the corresponding button by its raw game name and calls UnlockIfPossible() on it.
             /// </summary>
-            public static void HandleCharacterUnlocked(NCharacterSelectScreen screen, CharacterConfig config)
+            public static void HandleCharacterUnlocked(NCharacterSelectScreen? screen, CharacterConfig config)
             {
                 // Null check
-                if (screen == null)
+                if (screen is null)
                 {
                     LogUtility.Debug("HandleCharacterUnlocked: screen is null — ignoring");
                     return;
@@ -154,19 +233,13 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                LogUtility.Debug($"HandleCharacterUnlocked: Received unlock event for {config.OfficialName} on screen instance {screen?.GetInstanceId()}");
+                LogUtility.Debug($"HandleCharacterUnlocked: Received unlock event for {config.OfficialName} on screen instance {screen.GetInstanceId()}");
 
-                if (CharButtonContainerField.GetValue(screen) is not Control container)
+                if (screen._charButtonContainer is not Control container)
                 {
                     LogUtility.Debug("HandleCharacterUnlocked: Could not find _charButtonContainer on screen");
                     return;
                 }
-
-                /// Build the expected button name from the APItemCharID (e.g. APItemCharID.Silent → "silent_button").
-                /// We use case-insensitive comparison as a safety net, since the game's Id.Entry casing
-                /// could vary (the node dump above will confirm the real casing in the logs).
-                // string buttonName = charId.ToString().ToLower() + "_button";
-                // LogUtility.Debug($"HandleCharacterUnlocked: Looking for button matching '{buttonName}' (case-insensitive)");
 
                 var button = container.GetChildren()
                     .OfType<NCharacterSelectButton>()

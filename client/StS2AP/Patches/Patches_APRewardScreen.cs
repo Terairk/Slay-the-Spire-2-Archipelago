@@ -21,12 +21,14 @@ namespace StS2AP.Patches
     {
         private const int RewardFontSize = 24;
 
+        // SelfModulate remains in effect while MegaCrit's native HSV material supplies the
+        // focus/press brightness animation, keeping Ancient rows dark and visibly distinct.
         private static readonly Color AncientBackgroundTint = new(0.52f, 0.27f, 0.66f);
 
         [HarmonyPostfix]
         public static void Postfix(NRewardButton __instance)
         {
-            if (__instance.Reward is not ApNativeRewardMenu.IApNativeReward reward)
+            if (__instance.Reward is not ApMirroredRewardDispatcher.IApNativeReward reward)
                 return;
 
             if (reward.HasOriginText)
@@ -74,7 +76,10 @@ namespace StS2AP.Patches
         }
     }
 
-    /// <summary>Prevents unavailable AP rows from entering the native selection lifecycle.</summary>
+    /// <summary>
+    /// Rejects an AP-owned native row before MegaCrit emits RewardSelectedMessage. This keeps
+    /// multiplayer combat and other expected claim gates as true non-selections.
+    /// </summary>
     [HarmonyPatch(typeof(NRewardButton), "OnRelease")]
     public static class GateNativeApRewardSelection
     {
@@ -104,9 +109,8 @@ namespace StS2AP.Patches
 
     /// <summary>
     /// NLinkedRewardSet connects the one-argument NRewardButton.RewardClaimed signal to a
-    /// zero-argument callback. Godot rejects that invocation after the reward has already been
-    /// granted, leaving the linked row visible and disabled. Replace that callback only for
-    /// AP-owned linked rewards with an argument-compatible equivalent.
+    /// zero-argument callback. Replace that callback only for AP-owned linked rewards with an
+    /// argument-compatible equivalent.
     /// </summary>
     [HarmonyPatch(typeof(NLinkedRewardSet), nameof(NLinkedRewardSet._Ready))]
     public static class FixApLinkedRewardClaimCallback
@@ -160,8 +164,8 @@ namespace StS2AP.Patches
 
     /// <summary>
     /// Native scrolling only recognizes controls stored directly in NRewardsScreen._rewardButtons.
-    /// Linked Ancient choices are grandchildren, so extend the same focus-following behavior to
-    /// those AP-owned child buttons.
+    /// Linked Ancient choices are grandchildren, so extend focus-following behavior to those
+    /// AP-owned child buttons.
     /// </summary>
     [HarmonyPatch(typeof(NRewardsScreen), "ProcessGuiFocus")]
     public static class ScrollToFocusedApLinkedRewardChild
@@ -190,7 +194,7 @@ namespace StS2AP.Patches
 
     /// <summary>
     /// Adds the selectable children of AP Ancient linked rewards to MegaCrit's vertical focus
-    /// graph without changing RitsuLib's choose-one reward lifecycle.
+    /// graph without replacing Godot's directional-navigation input handling.
     /// </summary>
     internal static class ApLinkedRewardControllerFocus
     {
@@ -214,7 +218,11 @@ namespace StS2AP.Patches
                          child.GetSignalConnectionList(NRewardButton.SignalName.RewardClaimed))
                 {
                     Callable callback = connection["callable"].AsCallable();
-                    child.Disconnect(NRewardButton.SignalName.RewardClaimed, callback);
+                    // Godot also reports the generated C# signal-event bridge here even though it
+                    // is not a disconnectable native connection. Only remove callbacks which the
+                    // signal registry can resolve; otherwise Disconnect logs an engine error.
+                    if (child.IsConnected(NRewardButton.SignalName.RewardClaimed, callback))
+                        child.Disconnect(NRewardButton.SignalName.RewardClaimed, callback);
                 }
 
                 child.Connect(
@@ -267,7 +275,7 @@ namespace StS2AP.Patches
             if (!IsNestedApRewardButton(focusedControl))
             {
                 if (focusedControl is NRewardButton directButton
-                    && directButton.Reward is ApNativeRewardMenu.IApNativeReward
+                    && directButton.Reward is ApMirroredRewardDispatcher.IApNativeReward
                     && ReferenceEquals(directButton.GetParent(), rewardsContainer))
                 {
                     state.LastLinkedChild = null;
@@ -316,7 +324,7 @@ namespace StS2AP.Patches
 
         private static bool IsNestedApRewardButton(Control control) =>
             control is NRewardButton button
-            && button.Reward is ApNativeRewardMenu.IApNativeReward
+            && button.Reward is ApMirroredRewardDispatcher.IApNativeReward
             && FindLinkedParent(button) is { } linkedSet
             && GetApLinkedChildren(linkedSet).Contains(button);
 
@@ -328,7 +336,7 @@ namespace StS2AP.Patches
 
             return container.GetChildren()
                 .OfType<NRewardButton>()
-                .Where(button => button.Reward is ApNativeRewardMenu.IApNativeReward)
+                .Where(button => button.Reward is ApMirroredRewardDispatcher.IApNativeReward)
                 .ToList();
         }
 
@@ -354,8 +362,10 @@ namespace StS2AP.Patches
                 return;
             }
 
-            screen.RewardCollectedFrom(linkedSet);
             linkedSet.LinkedRewardSet.OnSkipped();
+            // NRewardsScreen already listens to this signal and removes the linked row. Calling
+            // RewardCollectedFrom directly as well removes it twice and leaves the second call
+            // dereferencing a null parent in NRewardsScreen.RemoveButton.
             linkedSet.EmitSignal(NLinkedRewardSet.SignalName.RewardClaimed, linkedSet);
             linkedSet.QueueFreeSafely();
 
@@ -391,11 +401,11 @@ namespace StS2AP.Patches
     }
 
     /// <summary>
-    /// An empty AP screen has no active RewardsSet left to skip. Its native proceed button is
-    /// presentation-only and simply closes the overlay.
+    /// Empty and vanilla-guest AP screens have no live synchronized set to skip. Their native
+    /// proceed button is presentation-only and simply closes the overlay.
     /// </summary>
     [HarmonyPatch(typeof(NRewardsScreen), "OnProceedButtonPressed")]
-    public static class CloseEmptyApRewardScreen
+    public static class CloseUnsynchronizedApRewardScreen
     {
         [HarmonyPrefix]
         public static bool Prefix(NRewardsScreen __instance, RewardsSet ____rewardsSet)
@@ -430,7 +440,9 @@ namespace StS2AP.Patches
             ref NMapScreen __result)
         {
             if (!isOpenedFromTopBar || !ArchipelagoRewardUI.IsActive)
+            {
                 return true;
+            }
 
             ArchipelagoRewardUI.CloseToMap();
             __result = __instance;
@@ -439,8 +451,8 @@ namespace StS2AP.Patches
     }
 
     /// <summary>
-    /// Apply the symmetric behaviour to deck requests. AP's blocker handles the equivalent hotkey
-    /// while AP owns input; this catches the direct top-bar button path.
+    /// Apply the symmetric behaviour to deck requests. AP's blocker handles the
+    /// equivalent hotkey while AP owns input; this catches the direct button path.
     /// </summary>
     [HarmonyPatch(typeof(NDeckViewScreen), nameof(NDeckViewScreen.ShowScreen))]
     public static class OpenDeckAfterClosingAPRewards
@@ -449,7 +461,9 @@ namespace StS2AP.Patches
         public static bool Prefix(ref NDeckViewScreen? __result)
         {
             if (!ArchipelagoRewardUI.IsActive)
+            {
                 return true;
+            }
 
             ArchipelagoRewardUI.CloseToDeck();
             __result = null;

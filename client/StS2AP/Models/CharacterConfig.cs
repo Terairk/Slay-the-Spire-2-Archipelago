@@ -66,7 +66,7 @@ namespace StS2AP.Models
             {
                 if(apworldVersion > Constants.VERSION_0_5_3)
                 {
-                    config.Ascension = ascension.ToObject<HashSet<String>>();
+                    config.Ascension = ascension.ToObject<HashSet<String>>() ?? new HashSet<String>();
                 }
                 else 
                 {
@@ -86,19 +86,19 @@ namespace StS2AP.Models
         /// <summary>
         /// The human readable name for the character
         /// </summary>
-        public String Name { get; set; }
+        public String Name { get; set; } = string.Empty;
         /// <summary>
         /// The option name in the yaml for the character
         /// </summary>
-        public String OptionName { get; set; }
+        public String OptionName { get; set; } = string.Empty;
         /// <summary>
-        /// The offset for item and location ids for this character
+        /// The one-based AP character number read from the slot-data key "char_offset".
         /// </summary>
         public int CharOffset { get; set; }
         /// <summary>
         /// The name to do a lookup in the mod for the character
         /// </summary>
-        public String OfficialName { get; set; }
+        public String OfficialName { get; set; } = string.Empty;
         /// <summary>
         /// The seed to run with for this character, if it was set
         /// </summary>

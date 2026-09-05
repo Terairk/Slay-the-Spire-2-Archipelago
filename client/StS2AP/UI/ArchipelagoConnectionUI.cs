@@ -33,7 +33,9 @@ namespace StS2AP.UI
         /// Injects the Archipelago connection UI into the current scene tree.
         /// Should be called when the main menu is ready.
         /// </summary>
-        public static void InjectUI()
+        public static void InjectUI(
+            string? serverOverride = null,
+            string? slotNameOverride = null)
         {
             try
             {
@@ -59,6 +61,7 @@ namespace StS2AP.UI
                     SetStatus("");
                     SetConnectButtonEnabled(true);
                     SetCloseButtonEnabled(true);
+                    ApplyConnectionOverrides(serverOverride, slotNameOverride);
                     _rootPanel.Visible = true;
                     FocusFirstInput();
                     return;
@@ -66,6 +69,7 @@ namespace StS2AP.UI
 
                 // Create the UI
                 _rootPanel = CreateUI();
+                ApplyConnectionOverrides(serverOverride, slotNameOverride);
 
                 // Add to the root as a CanvasLayer so it renders on top
                 var canvasLayer = new CanvasLayer();
@@ -86,10 +90,25 @@ namespace StS2AP.UI
         }
 
         /// <summary>
+        /// Applies process-local developer launch values after loading the shared cached form.
+        /// These values are persisted only if the user presses Connect.
+        /// </summary>
+        private static void ApplyConnectionOverrides(
+            string? serverOverride,
+            string? slotNameOverride)
+        {
+            if (!string.IsNullOrWhiteSpace(serverOverride) && _urlInput != null)
+                _urlInput.Text = serverOverride;
+            if (!string.IsNullOrWhiteSpace(slotNameOverride) && _slotNameInput != null)
+                _slotNameInput.Text = slotNameOverride;
+        }
+
+        /// <summary>
         /// Removes the UI from the scene tree
         /// </summary>
         public static void RemoveUI()
         {
+            ArchipelagoClient.ConnectionStateChanged -= OnConnectionResult;
             if (_rootPanel != null && IsInstanceValid(_rootPanel))
             {
                 var parent = _rootPanel.GetParent();
@@ -99,6 +118,15 @@ namespace StS2AP.UI
                 }
                 _rootPanel = null;
             }
+        }
+
+        internal static void CancelPendingAttempt()
+        {
+            ArchipelagoClient.ConnectionStateChanged -= OnConnectionResult;
+            SetConnectButtonEnabled(true);
+            SetCloseButtonEnabled(true);
+            SetStatus("");
+            Hide();
         }
 
         /// <summary>
@@ -155,6 +183,9 @@ namespace StS2AP.UI
             if (_closeButton != null && IsInstanceValid(_closeButton))
             {
                 _closeButton.Disabled = !enabled;
+                _closeButton.Text = enabled && ArchipelagoClient.State is
+                    ConnectionState.Connecting or ConnectionState.Reconnecting
+                        ? "Cancel connection" : "Close";
             }
         }
 
@@ -481,6 +512,8 @@ namespace StS2AP.UI
         /// </summary>
         private static void OnConnectButtonPressed()
         {
+            if (ArchipelagoClient.State != ConnectionState.Disconnected)
+                return;
             var slotName = _slotNameInput?.Text ?? "";
             var url = _urlInput?.Text ?? "";
             var password = _passwordInput?.Text ?? "";
@@ -499,11 +532,27 @@ namespace StS2AP.UI
                 return;
             }
 
+            if (!ArchipelagoClient.CanLeaveSlot && ArchipelagoClient.Settings != null
+                && !string.Equals(slotName, ArchipelagoClient.PlayerName, StringComparison.Ordinal))
+            {
+                SetStatus("Return to the main menu and disconnect before changing AP slots.");
+                return;
+            }
+            if (ArchipelagoClient.CanLeaveSlot && ArchipelagoClient.HasSlotConnection)
+            {
+                // A failed/offline attempt may have left this form open with the old slot's
+                // caches. Apply the same departure boundary before a home-screen retry.
+                if (!ArchipelagoClient.TryLeaveSlot())
+                    return;
+                Show();
+                ArchipelagoNotificationUI.InjectUI();
+            }
+
             // Begin Connecting
             LogUtility.Info($"Connect pressed - Slot: {slotName}, URL: {url}");
             SetStatus("Connecting...");
             SetConnectButtonEnabled(false);
-            SetCloseButtonEnabled(false);
+            SetCloseButtonEnabled(ArchipelagoClient.CanLeaveSlot);
             ArchipelagoClient.ServerAddress = url;
             ArchipelagoClient.ServerPassword = password;
             ArchipelagoClient.PlayerName = slotName;
@@ -513,6 +562,7 @@ namespace StS2AP.UI
             ArchipelagoClient.ConnectionStateChanged -= OnConnectionResult;
             ArchipelagoClient.ConnectionStateChanged += OnConnectionResult;
             ArchipelagoClient.Connect();
+            SetCloseButtonEnabled(ArchipelagoClient.CanLeaveSlot);
 
             var connectionData = new ConnectionData()
             {
@@ -547,11 +597,12 @@ namespace StS2AP.UI
                 // Set status
                 SetStatus("Connected successfully!");
 
-                // Enter the game
-                MenuUtility.OpenCharacterSelect();
-
                 // Hide the connection UI
                 Hide();
+
+                // Normal login is connection-only and returns to the main menu. The explicit
+                // developer fast-multiplayer harness is the sole auto-continuation path.
+                ApFastMpLaunchController.TryResumeAfterApPrepared();
             }
             // We failed to connect
             else if (state == ConnectionState.Disconnected)
@@ -567,18 +618,12 @@ namespace StS2AP.UI
         /// </summary>
         private static void OnCloseButtonPressed()
         {
-            // Hide the connection UI
+            if (ArchipelagoClient.State is ConnectionState.Connecting or ConnectionState.Reconnecting)
+            {
+                ArchipelagoClient.TryLeaveSlot();
+                return;
+            }
             Hide();
-
-            // Pop the submenu stack to return to the main menu
-            try
-            {
-                MenuUtility.SubmenuStack?.Pop();
-            }
-            catch(InvalidOperationException ex)
-            {
-                LogUtility.Error($"Failed to pop submenu stack: {ex.Message}");
-            }
         }
 
         private class ConnectionData

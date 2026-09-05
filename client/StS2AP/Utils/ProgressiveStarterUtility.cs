@@ -25,12 +25,15 @@ namespace StS2AP.Utils
         /// Returns whether an Ancient relic is reserved for AP's progressive starter tiers and
         /// therefore must not be offered by either the natural Ancient or an AP-built pool.
         /// </summary>
-        internal static bool ShouldExcludeAncientRelic(RelicModel? relic)
+        internal static bool ShouldExcludeAncientRelic(
+            RelicModel? relic,
+            ArchipelagoSettings? settings = null)
         {
+            settings ??= ArchipelagoClient.Settings;
             return relic switch
             {
-                ArchaicTooth => ArchipelagoClient.Settings?.ProgressiveStarterCard == true,
-                TouchOfOrobas => ArchipelagoClient.Settings?.ProgressiveStarterRelic == true,
+                ArchaicTooth => settings?.ProgressiveStarterCard == true,
+                TouchOfOrobas => settings?.ProgressiveStarterRelic == true,
                 _ => false,
             };
         }
@@ -58,6 +61,9 @@ namespace StS2AP.Utils
         {
             Callable.From(() =>
             {
+                if (!MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.ProgressiveStarters))
+                    return;
+
                 var player = GameUtility.CurrentPlayer;
                 if (player != null)
                     TaskHelper.RunSafely(ReconcileAsync(player));
@@ -389,7 +395,7 @@ namespace StS2AP.Utils
             Dictionary<long, int> received,
             Player player)
         {
-            var offset = player.Character.GetCharacterOffset();
+            var offset = player.GetAPCharacterNumber();
             if (offset == null)
             {
                 LogUtility.Warn(

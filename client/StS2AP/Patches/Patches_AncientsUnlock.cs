@@ -3,6 +3,8 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Unlocks;
+using StS2AP.Models;
+using StS2AP.Utils;
 using System.Collections.Generic;
 
 namespace StS2AP.Patches
@@ -26,10 +28,14 @@ namespace StS2AP.Patches
         [HarmonyPrefix]
         static bool AlwaysStartWithNeow(RunManager __instance)
         {
-            var stateProperty = typeof(RunManager).GetProperty("State",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            // Run routing is shared, so every replica applies the same AP decision even when
+            // this process's local player is a Vanilla Guest.
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
+                return true;
 
-            if (stateProperty?.GetValue(__instance) is RunState runState)
+            if (__instance.State is RunState runState)
             {
                 runState.ExtraFields.StartedWithNeow = true;
             }
@@ -44,6 +50,10 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Overgrowth __instance)
         {
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
+                return;
             __result = __instance.AllAncients;
         }
     }
@@ -54,6 +64,10 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Hive __instance)
         {
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
+                return;
             __result = __instance.AllAncients;
         }
     }
@@ -64,6 +78,10 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Glory __instance)
         {
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
+                return;
             __result = __instance.AllAncients;
         }
     }
@@ -74,6 +92,10 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         static void UnlockAllAncients(ref IEnumerable<AncientEventModel> __result, Underdocks __instance)
         {
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
+                    MultiplayerFeature.Ancients
+                ))
+                return;
             __result = __instance.AllAncients;
         }
     }

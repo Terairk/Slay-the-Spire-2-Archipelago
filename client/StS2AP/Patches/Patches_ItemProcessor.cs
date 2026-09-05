@@ -1,7 +1,9 @@
 
+using Archipelago.MultiClient.Net;
 using Archipelago.MultiClient.Net.Models;
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Data;
@@ -97,8 +99,21 @@ namespace StS2AP.Patches
         /// <param name="index">The index of the item in the Archipelago Multiworld</param>
         private static void ProcessItem(IndexedItemInfo indexedInfo, bool liveDelivery = true)
         {
+            // AP_MP: This is the receipt-level fail-closed gate for unconverted features.
+            if (MultiplayerSupport.ShouldDeferItem(indexedInfo))
+            {
+                MultiplayerSupport.DeferItem(indexedInfo);
+                return;
+            }
+
             var Progress = ArchipelagoClient.Progress;
             var Settings = ArchipelagoClient.Settings;
+            if (Settings == null)
+            {
+                const string message = "Cannot process an AP item because slot settings are unavailable.";
+                LogUtility.Error(message);
+                throw new InvalidOperationException(message);
+            }
             var item = indexedInfo.Item;
             var index = indexedInfo.Index;
             // Log the item
@@ -109,14 +124,14 @@ namespace StS2AP.Patches
             /// Universal items (IDs < 10000) are character-agnostic and handled separately.
             /// The 10k ID gap ensures universal IDs never collide with character-specific IDs,
             /// no matter how many characters we add in the future.
-            if (item.ItemId < 10000)
+            if (ArchipelagoIdCodec.IsUniversalItemId(item.ItemId))
             {
                 HandleUniversalItem(item, index);
                 return;
             }
 
-            // Character-specific items (IDs >=ExitReadLock 10000): strip the character offset to get the base item type.
-            switch (item.GetCharacterSpecificItemID())
+            // Character-specific items use one-based 10,000-ID blocks. Decode the block-local item type.
+            switch (item.GetCharacterItemType())
             {
                 // Character Unlocks
                 case APItem.Unlock:
@@ -128,9 +143,9 @@ namespace StS2AP.Patches
                     /// Fire the CharacterUnlocked event on the Godot main thread.
                     /// This allows the character select screen (if open) to immediately
                     /// refresh the appropriate button without waiting for OnSubmenuOpened.
-                    var offset = item.GetCharacterOffset();
+                    var offset = item.GetAPCharacterNumber();
                     LogUtility.Info("After offset acquisition");
-                    var config = ArchipelagoClient.Settings.Characters.Values.FirstOrDefault(
+                    var config = Settings.Characters.Values.FirstOrDefault(
                         config => config.CharOffset == offset
                     );
                     LogUtility.Info("After Settings check");
@@ -147,9 +162,11 @@ namespace StS2AP.Patches
                 // Progressive threshold items
                 case APItem.ProgressiveSmith:
                     HandleThreshholdItem(item, Progress.ProgressiveSmiths, "Progressive Smiths");
+                    PublishRestSiteProgress(liveDelivery);
                     break;
                 case APItem.ProgressiveRest:
                     HandleThreshholdItem(item, Progress.ProgressiveRests, "Progressive Rests");
+                    PublishRestSiteProgress(liveDelivery);
                     break;
                 case APItem.ProgressiveAncient:
                 {
@@ -159,22 +176,56 @@ namespace StS2AP.Patches
                     {
                         // NeowSanity's first progressive unlock still controls the normal Act 1 Neow reward.
                         // Every Act 2/3 unlock becomes a per-run, linked Ancient choice in the AP reward menu.
-                        var characterOffset = item.GetCharacterOffset();
+                        var characterOffset = item.GetAPCharacterNumber();
                         Progress.ProgressiveAncients.TryGetValue(characterOffset, out var unlockCount);
                         if (!Settings.NeowSanity || unlockCount > 1)
                             Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
                     }
 
+                    if (liveDelivery
+                        && MultiplayerSupport.IsRealMultiplayerRun
+                        && GameUtility.CurrentPlayer is Player currentPlayer
+                        && !ApRunData.PublishLocalProgress(currentPlayer))
+                    {
+                        MultiplayerSupport.InvalidateRunClaims(
+                            "Progressive Ancient progress could not be published to the host"
+                        );
+                    }
+
                     break;
                 }
                 case APItem.ProgressiveStarterCard:
+                {
                     HandleThreshholdItem(item, Progress.ProgressiveStarterCards, "Progressive Starter Cards");
-                    ProgressiveStarterUtility.QueueReconcileCurrentPlayer();
+                    Progress.ProgressiveStarterCards.TryGetValue(
+                        item.GetAPCharacterNumber(),
+                        out int receivedCount
+                    );
+                    HandleProgressiveStarterReceipt(
+                        liveDelivery,
+                        index,
+                        item.GetAPCharacterNumber(),
+                        ApProgressiveStarterActionMessage.StarterKind.Card,
+                        receivedCount
+                    );
                     break;
+                }
                 case APItem.ProgressiveStarterRelic:
+                {
                     HandleThreshholdItem(item, Progress.ProgressiveStarterRelics, "Progressive Starter Relics");
-                    ProgressiveStarterUtility.QueueReconcileCurrentPlayer();
+                    Progress.ProgressiveStarterRelics.TryGetValue(
+                        item.GetAPCharacterNumber(),
+                        out int receivedCount
+                    );
+                    HandleProgressiveStarterReceipt(
+                        liveDelivery,
+                        index,
+                        item.GetAPCharacterNumber(),
+                        ApProgressiveStarterActionMessage.StarterKind.Relic,
+                        receivedCount
+                    );
                     break;
+                }
                 case APItem.Relic:
                 {
                     // Save loading replays the whole item list, then reconciles once at the end.
@@ -189,10 +240,10 @@ namespace StS2AP.Patches
                     Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
 
                     var player = GameUtility.CurrentPlayer;
-                    var characterOffset = player?.Character.GetCharacterOffset();
+                    var characterOffset = player?.Character.GetAPCharacterNumber();
                     if (player == null
                         || !characterOffset.HasValue
-                        || item.GetCharacterOffset() != characterOffset.Value)
+                        || item.GetAPCharacterNumber() != characterOffset.Value)
                     {
                         return;
                     }
@@ -202,6 +253,9 @@ namespace StS2AP.Patches
                     // A receipt arriving after its Elite/chest reward belongs in the AP menu.
                     // Reconcile all pairs so checkpoint loads do not depend on callback order.
                     RelicRewardUtility.ReconcileBankedRewards(player);
+                    // Even when there is no bank to reconcile, every replica needs the compact
+                    // receipt index before it constructs the next natural relic reward.
+                    ApRunData.PublishLocalProgress(player);
                     return;
                 }
                 // Gold is condensed into a single reward pool
@@ -212,8 +266,8 @@ namespace StS2AP.Patches
                 case APItem.BossGold:
                 {
                     // Get the IDs for storing the item
-                    var charOffset = item.GetCharacterOffset();
-                    var itemId = item.GetCharacterSpecificItemID();
+                    var charOffset = item.GetAPCharacterNumber();
+                    var itemId = item.GetCharacterItemType();
 
                     // Add the Gold to the amount we've received
                     try
@@ -227,7 +281,8 @@ namespace StS2AP.Patches
                     catch (KeyNotFoundException e)
                     {
                         LogUtility.Error(
-                            $"GoldItemAmounts does not have a value for this item! ({item.ItemDisplayName} from {item.Player.Name})"
+                            $"GoldItemAmounts does not have a value for this item! "
+                                + $"({item.ItemDisplayName} from {item.Player.Name}): {e}"
                         );
                     }
                     catch
@@ -247,8 +302,8 @@ namespace StS2AP.Patches
                 case APItem.ProgressiveShopRemove:
                     {
                         // Get the IDs for storing the item
-                        var itemId = item.GetCharacterSpecificItemID();
-                        var playerId = item.GetCharacterOffset();
+                        var itemId = item.GetCharacterItemType();
+                        var playerId = item.GetAPCharacterNumber();
 
                         // Route to the matching per-category tracker
                         var source = itemId switch
@@ -270,7 +325,10 @@ namespace StS2AP.Patches
                         }
                         catch (KeyNotFoundException e)
                         {
-                            LogUtility.Error($"Shop slot tracker does not have a value for this character! ({item.ItemDisplayName} from {item.Player.Name})");
+                            LogUtility.Error(
+                                $"Shop slot tracker does not have a value for this character! "
+                                    + $"({item.ItemDisplayName} from {item.Player.Name}): {e}"
+                            );
                         }
                         catch
                         {
@@ -289,6 +347,16 @@ namespace StS2AP.Patches
                 case APItem.ToughEnemies:
                 case APItem.DeadlyEnemies:
                 case APItem.DoubleBoss:
+                    if (MultiplayerSupport.IsMultiplayerScope)
+                    {
+                        Progress.AllReceivedItems.Add(indexedInfo);
+                        if (liveDelivery && MultiplayerSupport.IsRealMultiplayerRun)
+                            AscensionMultiplayer.ReceiveLiveReceipt(indexedInfo);
+                        else if (liveDelivery)
+                            AscensionMultiplayer.RefreshLobbyStagingForReceipt();
+                        break;
+                    }
+
                     Progress.Ascensions.ProcessAscensionLevel(
                         GameUtility.CurrentConfig,
                         item,
@@ -311,13 +379,25 @@ namespace StS2AP.Patches
         /// Handles universal items that do not have a character offset baked in.
         ///
         /// Universal items have no character offset, so their ItemId is cast directly to APItem
-        /// without any modulo operation. Currently all universal items are combat buffs applied
-        /// via <see cref="BuffUtility"/> at the start of the player's next turn.
+        /// without any modulo operation. In multiplayer, combat buffs contribute five raw AP
+        /// gold to a cumulative total divided equally across the configured characters.
         /// </summary>
         private static void HandleUniversalItem(ItemInfo item, int index)
         {
+            if (MultiplayerSupport.IsMultiplayerScope
+                && ItemTable.IsUniversalCombatBuff(item.ItemId))
+            {
+                int addedGold = ApGrantDispatcher.AddUniversalBuffGold();
+                LogUtility.Success(
+                    $"Converted universal buff {item.ItemName} (index {index}) into "
+                        + $"{ApGrantDispatcher.UniversalBuffGoldValue} shared AP gold; "
+                        + $"added {addedGold} gold per configured character after cumulative division"
+                );
+                return;
+            }
+
             // Cast ItemId directly � no modulo needed since universal items have no character offset.
-            var universalId = (APItem)item.ItemId;
+            var universalId = item.GetUniversalItemId();
             switch (universalId)
             {
                 case APItem.FreeAttack:
@@ -354,8 +434,8 @@ namespace StS2AP.Patches
         )
         {
             // Get the IDs for storing the item
-            var itemId = item.GetCharacterSpecificItemID();
-            var offset = item.GetCharacterOffset();
+            var itemId = item.GetCharacterItemType();
+            var offset = item.GetAPCharacterNumber();
 
             // Increment the reward
             try
@@ -369,7 +449,8 @@ namespace StS2AP.Patches
             catch (KeyNotFoundException e)
             {
                 LogUtility.Error(
-                    $"{name} does not have a value for this character! ({item.ItemDisplayName} from {item.Player.Name})"
+                    $"{name} does not have a value for this character! "
+                        + $"({item.ItemDisplayName} from {item.Player.Name}): {e}"
                 );
             }
             catch
@@ -380,19 +461,62 @@ namespace StS2AP.Patches
             }
         }
 
+        private static void PublishRestSiteProgress(bool liveDelivery)
+        {
+            if (liveDelivery
+                && MultiplayerSupport.IsRealMultiplayerRun
+                && GameUtility.CurrentPlayer is Player currentPlayer
+                && !ApRunData.PublishLocalProgress(currentPlayer))
+            {
+                LogUtility.Error(
+                    "Progressive Rest/Smith state could not be published to the host"
+                );
+            }
+        }
+
+        private static void HandleProgressiveStarterReceipt(
+            bool liveDelivery,
+            int receivedItemIndex,
+            long characterOffset,
+            ApProgressiveStarterActionMessage.StarterKind kind,
+            int receivedCount)
+        {
+            if (MultiplayerSupport.IsMultiplayerScope)
+            {
+                if (liveDelivery && MultiplayerSupport.IsRealMultiplayerRun)
+                {
+                    ProgressiveStarterMultiplayer.ReceiveLiveReceipt(
+                        receivedItemIndex,
+                        characterOffset,
+                        kind,
+                        receivedCount
+                    );
+                }
+                return;
+            }
+
+            ProgressiveStarterUtility.QueueReconcileCurrentPlayer();
+        }
+
         public static void ReprocessItems()
         {
             Paused = true;
             try
             {
+                ArchipelagoSession? session = ArchipelagoClient.Session;
+                if (session == null)
+                {
+                    LogUtility.Error("Cannot reprocess AP items without an active session.");
+                    return;
+                }
                 ClearQueue();
                 for (
                     global::System.Int32 i = 0;
-                    i < ArchipelagoClient.Session.Items.AllItemsReceived.Count;
+                    i < session.Items.AllItemsReceived.Count;
                     i++
                 )
                 {
-                    ItemInfo info = ArchipelagoClient.Session.Items.AllItemsReceived[i];
+                    ItemInfo info = session.Items.AllItemsReceived[i];
 
                     // i+1 because the index from multiclient .net is essentially 1 based, not 0
                     ProcessItem(new IndexedItemInfo(info, i + 1), false);
@@ -402,6 +526,21 @@ namespace StS2AP.Patches
             finally
             {
                 Paused = false;
+            }
+        }
+
+        /// <summary>
+        /// Applies items that were held by the multiplayer fail-closed profile when the user
+        /// backs out and starts singleplayer in the same AP session.
+        /// </summary>
+        public static void ProcessDeferredItemsForSingleplayer()
+        {
+            foreach (IndexedItemInfo item in MultiplayerSupport.TakeDeferredItemsForSingleplayer())
+            {
+                LogUtility.Info(
+                    $"Processing previously deferred AP item {item.Index} for singleplayer"
+                );
+                ProcessItem(item);
             }
         }
 

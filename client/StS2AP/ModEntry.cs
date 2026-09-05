@@ -34,7 +34,7 @@ namespace StS2AP
             LogUtility.Info("Archipelago mod initializing...");
 
             // Register with RitsuLib
-            var assembly = Assembly.GetExecutingAssembly();
+            var assembly = typeof(ModEntry).Assembly;
             ModTypeDiscoveryHub.RegisterModAssembly(ModId, assembly);
             using (RitsuLibFramework.BeginModDataRegistration(ModId))
             {
@@ -46,10 +46,16 @@ namespace StS2AP
                     defaultFactory: () => new ClientSettings(),
                     autoCreateIfMissing: true
                 );
+                ArchipelagoReward.Initialize();
+                ApRunData.Initialize();
             }
             ModSettingsRegistration.Register();
 
             // Initialize Utilities
+            ApMirroredRewardDispatcher.Initialize();
+            RelicReceiptMultiplayer.Initialize();
+            ProgressiveStarterMultiplayer.Initialize();
+            AscensionMultiplayer.Initialize();
             DeathLinkUtility.Initialize();
             BuffUtility.Initialize();
 
@@ -60,7 +66,7 @@ namespace StS2AP
 
                 /// VERY IMPORTANT: For `PatchAll()` to work, we need to use nested classes like we're using in the `Patches` directory.
                 /// The syntax is somewhat ugly, but it's easier to maintain this way since we don't have to patch by category/individually.
-                harmony.PatchAll();
+                harmony.PatchAll(assembly);
                 LogUtility.Success("Harmony patches applied successfully.");
                 LogUtility.Info("Archipelago mod initialized.");
             }
@@ -77,7 +83,7 @@ namespace StS2AP
         private static void RegisterAssemblyResolver()
         {
             // Get the directory where this mod's DLL is located
-            var assembly = Assembly.GetExecutingAssembly();
+            var assembly = typeof(ModEntry).Assembly;
             _modDirectory = Path.GetDirectoryName(assembly.Location);
 
             // Register the resolver for the default AssemblyLoadContext

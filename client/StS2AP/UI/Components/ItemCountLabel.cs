@@ -107,7 +107,8 @@ namespace StS2AP.UI.Components
             {
                 try
                 {
-                    var tipSet = NHoverTipSet.CreateAndShow(Root, _hoverTip);
+                    var tipSet = NHoverTipSet.CreateAndShow(Root, _hoverTip)
+                        ?? throw new InvalidOperationException("The game did not create a hover-tip set");
 
                     // Get the viewport size to calculate screen center
                     var viewportSize = Root.GetViewportRect().Size;

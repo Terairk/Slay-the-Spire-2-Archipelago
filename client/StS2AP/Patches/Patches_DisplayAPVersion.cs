@@ -12,16 +12,10 @@ namespace StS2AP.Patches
         [HarmonyPostfix]
         public static void Postfix(NDebugInfoLabelManager __instance)
         {
-            // Use Traverse to access private fields more easily
-            var releaseInfo = Traverse.Create(__instance).Field("_releaseInfo").GetValue();
-
-            if (releaseInfo != null)
+            if (__instance._releaseInfo != null)
             {
-                var textTraverse = Traverse.Create(releaseInfo).Property("Text");
-                string currentText = textTraverse.GetValue<string>();
-
                 // Add the Archipelago mod version as a new line
-                textTraverse.SetValue(currentText + $"\nArchipelago Mod {ArchipelagoClient.Version}");
+                __instance._releaseInfo.Text += $"\nArchipelago Mod {ArchipelagoClient.Version}";
             }
         }
     }

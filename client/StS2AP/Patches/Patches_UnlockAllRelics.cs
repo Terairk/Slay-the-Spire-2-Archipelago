@@ -1,62 +1,66 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.RelicPools;
-using System.Reflection;
 
-namespace StS2AP.Patches
+namespace StS2AP.Patches;
+
+/// <summary>Removes unlock filtering from the playable and shared relic pools.</summary>
+public static class Patches_UnlockAllRelics
 {
-    /// <summary>
-    /// Forces all relics to always be available in the relic pool for all characters.
-    /// </summary>
-    [HarmonyPatch]
-    public static class Patches_UnlockAllRelics
+    private static void Unlock(RelicPoolModel pool, ref IEnumerable<RelicModel> result) =>
+        result = pool.AllRelics;
+
+    [HarmonyPatch(typeof(SharedRelicPool), nameof(RelicPoolModel.GetUnlockedRelics))]
+    private static class Shared
     {
-        /// <summary>
-        /// List of each character's Relic Pool, including the Shared Relic Pool.
-        /// </summary>
-        private static readonly Type[] RelicPoolTypes =
-        [
-            typeof(SharedRelicPool),
-            typeof(IroncladRelicPool),
-            typeof(SilentRelicPool),
-            typeof(DefectRelicPool),
-            typeof(NecrobinderRelicPool),
-            typeof(RegentRelicPool)
-        ];
-
-        /// <summary>
-        /// Identifies all the `GetUnlockedRelics` methods from each relic pool class that should be patched.
-        /// Harmony will apply the postfix patch to each of these methods.
-        /// </summary>
-        /// <returns>An enumerable of MethodBase objects representing each GetUnlockedRelics method to patch.</returns>
-        [HarmonyTargetMethods]
-        static IEnumerable<MethodBase> TargetMethods()
-        {
-            foreach (var type in RelicPoolTypes)
-            {
-                var method = AccessTools.Method(type, "GetUnlockedRelics");
-                if (method != null)
-                {
-                    yield return method;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Postfix patch that replaces the list of unlocked relics with all available relics from the pool.
-        /// This is applied to all character relic pools, ensuring every relic is available regardless of unlock status.
-        /// </summary>
-        /// <param name="__result">The original result from GetUnlockedRelics, which is replaced with all relics.</param>
-        /// <param name="__instance">The relic pool instance being patched (can be any of the pool types).</param>
         [HarmonyPostfix]
-        static void UnlockAllRelics(ref IEnumerable<RelicModel> __result, object __instance)
-        {
-            // Use reflection to get AllRelics from whatever pool type this is
-            var allRelicsProperty = AccessTools.Property(__instance.GetType(), "AllRelics");
-            if (allRelicsProperty != null)
-            {
-                __result = (IEnumerable<RelicModel>)allRelicsProperty.GetValue(__instance);
-            }
-        }
+        private static void Postfix(
+            SharedRelicPool __instance,
+            ref IEnumerable<RelicModel> __result) => Unlock(__instance, ref __result);
+    }
+
+    [HarmonyPatch(typeof(IroncladRelicPool), nameof(RelicPoolModel.GetUnlockedRelics))]
+    private static class Ironclad
+    {
+        [HarmonyPostfix]
+        private static void Postfix(
+            IroncladRelicPool __instance,
+            ref IEnumerable<RelicModel> __result) => Unlock(__instance, ref __result);
+    }
+
+    [HarmonyPatch(typeof(SilentRelicPool), nameof(RelicPoolModel.GetUnlockedRelics))]
+    private static class Silent
+    {
+        [HarmonyPostfix]
+        private static void Postfix(
+            SilentRelicPool __instance,
+            ref IEnumerable<RelicModel> __result) => Unlock(__instance, ref __result);
+    }
+
+    [HarmonyPatch(typeof(DefectRelicPool), nameof(RelicPoolModel.GetUnlockedRelics))]
+    private static class Defect
+    {
+        [HarmonyPostfix]
+        private static void Postfix(
+            DefectRelicPool __instance,
+            ref IEnumerable<RelicModel> __result) => Unlock(__instance, ref __result);
+    }
+
+    [HarmonyPatch(typeof(NecrobinderRelicPool), nameof(RelicPoolModel.GetUnlockedRelics))]
+    private static class Necrobinder
+    {
+        [HarmonyPostfix]
+        private static void Postfix(
+            NecrobinderRelicPool __instance,
+            ref IEnumerable<RelicModel> __result) => Unlock(__instance, ref __result);
+    }
+
+    [HarmonyPatch(typeof(RegentRelicPool), nameof(RelicPoolModel.GetUnlockedRelics))]
+    private static class Regent
+    {
+        [HarmonyPostfix]
+        private static void Postfix(
+            RegentRelicPool __instance,
+            ref IEnumerable<RelicModel> __result) => Unlock(__instance, ref __result);
     }
 }
