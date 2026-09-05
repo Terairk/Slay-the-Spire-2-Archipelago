@@ -38,7 +38,8 @@ class SlayTheSpire2World(World):
     web = SlayTheSpire2Web()
     options_dataclass = Spire2Options
     options: Spire2Options
-    mod_compat_version = "1.0.0"
+    mod_compat_version = "1.0.1"
+    compat_flag = 1
     origin_region_name = "Neow's Room"
 
     # Build the final Item Table
@@ -686,6 +687,7 @@ class SlayTheSpire2World(World):
                 "costs": self.options.shop_sanity_costs.value,
             },
             "mod_compat_version": self.mod_compat_version,
+            "CompatFlag": self.compat_flag,
         }
         slot_data.update(self.options.as_dict(
             "ascension",
