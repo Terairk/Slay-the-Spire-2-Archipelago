@@ -2,24 +2,27 @@ namespace StS2AP.Domain
 
 open System
 
-/// Failure to interpret the existing card/potion wire contract.
+/// Invalid card or potion generation settings.
 [<RequireQualifiedAccess>]
 type MaterializationError =
     | UnknownStrategy of wireId: string
     | InconsistentContract
 
-    /// Keeps C# error handling exhaustive without branching on diagnostic text.
+    /// Calls the C# handler for this error.
     member this.Match(unknownStrategy: Func<string, 'T>, inconsistentContract: Func<'T>) : 'T =
         match this with
         | MaterializationError.UnknownStrategy wireId -> unknownStrategy.Invoke(wireId)
         | MaterializationError.InconsistentContract -> inconsistentContract.Invoke()
 
-/// Validated card/potion generation policy. Construction is restricted to Decode.
-/// Restoring a replica-native assignment must never replay the original native rolls.
+/// How machines agree on a card or potion reward.
+/// The owner is the reward's player, not necessarily the host.
 type RewardMaterialization =
     private
+    /// Normal path: the owner sends the chosen reward; other machines use it without rolling again.
     | OwnerFinal
+    /// Reuses a reward already rolled with the game's RNG, without rolling again.
     | RestoredReplicaNative
+    /// Each machine rolls with the game's RNG and checks that results match. Diagnostics only; currently disabled.
     | NewReplicaNative
 
     member this.RequiresNativeMaterialization =
@@ -32,15 +35,14 @@ type RewardMaterialization =
         | OwnerFinal -> "ap_rng_owner_final_v1"
         | RestoredReplicaNative | NewReplicaNative -> "replica_native_v1"
 
-    /// C# consumes named decisions without constructing F# union cases or functions.
+    /// Calls the C# handler for this choice.
     member this.Match(ownerFinal: Func<'T>, restoredReplicaNative: Func<'T>, newReplicaNative: Func<'T>) : 'T =
         match this with
         | OwnerFinal -> ownerFinal.Invoke()
         | RestoredReplicaNative -> restoredReplicaNative.Invoke()
         | NewReplicaNative -> newReplicaNative.Invoke()
 
-    /// Accepts exactly the strategy/flag combinations previously accepted by the host.
-    /// Unknown (including null) strategy IDs remain errors, never a fallback strategy.
+    /// Checks the received settings. Unknown IDs (including null) are errors.
     static member Decode(strategyId: string, requiresNativeMaterialization: bool) =
         match strategyId, requiresNativeMaterialization with
         | "ap_rng_owner_final_v1", false -> Ok OwnerFinal
