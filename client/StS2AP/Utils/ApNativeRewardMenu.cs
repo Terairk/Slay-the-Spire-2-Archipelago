@@ -213,7 +213,7 @@ public static class ApNativeRewardMenu
             return new ApUnavailableReward(
                 presentation with { ItemName = "Ancient Relic Choice Unavailable" },
                 player,
-                "No valid Act 2/3 Ancient relic choice is available for this receipt."
+                "No valid Ancient relic choice is available for this receipt."
             );
         }
 

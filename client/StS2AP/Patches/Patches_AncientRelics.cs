@@ -184,8 +184,11 @@ namespace StS2AP.Patches
             // use Anytime and balanced as our defaults
             var location = ArchipelagoClient.Settings?.AncientRelicLocation ?? AncientRelicLocation.Anytime;
             var poolMode = ArchipelagoClient.Settings?.AncientRelicPool ?? AncientRelicPoolMode.Balanced;
+            var anytimeUsesRewardMenu = location == AncientRelicLocation.Anytime &&
+                                        (currentAct is 2 or 3 ||
+                                         (currentAct == 1 && ArchipelagoClient.Settings.NeowSanity));
             var useProceedOnly = maxAct < currentAct ||
-                                 (location == AncientRelicLocation.Anytime && currentAct is 2 or 3);
+                                 anytimeUsesRewardMenu;
             if (useProceedOnly)
             {
                 LogUtility.Info($"Replacing Ancient choices with Proceed; location {location} maxAct {maxAct} current act {currentAct}");

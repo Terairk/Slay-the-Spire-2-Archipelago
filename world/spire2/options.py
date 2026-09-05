@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import List
 
 from Options import OptionSet, Range, Toggle, Visibility, Choice, TextChoice, OptionDict, OptionCounter, \
-    PerGameCommonOptions, OptionGroup, DeathLink
+    PerGameCommonOptions, OptionGroup, DeathLink as ArchipelagoDeathLink
 
 import schema
 from schema import Schema, Optional, And
@@ -26,9 +26,8 @@ class Characters(OptionSet):
     valid_keys_casefold = False
 
 class ModdedCharacters(OptionSet):
-    """Enter the list of modded characters to play as.  These must be the internal names of the
-    characters.  This option is ignored if use_advanced_characters is set to true.  Only 5
-    modded characters are allowed.
+    """Modded characters to include when Advanced Characters is disabled. Enter each character's
+    internal ID. At most 5 modded characters can be present in the generated character set.
 
     If using a modded character:
     Enter the internal ID of the character to use.
@@ -36,9 +35,9 @@ class ModdedCharacters(OptionSet):
     If you don't know the exact ID to enter with the mod installed go to
     `Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.
 
-    If the chosen character mod is not installed, checks will be sent when another character
-    sends them.  If none of the chosen character mods are installed, you will be playing
-    a very boring Ironclad run.
+    If a configured mod is missing or its ID is wrong, the client treats that character as
+    unrecognized and mirrors its checks from playable configured characters. Configure at least
+    one character that the client can load so it has a valid starting character.
     """
     display_name = "Modded Characters"
     default = []
@@ -54,12 +53,11 @@ class PickNumberCharacters(Range):
     """Randomly select from the configured characters this many characters to generate for.
     0 disables.
     For example, if "character" is configured to be:
-        character:
+        characters:
             - Ironclad
             - Silent
             - Defect
-    And pick_num_characters is set to 2, then one possible outcome is
-    to have a run with Ironclad and Defect, but not the Silent.
+    and pick_num_characters is 2, one possible generated set is Ironclad and Defect.
     """
     display_name = "Pick Number of Characters"
     range_start = 0
@@ -88,16 +86,16 @@ class UnlockedCharacter(TextChoice):
     option_necrobinder = 4
 
 class Ascension(OptionSet):
-    """What Ascensions do you wish to play with. Note that logic is written assuming ascension 1
-        Valid values are the numbers for the ascensions, and the names for the ascensions.  When a number is provided
-        alone, all ascensions below that number will also be enabled.
+    """Logic assumes Ascension 1 is enabled for relic checks. A single number N enables Ascensions 1 through N.
+       When multiple values are supplied, each number enables only that numbered Ascension. You can also provide
+       names which are shown below. Names are case-sensitive.
 
         The ascension names are as follows:
         - 'SwarmingElites'
         - 'WearyTraveler'
         - 'Poverty'
         - 'TightBelt'
-        - "AscenderBane"
+        - 'AscendersBane'
         - 'Inflation'
         - 'Scarcity'
         - 'ToughEnemies'
@@ -120,7 +118,9 @@ class Ascension(OptionSet):
 #     default = 0
 
 class NeowSanity(Toggle):
-    """Whether to shuffle Neow giving you a start of run bonus or not."""
+    """Adds Neow's start-of-run reward as a location and Progressive Ancient reward.
+
+    With Anytime, Neow's relic choices appear in the Archipelago reward menu."""
     display_name = "Neow Sanity"
     default = 0
 
@@ -140,8 +140,8 @@ class AncientRelicPool(Choice):
     """Controls which Ancient relics can appear in each three-choice reward.
 
     Balanced uses the natural Ancient rolled for that act. Chaos can use relics from
-    any Ancient in the appropriate act. True Chaos combines the Act 2 and Act 3 pools
-    for both Progressive Ancient rewards."""
+    any Ancient in the appropriate act. True Chaos combines the Act 2 and Act 3 pools for the
+    Act 2 and Act 3 Progressive Ancient rewards. Neow's reward always uses Neow's Act 1 pool."""
     display_name = "Ancient Relic Pool"
     option_balanced = 0
     option_chaos = 1
@@ -153,7 +153,8 @@ class RelicRewardsAvailableAnytime(Range):
     """How many Relic items can be claimed before earning relic rewards in the run.
 
     The client snapshots this value at run start. Later Relic items need a reward from an
-    Elite, treasure chest, or Black Star before they appear in the AP reward menu."""
+    Elite, treasure chest, or Black Star before they appear in the AP reward menu. The client's
+    local AP relic availability can be overriden in client settings for new runs only."""
     display_name = "Relic Rewards Available Anytime"
     range_start = 0
     range_end = 10
@@ -171,16 +172,14 @@ class ProgressiveStarterCard(Toggle):
 
     Requires Include Floor Checks. Each character gets two Progressive Starter Card items, which
     replace two floor-check filler items. With none received, the character
-    starts without the special starter card that Archaic Tooth would transform (Bash, Neutralize,
-    Dualcast, Unleash, Falling Star, or a compatible modded equivalent). The first item restores
-    the normal card and the second grants Archaic Tooth so its normal effect performs the
-    transformation. Archaic Tooth is unavailable from Orobas while this option is enabled.
+    starts without the special starter card that Archaic Tooth would transform (Bash, Neutralize, a compatible modded equivalent etc).
+    The first item restores the normal card.
 
     Characters without an Archaic Tooth transformation are left unchanged, although their two
     Progressive Starter Card items are still present in the multiworld.
 
-    WARNING: This can make the early game significantly harder for some characters. Logic does not
-    account for the missing or upgraded starter card."""
+    WARNING: This can make the early game significantly harder for some characters. Logic expects you to reach
+    Late Act 1 (may need to beat 1 Elite) without your starters."""
     display_name = "Progressive Starter Card"
     default = 0
 
@@ -191,21 +190,21 @@ class ProgressiveStarterRelic(Toggle):
     Requires Include Floor Checks. Each character gets two Progressive Starter Relic items, which
     replace two floor-check filler items. With none received, the character
     starts without the starter relic that Touch of Orobas would refine (such as Burning Blood, or a
-    compatible modded equivalent). The first item restores the normal relic and the second grants
-    Touch of Orobas so its normal effect performs the refinement. Touch of Orobas is unavailable
-    from Orobas while this option is enabled.
+    compatible modded equivalent).
 
     Characters without a Touch of Orobas refinement are left unchanged, although their two
     Progressive Starter Relic items are still present in the multiworld.
 
     WARNING: This can make the early game significantly harder for characters whose starting relic
-    is central to their early power. Logic does not account for the missing or upgraded starter relic."""
+    is central to their early power. Logic expects you to reach Late Act 1 (may require beating 1 Elite) without
+    your starters."""
     display_name = "Progressive Starter Relic"
     default = 0
 
 
 class IncludeFloorChecks(Toggle):
-    """Whether to include reaching new floors as a location. Adds various fillers as items."""
+    """Add locations for reaching new floors and fill the corresponding item-pool space with
+    configurable filler. Ascension Down and Progressive Starter options require these locations."""
     display_name = "Include Floor Checks"
     default = 1
 
@@ -216,7 +215,8 @@ class CampfireSanity(Toggle):
     default = 0
 
 class ShopSanity(Toggle):
-    """Whether to shuffle shop slots into the pool.  Also adds new locations at the shop per slot shuffled."""
+    """Move the configured shop slots to a separate AP shop page as purchasable location checks and
+    shuffle items that progressively restore the corresponding slots on the normal shop page."""
     display_name = "Shop Sanity"
     option_true = 1
     option_false = 0
@@ -258,14 +258,15 @@ class ShopRemoveSlots(Toggle):
     default = 0
 
 class ShopSanityCosts(Choice):
-    """How expensive the AP shop items should be. Tiered means costs map to typical costs rarity for the slot.
-    Progression = Rare, Useful = Uncommon, Filler = Common
-    Logic does not take this option into account.
-    Fixed=15 gold each
-    Super_Discount_Tiered=20% of tiered costs
-    Discount_Tiered=50% of tiered costs
-    Tiered=Vanilla price for slot
-    """
+    """Controls the price paid for location checks on the AP shop page. Normal shop-item prices are
+    unaffected. Tiered modes first calculate a vanilla-style baseline for the AP card, relic, or potion.
+
+    Fixed: 15 gold per AP check.
+    Super Discount Tiered: 20 percent of the calculated baseline.
+    Discount Tiered: 50 percent of the calculated baseline.
+    Tiered: the full calculated baseline.
+
+    Generation logic does not account for these prices."""
     display_name = "Shop Sanity Costs"
     option_Fixed = 0
     option_Super_Discount_Tiered = 1
@@ -274,12 +275,12 @@ class ShopSanityCosts(Choice):
     default = 2
 
 class GoldSanity(Toggle):
-    """Whether to enable shuffling gold rewards into the multiworld. Adds 22 locations per character"""
+    """Whether to replace combat, elite, and boss gold rewards with AP locations. Adds 22 locations per character."""
     display_name = "Gold Sanity"
     default = 0
 
 class PotionSanity(Toggle):
-    """Whether to enable shuffling potion drops into the multiworld; adds 9 locations per character."""
+    """Whether to replace potion rewards with AP locations. Adds 9 locations per character."""
     display_name = "Potion Sanity"
     default = 0
 
@@ -320,9 +321,9 @@ class CharacterOptions(OptionDict):
     If you don't know the exact ID to enter with the mod installed go to
     `Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.
 
-    If the chosen character mod is not installed, checks will be sent when another character
-    sends them.  If none of the chosen character mods are installed, you will be playing
-    a very boring Ironclad run.
+    If a configured mod is missing or its ID is wrong, the client treats that character as
+    unrecognized and mirrors its checks from playable configured characters. Configure at least
+    one character that the client can load so it has a valid starting character.
     """
     # For those wondering why on earth there's an advanced character option
     # it's to support modded characters.
@@ -343,23 +344,25 @@ class CharacterOptions(OptionDict):
     })
 
 class AscensionDown(OptionSet):
-    """The ascension downs to add to the item pool, per character. Only valid when
-    `use_advanced_characters` is false (see `advanced_characters`), and when `include_floor_checks` is true.
-    Valid values are the numbers for the ascensions, and also the names for the ascensions.  When a number is provided
-    alone, ascension downs for all the ones below will also be added to the pool.
+    """Ascension Down items to add for each character.
+    Only enabled Ascensions can receive a corresponding Ascension Down.
+
+    A single number N selects the highest N enabled Ascensions. When multiple values are supplied, each
+    number selects only that numbered Ascension. Names are case-sensitive.
+    Supports both numbers and names.
 
     - 'SwarmingElites'
     - 'WearyTraveler'
     - 'Poverty'
     - 'TightBelt'
-    - "AscenderBane"
+    - 'AscendersBane'
     - 'Inflation'
     - 'Scarcity'
     - 'ToughEnemies'
     - 'DeadlyEnemies'
     - 'DoubleBoss'
 
-    Logic does NOT account for this."""
+    Logic does not account for receiving these items."""
     def __init__(self, value: typing.Iterable[str], random_str: str | None = None):
         self.value = { str(x) for x in value }
         self.random_str = random_str
@@ -372,9 +375,16 @@ class AscensionDown(OptionSet):
 
 # Death Link Options
 
+class DeathLink(ArchipelagoDeathLink):
+    """Share deaths with other Death Link players. Dying sends a Death Link. Receiving one while in
+    a run damages the current character by Death Link Damage Percent of maximum health and can add a
+    Death Fragment if the character survives. Local client settings can override these slot settings."""
+
+
 class EnableDeathFragments(Toggle):
-    """If Death Link is enabled, turning this setting on gives you a Curse Card whenever
-    you receive a Death Link."""
+    """When Death Link is enabled, add a permanent Death Fragment curse after receiving a Death Link
+    while in a run, provided the character survives the configured damage. If received during combat,
+    another copy is also added to that combat's draw pile."""
     display_name = "Enable Death Fragments"
     default = 1
 
@@ -448,110 +458,105 @@ def _create_filler_weight_class(item_name: str, description: str, default_weight
 # Character-specific filler items
 OneGoldFillerWeight = _create_filler_weight_class(
     "One Gold",
-    """Generates one gold for the character who receives it.
-    Available across runs, as a pool of all gold rewards.
-    
-    Note: Even if you disable this item, you may still see it in on rare occasion, 
-    as it's the fallback for when item generation has issues.""",
+    """Grants one gold to its associated character. If every filler weight is None, the generator
+    uses that character's One Gold as the required safe fallback.""",
     default_weight = 0
 )
 
 FiveGoldFillerWeight = _create_filler_weight_class(
     "Five Gold",
-    """Generates five gold for the character who receives it.
-    Available across runs, as a pool of all gold rewards.""",
+    """Grants five gold to its associated character.""",
     default_weight = 5
 )
 
 # Universal filler items
 FreeAttackFillerWeight = _create_filler_weight_class(
     "Free Attack",
-    "Grants a buff that makes the next attack card you play free.",
+    "At the start of the next player combat turn, makes the next Attack played cost zero energy.",
     default_weight = 5
 )
 
 FreePowerFillerWeight = _create_filler_weight_class(
     "Free Power",
-    "Grants a buff that makes the next power card you play free.",
+    "At the start of the next player combat turn, makes the next Power played cost zero energy.",
     default_weight = 5
 )
 
 FreeSkillFillerWeight = _create_filler_weight_class(
     "Free Skill",
-    "Grants a buff that makes the next skill card you play free.",
+    "At the start of the next player combat turn, makes the next Skill played cost zero energy.",
     default_weight = 5
 )
 
 VigorFillerWeight = _create_filler_weight_class(
     "Vigor",
-    "Grants a buff that provides Vigor for the next combat.",
+    "Applies Vigor at the start of the next player combat turn.",
     default_weight = 5
 )
 
 ArtifactFillerWeight = _create_filler_weight_class(
     "Artifact",
-    "Grants a buff that protects you from debuffs for the next combat.",
+    "Applies Artifact at the start of the next player combat turn.",
     default_weight = 5
 )
 
 ThornsFillerWeight = _create_filler_weight_class(
     "Thorns",
-    "Grants a buff that provides Thorns for the next combat.",
+    "Applies Thorns at the start of the next player combat turn.",
     default_weight = 5
 )
 
 DexterityFillerWeight = _create_filler_weight_class(
     "Dexterity",
-    "Grants a buff that increases Dexterity for the next combat.",
+    "Applies Dexterity at the start of the next player combat turn.",
     default_weight = 3
 )
 
 StrengthFillerWeight = _create_filler_weight_class(
     "Strength",
-    "Grants a buff that increases Strength for the next combat.",
+    "Applies Strength at the start of the next player combat turn.",
     default_weight = 3
 )
 
 PlatingFillerWeight = _create_filler_weight_class(
     "Plating",
-    "Grants a buff that provides Plating for the next combat.",
+    "Applies Plating at the start of the next player combat turn.",
     default_weight = 3
 )
 
 BufferFillerWeight = _create_filler_weight_class(
     "Buffer",
-    "Grants a buff that provides Buffer for the next combat.",
+    "Applies Buffer at the start of the next player combat turn.",
     default_weight = 1
 )
 
 FriendshipFillerWeight = _create_filler_weight_class(
     "Friendship",
-    "Raises the Max Energy per turn by 1 for the next combat.",
+    "Applies Friendship at the start of the next player combat turn, raising maximum energy by one.",
     default_weight = 3
 )
 
 PostCombatCardUpgradeFillerWeight = _create_filler_weight_class(
     "Post-Combat Card Upgrade",
-    "Grants a buff that randomly upgrades a card in your deck after combat.",
+    "At the start of the next player combat turn, applies a buff that upgrades a random deck card after combat.",
     default_weight = 1
 )
 
 PostCombatCardRemovalFillerWeight = _create_filler_weight_class(
     "Post-Combat Card Removal",
-    "Grants a buff that lets you removes a card from your deck after combat.",
+    "At the start of the next player combat turn, applies a buff that lets you remove a deck card after combat.",
     default_weight = 1
 )
 
 AdditionalCardRewardFillerWeight = _create_filler_weight_class(
     "Additional Card Reward",
-    "Grants a buff that provides an additional card reward after combat.",
+    "At the start of the next player combat turn, applies a buff that adds a card reward after combat.",
     default_weight = 1
 )
 
 SingleColorlessCardFillerWeight = _create_filler_weight_class(
     "Single Colorless Card",
-    """Grants a Card Reward with a Single, Random Colorless Card. 
-    Like other buffs, it's provided only once upon receiving it - the reward will not appear on subsequent runs.""",
+    """Grants a one-time card reward containing one random colorless card.""",
     default_weight = 3
 )
 
