@@ -16,9 +16,9 @@ namespace StS2AP.Models
         Anytime = 1,
     }
 
-    // Balanced = Relics from a specific act 2 ancient followed by Relics from a specific act 3 ancient
-    // Chaos = Any act 2 ancient relic followed by any act 3 ancient relic
-    // TrueChaos = Any act 2 or act 3 ancient relic always.
+    // Balanced = Relics from the run's Ancient for each Progressive Ancient reward.
+    // Chaos = Any Ancient relic from the reward's act.
+    // TrueChaos = Any Act 2 or Act 3 Ancient relic; Neow's reward remains Neow-only.
     public enum AncientRelicPoolMode
     {
         Balanced = 0,
@@ -75,7 +75,8 @@ namespace StS2AP.Models
 
         /// <summary>
         /// Controls whether Ancient choices use the rolled Ancient, the appropriate act's
-        /// Ancient pool, or the combined Act 2 and Act 3 Ancient pool.
+        /// Ancient pool, or the combined Act 2 and Act 3 Ancient pool. Neow's reward always
+        /// remains in Neow's Act 1 pool.
         /// </summary>
         public AncientRelicPoolMode AncientRelicPool { get; set; } = AncientRelicPoolMode.Balanced;
 

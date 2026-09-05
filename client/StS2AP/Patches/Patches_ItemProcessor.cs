@@ -156,14 +156,7 @@ namespace StS2AP.Patches
                     HandleThreshholdItem(item, Progress.ProgressiveAncients, "Progressive Ancients");
 
                     if (Settings.AncientRelicLocation == AncientRelicLocation.Anytime)
-                    {
-                        // NeowSanity's first progressive unlock still controls the normal Act 1 Neow reward.
-                        // Every Act 2/3 unlock becomes a per-run, linked Ancient choice in the AP reward menu.
-                        var characterOffset = item.GetCharacterOffset();
-                        Progress.ProgressiveAncients.TryGetValue(characterOffset, out var unlockCount);
-                        if (!Settings.NeowSanity || unlockCount > 1)
-                            Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
-                    }
+                        Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
 
                     break;
                 }
