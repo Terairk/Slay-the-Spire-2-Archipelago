@@ -70,3 +70,48 @@ after character switches, local-player-only shop hints and page navigation,
 synchronized reward claims, and save/rejoin behavior. The older singleplayer
 reward-menu implementation is superseded by the multiplayer dispatcher, and
 Lasting Candy remains disabled as on the original multiplayer branch.
+
+## Reconciliation through upstream `7a1535c` (2026-09-06)
+
+Reviewed the five incoming commits after `d3c4d4d`. The checkout already contained
+staged adaptations for session identity, collected campfires, and Anytime Neow.
+These edits were preserved during the merge; no additional runtime changes were
+needed after comparing the upstream behavior with those adaptations.
+
+| Upstream change | Resolution |
+| --- | --- |
+| `1963c26`: separate APWorld compatibility from release versions | Retain the existing `CompatFlag` validation, embedded manifests, and compatibility loader/build setup. Preserve the checkout's existing client `2.1.0` and APWorld `1.1.0` values; this merge does not perform a release or change versions. |
+| `78c0b59`: pending checks and connection handling | Retain `SessionCallbacks`, main-thread/session guards, asynchronous login, reconnect handling, character validation, and identity-bound outboxes. Preserve the staged use of the common `ApSessionIdentity` in `MultiplayerSupport`, including server authority in reconnect identity. |
+| `6e41713`: option descriptions and Anytime Neow | Preserve the staged APWorld descriptions and client adaptation. `Patches_ItemProcessor` and `MultiplayerSupport.PrepareApSession` retain all Anytime Ancient receipts; `ArchipelagoProgress.GetOrAssignAncientRelicChoices` maps them to Neow/Act 2/Act 3. `AncientRelicPool` keeps Neow out of shared Ancient pools, including True Chaos. `ApMirroredRewardDispatcher` retains owner-authored assignments and synchronized claims. Keep descriptions consistent with this client's rejection of missing character mods. |
+| `5af215a`: `!collect` support | Retain the existing `SessionCallbacks.LocationsUpdated` subscription and disposal. Preserve the staged publication through `MultiplayerLocationChecks.PublishEffectiveCheckProgress` so newly collected campfires reach replicas through `ApRunData.PublishLocalProgress`. SDK notifications do not acknowledge durable outbox entries. |
+| `7a1535c`: assorted fixes | Retain `ArchipelagoIdCodec` location composition, `ApRestSiteModel`'s enabled-action fallback, the Lasting Candy blacklist, the Act 2 encounter-only Golden Compass filter, and progressive-count rebuilding on singleplayer continue and multiplayer preparation. The deleted `Patches_CampfireSanity` and `ApNativeRewardMenu` remain replaced by the multiplayer implementations. |
+
+Validation performed on the resolved tree:
+
+- Beta `0.111.0` compile-only client build passed using `C:/Users/terai/sts2dll/v01110`.
+  Godot emitted CS8785 (`GodotProjectDir` absent in compile-only mode) and CS0436
+  (generated `Main` conflicts with the imported game type).
+- C# regression tests: 10 passed. The compiled beta assembly's manifest test also
+  passed separately. The complete compatibility-bundle test was not run.
+- F# domain tests: 18 passed.
+- Archipelago option, logic, and group tests: 96 passed in an isolated framework
+  copy. The framework APWorld builder succeeded there, and the archive's integrity,
+  manifest, and top-level Python sources were checked. The sibling world and
+  installed game were not replaced. Python reported its pure-Python LocationStore
+  fallback and the framework's existing `get_all_state` deprecation warning.
+- The separate admission harness could not compile: its project does not link
+  `ApRewardEffectSpec`, which is referenced by `ApCardAssignmentState`. Both files
+  are unchanged by this merge, so this is an existing validation limitation.
+- No unresolved index entries or whitespace errors remain. In-game runtime
+  behavior is **NOT RUN**; compilation and framework tests do not establish it.
+
+Runtime follow-up on two beta peers with matching RitsuLib:
+
+| Scenario | Expected result |
+| --- | --- |
+| Use `!collect` for an AP owner, then enter the next campfire | Both replicas omit that owner's collected campfire checks. Expect `Published ... campfire check(s) from an AP location update for player ...`; another slot and a vanilla guest retain their own state. |
+| Anytime + Neow Sanity, each pool mode, new run and continue | Neow offers Proceed; the first AP Ancient receipt offers only Neow relics. Later receipts map to Acts 2/3. Reopening and continuing retain assignments and consume each selected reward once. |
+| Lose AP connection, earn checks, then reconnect | Gameplay continues and checks replay only to the same server/seed/team/slot. Expect `Automatic Archipelago reconnect completed`; a different identity is refused. |
+| Campfire with Rest locked and no upgradeable cards | An enabled fallback permits leaving without purchasing an AP check. Expect `Applied AP rest-site options ... fallback=True`. |
+| Immediate Act 2 Ancient versus Anytime/other acts | Golden Compass is eligible only at the immediate Act 2 encounter; Lasting Candy remains excluded. |
+| Continue repeatedly with progressive Rest/Smith/Ancient items | Unlock counts rebuild from AP history without increasing on each continue. |

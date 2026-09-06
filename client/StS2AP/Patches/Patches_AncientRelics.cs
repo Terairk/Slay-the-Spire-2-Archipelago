@@ -306,8 +306,11 @@ namespace StS2AP.Patches
             
             var location = settings.AncientRelicLocation;
             var poolMode = settings.AncientRelicPool;
+            var anytimeUsesRewardMenu = location == AncientRelicLocation.Anytime &&
+                                        (currentAct is 2 or 3 ||
+                                         (currentAct == 1 && settings.NeowSanity));
             var useProceedOnly = maxAct < currentAct ||
-                                 (location == AncientRelicLocation.Anytime && currentAct is 2 or 3);
+                                 anytimeUsesRewardMenu;
             if (useProceedOnly)
             {
                 LogUtility.Info($"Replacing Ancient choices with Proceed; location {location} maxAct {maxAct} current act {currentAct}");

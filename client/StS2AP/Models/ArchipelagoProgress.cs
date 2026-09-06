@@ -246,9 +246,8 @@ namespace StS2AP.Models
             
             // AllReceivedItems contains multiple reward types, so restrict it to this
             // character's Progressive Ancients. ArchipelagoClient adds these entries only for
-            // Anytime mode; with Neow Sanity enabled, it omits the first unlock because
-            // that remains Neow's start-of-run reward. Sorting the remaining entries by
-            // AP item index maps ordinal 0 to Act 2 and ordinal 1 to Act 3.
+            // Anytime mode. Sorting them by AP item index maps their ordinals to Neow/Act 2/Act 3
+            // when Neow Sanity is enabled, or Act 2/Act 3 otherwise.
             var characterOffset = player.GetAPCharacterNumber();
             var orderedAncientItemIndices = AllReceivedItems
                 .Where(item => item.Item.GetAPCharacterNumber() == characterOffset &&
@@ -259,27 +258,33 @@ namespace StS2AP.Models
 
             // This is the item's zero-based position in the ordered list above, not its AP item index.
             var rewardOrdinal = orderedAncientItemIndices.IndexOf(index);
+            var includesNeowReward = ArchipelagoClient.Settings?.NeowSanity ?? false;
+            var maxRewardOrdinal = includesNeowReward ? 2 : 1;
+            var expectedProgression = includesNeowReward ? "Neow/Act 2/Act 3" : "Act 2/Act 3";
             if (rewardOrdinal < 0)
             {
-                LogUtility.Error($"Could not map Ancient reward item index {index} to its Act 2/3 progression");
+                LogUtility.Error($"Could not map Ancient reward item index {index} to its {expectedProgression} progression");
                 return Array.Empty<RelicModel>();
             }
-            if (rewardOrdinal > 1)
+            if (rewardOrdinal > maxRewardOrdinal)
             {
-                // Only two Anytime rewards exist: the first maps to Act 2 and the second to
-                // Act 3. Preserve any surplus receipt as an unavailable menu row rather than
-                // treating an expected non-claimable item as a catalogue failure.
+                // Preserve surplus receipts as unavailable rows. Neow Sanity adds one
+                // claimable reward before the Act 2 and Act 3 rewards.
                 LogUtility.Info(
-                    $"Progressive Ancient item index {index} has no Act 2/3 reward; "
+                    $"Progressive Ancient item index {index} has no {expectedProgression} reward; "
                         + $"claimableOrdinal={rewardOrdinal}"
                 );
                 return Array.Empty<RelicModel>();
             }
 
-            // ModelDb uses zero-based Act indices: 1 is Act 2 and 2 is Act 3 so convert accordingly
-            var ancientActIndex = rewardOrdinal + 1;
+            // With Neow Sanity, ordinals 0/1/2 map to Act indices 0/1/2.
+            // Otherwise ordinals 0/1 map to Act indices 1/2.
+            var ancientActIndex = rewardOrdinal + (includesNeowReward ? 0 : 1);
             var poolMode = ArchipelagoClient.Settings?.AncientRelicPool ?? AncientRelicPoolMode.Balanced;
-            int? poolActIndex = (poolMode == AncientRelicPoolMode.TrueChaos) ? null : ancientActIndex;
+            // True Chaos combines only Act 2/3; Neow's reward remains Neow-only.
+            int? poolActIndex = ancientActIndex == 0
+                ? 0
+                : (poolMode == AncientRelicPoolMode.TrueChaos ? null : ancientActIndex);
             // AP slot + received index is supplied by the multiplayer grant ledger. The
             // singleplayer fallback retains the historical item-index key.
             var choiceKey = stableChoiceKey ?? index.ToString();

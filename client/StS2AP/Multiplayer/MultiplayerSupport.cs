@@ -69,12 +69,6 @@ public static class MultiplayerSupport
     private static ApParticipationKind? _activeParticipation;
     private static IReadOnlyList<ItemInfo> _preparedReceivedItems = Array.Empty<ItemInfo>();
 
-    private readonly record struct ApSessionIdentity(string RoomSeed, int ApTeamId, int ApSlotId)
-    {
-        public override string ToString() =>
-            $"{RoomSeed}/ap-team-{ApTeamId}/ap-slot-{ApSlotId}";
-    }
-
     public static ApPlayDestination PendingDestination { get; private set; } =
         ApPlayDestination.None;
 
@@ -300,7 +294,8 @@ public static class MultiplayerSupport
         out string reason)
     {
         reason = string.Empty;
-        var candidate = new ApSessionIdentity(roomSeed, apTeamId, apSlotId);
+        var candidate = ApSessionIdentity.Create(
+            ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId);
         bool identityLocked =
             ApReconnectController.IsActive
             || _observedStartLobbyScreen != null
@@ -319,7 +314,8 @@ public static class MultiplayerSupport
     /// <summary>Records every successful login so deferred state cannot cross AP identities.</summary>
     public static void NoteApSessionConnected(string roomSeed, int apTeamId, int apSlotId)
     {
-        var identity = new ApSessionIdentity(roomSeed, apTeamId, apSlotId);
+        var identity = ApSessionIdentity.Create(
+            ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId);
         string sessionKey = identity.ToString();
         if (_deferredSessionKey != null && _deferredSessionKey != sessionKey)
         {
@@ -363,7 +359,8 @@ public static class MultiplayerSupport
             return false;
         }
 
-        var identity = new ApSessionIdentity(roomSeed, apTeamId, apSlotId);
+        var identity = ApSessionIdentity.Create(
+            ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId);
         string sessionKey = identity.ToString();
 
         DeferredItems.Clear();
@@ -413,8 +410,7 @@ public static class MultiplayerSupport
                 ancientCounts[characterOffset] = count;
                 ArchipelagoClient.Progress.ProgressiveAncients[characterOffset] = count;
 
-                if (ArchipelagoClient.Settings.AncientRelicLocation == AncientRelicLocation.Anytime
-                    && (!ArchipelagoClient.Settings.NeowSanity || count > 1))
+                if (ArchipelagoClient.Settings.AncientRelicLocation == AncientRelicLocation.Anytime)
                 {
                     ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
                 }

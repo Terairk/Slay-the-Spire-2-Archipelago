@@ -20,5 +20,7 @@
              Link="DomainAdapters\RewardMaterializationAdapter.cs" />
     <Compile Include="..\StS2AP\Persistence\ApReplicaConstructionState.cs"
              Link="Persistence\ApReplicaConstructionState.cs" />
+    <Compile Include="..\StS2AP\Utils\ApSessionIdentity.cs"
+             Link="Utils\ApSessionIdentity.cs" />
   </ItemGroup>
 </Project>

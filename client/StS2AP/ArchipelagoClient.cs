@@ -1418,7 +1418,31 @@ namespace StS2AP
                             CheckedLocations.Add(id);
                     // This SDK event also includes optimistic local checks. Do not use it
                     // to acknowledge durable outbox entries; fresh login still owns that.
+                    int previousCampfireCount = Progress.CheckedCampfireLocationIds.Count;
                     Progress.RefreshCheckedCampfiresFromClient();
+                    int addedCampfires = Progress.CheckedCampfireLocationIds.Count - previousCampfireCount;
+                    if (addedCampfires > 0
+                        && MultiplayerSupport.IsRealMultiplayerRun
+                        && MultiplayerSupport.IsLocalOwnApSlot
+                        && GameUtility.CurrentPlayer is { } player)
+                    {
+                        // !collect bypasses the local check writer. Publish its campfire
+                        // changes so every replica builds options from the updated owner state.
+                        if (!MultiplayerLocationChecks.PublishEffectiveCheckProgress(player))
+                        {
+                            LogUtility.Error(
+                                $"AP location update added {addedCampfires} campfire check(s), "
+                                    + $"but progress for player {player.NetId} could not be published"
+                            );
+                        }
+                        else
+                        {
+                            LogUtility.Info(
+                                $"Published {addedCampfires} campfire check(s) from an AP location "
+                                    + $"update for player {player.NetId}"
+                            );
+                        }
+                    }
                 });
             }
 

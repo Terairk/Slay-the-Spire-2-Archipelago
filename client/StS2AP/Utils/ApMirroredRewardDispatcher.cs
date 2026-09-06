@@ -966,7 +966,7 @@ public static class ApMirroredRewardDispatcher
                     spec.Kind = ApMirroredRewardKind.Unavailable;
                     spec.ItemName = "Ancient Relic Choice Unavailable";
                     spec.UnavailableReason =
-                        "No valid Act 2/3 Ancient relic choice is available for this receipt.";
+                        "No valid Ancient relic choice is available for this receipt.";
                     break;
                 }
                 spec.SerializedModels = choices.Select(SerializeRelic).ToList();
