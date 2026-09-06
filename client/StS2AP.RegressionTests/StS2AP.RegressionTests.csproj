@@ -18,8 +18,14 @@
     <ProjectReference Include="..\StS2AP.Domain\StS2AP.Domain.fsproj" />
     <Compile Include="..\StS2AP\DomainAdapters\MirroredRewardAdapter.cs"
              Link="DomainAdapters\MirroredRewardAdapter.cs" />
-    <Compile Include="..\StS2AP\Models\Rewards\ApGrantModels.cs" Link="Models\Rewards\ApGrantModels.cs" />
-    <Compile Include="..\StS2AP\Models\Rewards\ApGoldClaim.cs" Link="Models\Rewards\ApGoldClaim.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGrantId.cs" Link="Models\Rewards\Grants\ApGrantId.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGrantState.cs" Link="Models\Rewards\Grants\ApGrantState.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\Specs\ApMirroredRewardKind.cs" Link="Models\Rewards\Specs\ApMirroredRewardKind.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\Specs\ApMirroredRewardSpec.cs" Link="Models\Rewards\Specs\ApMirroredRewardSpec.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\Specs\ApMenuGoldSpec.cs" Link="Models\Rewards\Specs\ApMenuGoldSpec.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\Specs\ApRewardMenuSpec.cs" Link="Models\Rewards\Specs\ApRewardMenuSpec.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGrantSnapshot.cs" Link="Models\Rewards\Grants\ApGrantSnapshot.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGoldClaim.cs" Link="Models\Rewards\Grants\ApGoldClaim.cs" />
     <Compile Include="..\StS2AP\Persistence\ApReplicaConstructionState.cs"
              Link="Persistence\ApReplicaConstructionState.cs" />
     <Compile Include="..\StS2AP\Utils\Connection\ApSessionIdentity.cs"
@@ -35,7 +41,7 @@
     <Compile Include="..\StS2AP\Persistence\ApRunProgressState.cs" Link="Persistence\ApRunProgressState.cs" />
     <Compile Include="..\StS2AP\Persistence\ApCardAssignmentState.cs" Link="Persistence\ApCardAssignmentState.cs" />
     <Compile Include="..\StS2AP\Models\ProgressiveStarterTier.cs" Link="Models\ProgressiveStarterTier.cs" />
-    <Compile Include="..\StS2AP\Models\Rewards\ApRewardEffectSpec.cs" Link="Models\Rewards\ApRewardEffectSpec.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\Specs\ApRewardEffectSpec.cs" Link="Models\Rewards\Specs\ApRewardEffectSpec.cs" />
     <Using Include="StS2AP.Models" />
   </ItemGroup>
 </Project>

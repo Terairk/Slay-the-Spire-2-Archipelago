@@ -78,7 +78,7 @@ language preference or the fact that F# can call the library.
 
 | Priority | Source and current shape | Proposed C# change | Boundary |
 | --- | --- | --- | --- |
-| P1 | `Models/Rewards/ApGrantModels.cs` mixes a receipt record, enums, wire DTOs, and diagnostic snapshots | Split public types into their own files; retain explicit JSON DTOs. Mark transport versus domain intent clearly. | No DTO/property/enum renaming on the wire as incidental cleanup. |
+| Done | Grant types now have individual files under `Models/Rewards/Grants` and `Models/Rewards/Specs` | Split receipt identity, status, wire DTOs, and diagnostic snapshots; retain explicit JSON DTOs. Folder roles are documented in the client README. | Type names, namespaces, properties, and enum values remain unchanged. |
 | P1 | `Utils/Actions/NonCombatActionAdmissionState.BlockedReason` derives prose from a ten-boolean engine snapshot | Introduce an engine-local `NonCombatBlocker` enum and render its reason separately, preserving priority. | The raw flags are observations that can overlap during transitions; ten flags do not imply a 1,024-case F# lifecycle model. Keep capture and scheduling in C#. |
 | P1 | `Utils/Connection/ApSessionIdentity` and nested `MultiplayerSupport.ApSessionIdentity` share a name but have different scopes | Name the durable server-qualified identity and lobby slot identity distinctly; retain their intentional relationship. Separate deserialized data from validated identity if construction must be enforced. | `required init` plus a public record is not factory-only validation. URI normalization, hashing, and file paths can move with the owning feature. |
 | P1 | `Utils/Actions/ManagedActionRequestScheduler`, `ApReconnectController`, `ApFastMpLaunchController` manage callbacks and lifecycle states | Retain named status enums; group coherent callback/request data in sealed records and replace unnamed tuples where roles are easy to swap. | Delegates, cancellation, timers, Godot frame callbacks, and cleanup stay local to the C# owner. |
@@ -96,7 +96,9 @@ appropriate; avoid a shared utility type that accumulates unrelated domain decis
 
 ### 1. Mirrored reward specifications and materialization (P1, first production slice)
 
-Sources: `Models/Rewards/ApGrantModels.cs`, `Persistence/ApCardAssignmentState.cs`, and
+Sources: `Models/Rewards/Specs/ApMirroredRewardSpec.cs`,
+`Models/Rewards/Specs/ApRewardMenuSpec.cs`, `Models/Rewards/Grants/ApGrantId.cs`,
+`Persistence/ApCardAssignmentState.cs`, and
 `Utils/Rewards/ApMirroredRewardDispatcher` (`BuildSpec`, `ValidateMenuOnHost`,
 `PrepareReplicaMaterializations`, `RestoreCardReward`, `MarkConsumed`).
 

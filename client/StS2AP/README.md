@@ -27,7 +27,10 @@ Shared multiplayer coordination and messages remain under `Multiplayer`.
 | `Patches/Progression` | Unlocks, ascension, floor/victory progression, and epoch restrictions |
 | `Patches/Rooms` | Shops, rest sites, treasure rooms, and their diagnostics/compatibility fixes |
 | `Patches/Lifecycle` | Run startup, saves, main/pause menus, death hooks, tutorial, and version presentation |
-| `Models/Rewards` | Reward/grant DTOs, AP reward models, gold offers, and relic coupons |
+| `Models/Rewards/Grants` | Receipt identity, grant status, gold claims/offers, and diagnostic grant snapshots |
+| `Models/Rewards/Specs` | Serialized reward/menu specifications, reward kinds, and persistent effect data |
+| `Models/Rewards/Presentation` | Game-facing AP reward objects and card/relic/potion item models |
+| `Models/Custom` | Custom game content: Relic Coupons and the DeathLink curse card |
 | `Models/Configuration` | Client settings, slot settings, and character configuration |
 
 Other model types remain directly under `Models` or its existing `Singleton`
@@ -36,8 +39,10 @@ folder. `Persistence`, `Multiplayer`, `UI`, `Entities`, `Data`, `Extensions`, an
 
 ## Moving files
 
-The subfolder reorganization preserves namespaces, class names, and source
-contents. Folder placement is a navigation aid, not a new assembly boundary.
+Folder moves and splitting grant types into individual files preserve namespaces,
+type names, and implementations. Folder placement is a navigation aid, not a new
+assembly boundary. Serialized specifications stay as C# transport/save data;
+validated reward decisions remain in the F# domain project.
 Harmony still discovers patches through `ModEntry` calling `PatchAll(assembly)`.
 No JSON type/property names, message identifiers, or Godot resource paths change.
 
