@@ -120,6 +120,7 @@ public static class ModSettingsRegistration
                     .AddSection("notifications", ConfigureNotificationsSection)
                     .AddSection("relic_rewards", ConfigureRelicRewardsSection)
                     .AddSection("deathlink", ConfigureDeathLinkSection)
+                    .AddSection("bug_reports", ConfigureBugReportsSection)
         );
         RegisterHotkeys();
     }
@@ -130,6 +131,20 @@ public static class ModSettingsRegistration
                 .WithDescription(ModSettingsText.Literal("Internal Names of Installed Modded Characters"))
                 .AddInfoCard("ap-modded-chars", ModSettingsText.Literal("Character Names"), ModSettingsText.Dynamic(GetModdedNames));
 
+    }
+
+    private static void ConfigureBugReportsSection(ModSettingsSectionBuilder section)
+    {
+        section.WithTitle(ModSettingsText.Literal("Bug Reports"))
+            .AddButton("export_bug_report", ModSettingsText.Literal("Multiplayer diagnostics"),
+                ModSettingsText.Literal("Export Bug Report"), host =>
+                {
+                    ApBugReport.TryStart(out _, host.RequestRefresh);
+                    host.RequestRefresh();
+                }, description: ModSettingsText.Literal(
+                    "Packages the newest divergence report and available game logs, then opens the ZIP's folder. You can also type ap report in the console."))
+            .AddInfoCard("bug_report_status", ModSettingsText.Literal("Export status"),
+                ModSettingsText.Dynamic(() => ApBugReport.Status));
     }
 
     private static string GetModdedNames()

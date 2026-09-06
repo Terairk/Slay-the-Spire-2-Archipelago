@@ -22,6 +22,7 @@
              Link="Persistence\ApReplicaConstructionState.cs" />
     <Compile Include="..\StS2AP\Utils\ApSessionIdentity.cs"
              Link="Utils\ApSessionIdentity.cs" />
+    <Compile Include="..\StS2AP\Utils\ApBugReportFiles.cs" Link="Utils\ApBugReportFiles.cs" />
     <Compile Include="..\StS2AP\Utils\NonCombatActionAdmissionState.cs" Link="Utils\NonCombatActionAdmissionState.cs" />
     <Compile Include="..\StS2AP\Utils\DeathLinkEventLedger.cs" Link="Utils\DeathLinkEventLedger.cs" />
     <Compile Include="..\StS2AP\Utils\UniversalBuffGold.cs" Link="Utils\UniversalBuffGold.cs" />

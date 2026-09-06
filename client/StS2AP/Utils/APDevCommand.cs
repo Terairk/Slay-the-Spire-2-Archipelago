@@ -17,18 +17,35 @@ namespace StS2AP.Utils
         public override string CmdName => "ap";
 
         public override string Args =>
-            "!command | state [summary|lobby|run|ledger|grants|assignments|multiplayer|grant <slot:index>]";
+            "report | !command | state [summary|lobby|run|ledger|grants|assignments|multiplayer|grant <slot:index>]";
 
         public override string Description =>
-            "Sends an AP server command or inspects AP runtime state";
+            "ap report exports the newest divergence ZIP and game logs; also supports AP server commands and state inspection";
 
         public override bool IsNetworked => false;
+
+        public override CompletionResult GetArgumentCompletions(Player? player, string[] args)
+        {
+            if (args.Length <= 1)
+                return CompleteArgument(["report", "state"], [], args.FirstOrDefault() ?? "", CompletionType.Subcommand);
+            if (args.Length == 2 && args[0].Equals("state", StringComparison.OrdinalIgnoreCase))
+                return CompleteArgument(ApDevStateProviders.Names, [args[0]], args[1]);
+            return base.GetArgumentCompletions(player, args);
+        }
 
         public override CmdResult Process(Player? issuingPlayer, string[] args)
         {
             if (args.Length == 0)
             {
-                return new CmdResult(false, "Usage: ap !command | ap state [section]");
+                return new CmdResult(false, "Usage: ap report | ap !command | ap state [section]");
+            }
+
+            if (args[0].Equals("report", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length != 1)
+                    return new CmdResult(false, "Usage: ap report (exports the newest divergence report and opens its folder)");
+                bool started = ApBugReport.TryStart(out string message);
+                return new CmdResult(started, message);
             }
 
             if (args[0].StartsWith("!", StringComparison.Ordinal))
@@ -45,7 +62,7 @@ namespace StS2AP.Utils
             {
                 return new CmdResult(
                     false,
-                    "Unknown AP command. Use ap !command or ap state [section]."
+                    "Unknown AP command. Use ap report, ap !command or ap state [section]."
                 );
             }
 
