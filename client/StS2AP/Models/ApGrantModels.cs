@@ -116,17 +116,6 @@ public sealed class ApMenuGoldSpec
 }
 
 /// <summary>
-/// Compact before/after form of a reviewed persistent card-reward hook effect. Absolute values
-/// make application idempotent across menu reopening, save restoration, and reconnect.
-/// </summary>
-public sealed class ApRewardEffectSpec
-{
-    public string EffectId { get; set; } = string.Empty;
-    public int BeforeValue { get; set; }
-    public int AfterValue { get; set; }
-}
-
-/// <summary>
 /// One immutable AP reward-menu snapshot. Every multiplayer replica builds the same ordered
 /// native RewardsSet before MegaCrit begins synchronizing selections for its owner.
 /// </summary>

@@ -1,4 +1,4 @@
-# C# integration and packaging tests
+# C# regression and packaging tests
 
 This is an xUnit project. Run it from the repository root:
 
@@ -6,11 +6,32 @@ This is an xUnit project. Run it from the repository root:
 dotnet test client/StS2AP.RegressionTests/StS2AP.RegressionTests.csproj -c Release
 ```
 
-Three interop cases check a successful C# adapter call and both exception conversions.
-Domain rules and generated-input tests live in `StS2AP.Domain.Tests` (F#).
-The existing C# replica-construction regression is also preserved here.
-These tests reference the domain library and link the small production C# helpers;
-they do not build the game client or require a game installation.
+The normal suite references the domain library and links production C# helpers. It does not
+build the game client or require Godot, RitsuLib, a game installation, an AP server, local.props,
+or files from the locally excluded admission harness. Each case is discoverable through xUnit.
+
+| Suite | Coverage |
+| --- | --- |
+| Relic receipts | Receipt ownership, chest/menu conflicts, late receipts, stale progress, exact assignments, consumption, JSON round trips |
+| Campaign saves | Checksums, immutable checkpoint/recovery payloads, corrupt/missing files, path validation; isolated temporary directories |
+| DeathLink | Per-recipient deduplication, self-echo tracking, lethal suppression, expiry, reset; explicit timestamps without sleeping |
+| Universal buff gold | Fractional shares, live/history equivalence, independent character balances, missing configuration |
+| Reward travel | Stale menu generations, travel/loading gates, reset, old travel completion |
+| Noncombat admission | Idle admission and each independently unsafe state; scheduler execution is excluded |
+| Rest-site policy | Rest/Smith locks, disabled actions, safe exits, relic actions, reached-act check ordering, collected checks, independent player inputs |
+| Session identity | Destination isolation and persisted identity equivalence |
+| Replica construction | Initialization, local counters, compensation, restore |
+| C# interop | Successful domain adapter calls and exception conversion |
+
+The rest-site hook calls the same `RestSitePolicy` compiled into these tests. Tests supply
+option availability and arbitrary location IDs; they do not reimplement native Smith behavior,
+AP ID encoding, character resolution, or the Godot scene tree. The real hook still owns AP/guest
+eligibility, reads per-player progress, and calls `LocationData` to construct real check IDs.
+The persisted `ApRewardEffectSpec` is also linked from production, not replaced by a stub.
+
+The excluded `StS2AP.AdmissionTests` console harness is not a dependency and remains local.
+Its scheduler tests and Godot/game stubs are intentionally not migrated. F# domain rules and
+generated-input tests remain in `StS2AP.Domain.Tests`; C# logic need not be rewritten to test it.
 
 Packaging tests need built artifacts. Without the corresponding environment variable,
 xUnit reports them as skipped. A supplied path that is missing or invalid fails the test.
@@ -33,6 +54,28 @@ the C# adapter in both variants. It verifies that FSharp.Core and the domain DLL
 the bundle, so the test runner cannot hide a missing packaged dependency.
 Neither test starts Godot or proves in-game behavior.
 
-CI runs the interop/construction tests on Windows and Linux. The compatibility workflow
+CI runs all non-artifact cases on Windows and Linux. Pushes changing any client source or
+either test project trigger the workflow, as do pull requests. The compatibility workflow
 runs the manifest test after compile-only validation and again after an incremental build
 for both game API versions. The complete bundle test runs locally against a full build.
+
+## Runtime validation kept separate
+
+These checks require the installed supported game and matching RitsuLib. Run multiplayer
+checks with two processes on beta 0.111.0; repeat affected singleplayer behavior on the public
+variant. Unit tests establish the behavior of our policies, not native callbacks or network timing.
+
+| In-game scenario | Expected result |
+| --- | --- |
+| Rest unlocked/locked; Smith with/without an upgrade target; both locked; relic-provided action | Valid native actions survive; an exit exists when needed; taking an AP check is optional |
+| Campfire sanity off, vanilla guest, or unresolved AP progress | Native options remain unchanged |
+| `!collect`, then enter another rest site with two AP slots | Collected checks stay hidden on all replicas; another slot's checks remain available |
+| Claim a relic, reopen rewards, reconnect, save/continue | One grant at the established boundary; stable assignment and no repeated bank spending |
+| DeathLink with same-slot peers, lethal damage, and death prevention | Intended recipients are affected once; no echo loop; later legitimate deaths still send |
+| Open rewards while starting travel, then return or start a new run | Stale pending menu work cannot open in the next room/run |
+| Save at a checkpoint, advance, then continue/recover | Correct checkpoint/recovery selected and native run data restored |
+
+Useful existing logs include `Applied AP rest-site options for player`,
+`Leaving native rest-site options unchanged`, and `Published ... campfire check(s) from an AP
+location update`. Check both replicas and actual grants/saves; logs alone are not runtime proof.
+Keep generated saves, diagnostic logs, installed binaries, and decompiled references local.

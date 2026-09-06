@@ -22,5 +22,17 @@
              Link="Persistence\ApReplicaConstructionState.cs" />
     <Compile Include="..\StS2AP\Utils\ApSessionIdentity.cs"
              Link="Utils\ApSessionIdentity.cs" />
+    <Compile Include="..\StS2AP\Utils\NonCombatActionAdmissionState.cs" Link="Utils\NonCombatActionAdmissionState.cs" />
+    <Compile Include="..\StS2AP\Utils\DeathLinkEventLedger.cs" Link="Utils\DeathLinkEventLedger.cs" />
+    <Compile Include="..\StS2AP\Utils\UniversalBuffGold.cs" Link="Utils\UniversalBuffGold.cs" />
+    <Compile Include="..\StS2AP\Utils\ApRewardTravelGuard.cs" Link="Utils\ApRewardTravelGuard.cs" />
+    <Compile Include="..\StS2AP\Utils\RestSitePolicy.cs" Link="Utils\RestSitePolicy.cs" />
+    <Compile Include="..\StS2AP\Persistence\CampaignSaveFiles.cs" Link="Persistence\CampaignSaveFiles.cs" />
+    <Compile Include="..\StS2AP\Persistence\ApRelicReceiptState.cs" Link="Persistence\ApRelicReceiptState.cs" />
+    <Compile Include="..\StS2AP\Persistence\ApRunProgressState.cs" Link="Persistence\ApRunProgressState.cs" />
+    <Compile Include="..\StS2AP\Persistence\ApCardAssignmentState.cs" Link="Persistence\ApCardAssignmentState.cs" />
+    <Compile Include="..\StS2AP\Models\ProgressiveStarterTier.cs" Link="Models\ProgressiveStarterTier.cs" />
+    <Compile Include="..\StS2AP\Models\ApRewardEffectSpec.cs" Link="Models\ApRewardEffectSpec.cs" />
+    <Using Include="StS2AP.Models" />
   </ItemGroup>
 </Project>
