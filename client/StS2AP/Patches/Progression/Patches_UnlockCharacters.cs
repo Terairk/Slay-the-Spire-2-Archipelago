@@ -5,8 +5,6 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Unlocks;
-using StS2AP.Models;
-using StS2AP.Utils;
 
 namespace StS2AP.Patches
 {

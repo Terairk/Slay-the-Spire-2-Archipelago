@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using Archipelago.MultiClient.Net.Models;
+﻿using Archipelago.MultiClient.Net.Models;
 using StS2AP.Data;
 using static StS2AP.Data.ItemTable;
 

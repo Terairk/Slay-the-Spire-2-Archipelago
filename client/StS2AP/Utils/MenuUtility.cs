@@ -1,11 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
+﻿using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
-using StS2AP.Models;
 using STS2RitsuLib.Settings;
 
 namespace StS2AP.Utils

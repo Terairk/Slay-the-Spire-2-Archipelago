@@ -1,11 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using StS2AP.Models;
-
-namespace StS2AP.Data
+﻿namespace StS2AP.Data
 {
     public static class ItemTable
     {

@@ -3,11 +3,6 @@ using MegaCrit.Sts2.Core.DevConsole;
 using MegaCrit.Sts2.Core.DevConsole.ConsoleCommands;
 using MegaCrit.Sts2.Core.Entities.Players;
 using StS2AP.UI;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace StS2AP.Utils
 {

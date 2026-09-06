@@ -1,17 +1,10 @@
 ﻿using System.Collections.Concurrent;
-using System.Drawing;
 using System.Text;
 using Archipelago.MultiClient.Net.BounceFeatures.DeathLink;
 using Archipelago.MultiClient.Net.MessageLog.Messages;
 using Archipelago.MultiClient.Net.Models;
-using Godot;
-using MegaCrit.Sts2.Core.DevConsole;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Models.CardPools;
-using MegaCrit.Sts2.Core.Nodes.Debug;
-using MegaCrit.Sts2.Core.RichTextTags;
 using StS2AP.Data;
-using StS2AP.UI;
 using static StS2AP.Data.ItemTable;
 
 namespace StS2AP.Utils

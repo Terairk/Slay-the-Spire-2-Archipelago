@@ -2,10 +2,6 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
 using MegaCrit.Sts2.Core.Runs;
-using MegaCrit.Sts2.Core.Unlocks;
-using StS2AP.Models;
-using StS2AP.Utils;
-using System.Collections.Generic;
 
 namespace StS2AP.Patches
 {

@@ -4,7 +4,6 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using StS2AP.Utils;
-using System;
 
 namespace StS2AP.Patches
 {

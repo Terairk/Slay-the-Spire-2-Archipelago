@@ -1,5 +1,4 @@
 using Godot;
-using StS2AP.Models;
 using STS2RitsuLib.CardPiles.Nodes;
 using STS2RitsuLib.Interop.AutoRegistration;
 using STS2RitsuLib.TopBar;

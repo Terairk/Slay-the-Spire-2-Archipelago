@@ -1,8 +1,6 @@
-using System.Threading.Tasks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Models.Relics;
-using StS2AP.Utils;
 
 namespace StS2AP.Patches
 {

@@ -3,7 +3,6 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
-using StS2AP.Models;
 using StS2AP.Utils;
 
 namespace StS2AP.Multiplayer;

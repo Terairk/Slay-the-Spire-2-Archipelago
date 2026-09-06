@@ -19,7 +19,6 @@ using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Managers;
 using StS2AP.Data;
 using StS2AP.Extensions;
-using StS2AP.Models;
 using StS2AP.UI;
 using StS2AP.Utils;
 using System.IO.Compression;

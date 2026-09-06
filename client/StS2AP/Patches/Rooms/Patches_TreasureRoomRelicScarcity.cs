@@ -3,7 +3,6 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Runs;
-using StS2AP.Multiplayer;
 
 namespace StS2AP.Patches;
 

@@ -3,7 +3,6 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Utils;
-using System;
 
 namespace StS2AP.Patches
 {

@@ -2,8 +2,6 @@ using Archipelago.MultiClient.Net.Models;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Data;
-using StS2AP.Extensions;
-using StS2AP.Models;
 using static StS2AP.Data.ItemTable;
 
 namespace StS2AP.Utils;

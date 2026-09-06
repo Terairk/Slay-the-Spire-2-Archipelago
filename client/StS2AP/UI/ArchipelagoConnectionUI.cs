@@ -1,7 +1,6 @@
 using Godot;
 using Newtonsoft.Json;
 using StS2AP.Utils;
-using System;
 
 namespace StS2AP.UI
 {

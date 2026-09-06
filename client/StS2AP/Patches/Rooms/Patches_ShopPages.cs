@@ -1,5 +1,3 @@
-using System.Linq;
-using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Merchant;
@@ -8,8 +6,6 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
-using StS2AP.Utils;
-using StS2AP.Models;
 
 namespace StS2AP.Patches
 {

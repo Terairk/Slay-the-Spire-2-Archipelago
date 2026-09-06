@@ -1,7 +1,6 @@
 ﻿using Godot;
 using MegaCrit.Sts2.addons.mega_text;
 using StS2AP.Utils;
-using System;
 
 namespace StS2AP.UI
 {

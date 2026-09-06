@@ -1,5 +1,4 @@
 using HarmonyLib;
-using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -8,13 +7,8 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Unlocks;
-using StS2AP.Models;
 using StS2AP.UI;
 using StS2AP.Utils;
-using System;
-using System.Linq;
-using System.Threading.Tasks;
-using static Godot.HttpRequest;
 
 namespace StS2AP.Patches
 {

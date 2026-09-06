@@ -10,14 +10,11 @@ using MegaCrit.Sts2.Core.Models;
 using Newtonsoft.Json.Linq;
 using System.Text.Json;
 using StS2AP.Data;
-using StS2AP.Extensions;
-using StS2AP.Models;
 using StS2AP.Patches;
 using StS2AP.UI;
 using StS2AP.Utils;
 using STS2RitsuLib;
 using STS2RitsuLib.Data;
-using static StS2AP.Data.ItemTable;
 
 namespace StS2AP
 {

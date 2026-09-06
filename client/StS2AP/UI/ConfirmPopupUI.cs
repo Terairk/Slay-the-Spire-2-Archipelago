@@ -1,12 +1,6 @@
-﻿using Godot;
-using MegaCrit.Sts2.Core.Assets;
-using MegaCrit.Sts2.Core.Helpers;
-using MegaCrit.Sts2.Core.Localization;
+﻿using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
-using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
-using MegaCrit.Sts2.Core.Nodes.Screens.ScreenContext;
-using System.Runtime.InteropServices;
 
 namespace StS2AP.UI
 {

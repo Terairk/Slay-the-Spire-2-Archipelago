@@ -1,9 +1,6 @@
-using System;
-using System.Threading;
 using Godot;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Nodes.Debug;
-using StS2AP.Models;
 using StS2AP.Utils;
 using STS2RitsuLib;
 using static StS2AP.Utils.NotificationUtility;

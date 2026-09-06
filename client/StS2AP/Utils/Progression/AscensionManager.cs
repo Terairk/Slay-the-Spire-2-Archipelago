@@ -7,7 +7,6 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Runs;
-using StS2AP.Models;
 using StS2AP.Patches;
 using static StS2AP.Data.ItemTable;
 

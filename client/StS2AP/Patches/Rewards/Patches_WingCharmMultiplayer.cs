@@ -1,7 +1,6 @@
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Relics;
-using StS2AP.Multiplayer;
 
 namespace StS2AP.Patches;
 

@@ -3,8 +3,6 @@ using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
-using StS2AP.Utils;
-using System;
 
 namespace StS2AP.UI.Components
 {

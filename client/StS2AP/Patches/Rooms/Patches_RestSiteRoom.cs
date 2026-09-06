@@ -2,7 +2,6 @@ using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
-using StS2AP.Models;
 using StS2AP.Utils;
 
 namespace StS2AP.Patches;

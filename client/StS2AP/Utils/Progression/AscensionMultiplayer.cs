@@ -12,8 +12,6 @@ using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Data;
 using StS2AP.Extensions;
-using StS2AP.Models;
-using StS2AP.Persistence;
 using STS2RitsuLib.Networking.ManagedActions;
 using static StS2AP.Data.ItemTable;
 

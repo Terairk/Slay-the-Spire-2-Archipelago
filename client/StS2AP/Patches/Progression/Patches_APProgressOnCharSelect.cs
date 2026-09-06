@@ -4,7 +4,6 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using StS2AP.Data;
 using StS2AP.Extensions;
-using StS2AP.Models;
 using StS2AP.UI;
 using StS2AP.UI.Components;
 

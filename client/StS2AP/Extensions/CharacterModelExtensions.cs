@@ -1,11 +1,5 @@
-﻿using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Models;
+﻿using MegaCrit.Sts2.Core.Models;
 using StS2AP.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace StS2AP.Extensions
 {

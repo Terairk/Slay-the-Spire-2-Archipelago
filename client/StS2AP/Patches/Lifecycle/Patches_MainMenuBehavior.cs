@@ -2,7 +2,6 @@
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Localization;
-using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -17,8 +16,6 @@ using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.addons.mega_text;
 using StS2AP.UI;
 using StS2AP.Utils;
-using StS2AP.Models;
-using STS2RitsuLib.Settings;
 
 namespace StS2AP.Patches
 {

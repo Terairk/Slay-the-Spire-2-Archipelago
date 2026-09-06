@@ -4,7 +4,6 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
-using StS2AP.Models;
 using STS2RitsuLib.Settings;
 
 namespace StS2AP.Utils

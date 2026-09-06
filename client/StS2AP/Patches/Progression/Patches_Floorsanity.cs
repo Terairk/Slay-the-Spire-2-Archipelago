@@ -3,10 +3,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
-using StS2AP.Models;
 using StS2AP.Utils;
-using System;
-using System.Collections.Generic;
 
 namespace StS2AP.Patches
 {

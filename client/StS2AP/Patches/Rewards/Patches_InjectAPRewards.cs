@@ -11,7 +11,6 @@ using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
-using StS2AP.Models;
 using StS2AP.Utils;
 using static MegaCrit.Sts2.Core.Multiplayer.Game.TreasureRoomRelicSynchronizer;
 

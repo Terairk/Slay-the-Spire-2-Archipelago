@@ -13,7 +13,6 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.ScreenContext;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
-using StS2AP.Multiplayer;
 using StS2AP.Utils;
 
 namespace StS2AP.UI;

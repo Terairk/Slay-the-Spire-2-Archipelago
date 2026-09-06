@@ -1,5 +1,3 @@
-using StS2AP.Models;
-
 namespace StS2AP.Persistence;
 
 /// <summary>

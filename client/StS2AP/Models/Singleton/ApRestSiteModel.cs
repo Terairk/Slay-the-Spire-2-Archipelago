@@ -2,7 +2,6 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.RestSite;
 using StS2AP.Data;
 using StS2AP.Entities.RestSite;
-using StS2AP.Models;
 using StS2AP.Utils;
 using STS2RitsuLib.Interop.AutoRegistration;
 using STS2RitsuLib.Models;

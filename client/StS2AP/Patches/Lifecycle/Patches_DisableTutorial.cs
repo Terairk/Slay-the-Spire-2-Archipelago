@@ -1,15 +1,8 @@
 ﻿using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
-using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace StS2AP.Patches
 {

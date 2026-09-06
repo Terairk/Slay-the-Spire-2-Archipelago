@@ -1,6 +1,5 @@
 using MegaCrit.Sts2.Core.Entities.Players;
 using StS2AP.Extensions;
-using StS2AP.Models;
 using static StS2AP.Data.ItemTable;
 
 namespace StS2AP.Utils

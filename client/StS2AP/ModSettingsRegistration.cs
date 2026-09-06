@@ -1,5 +1,4 @@
 ﻿using MegaCrit.Sts2.Core.Models;
-using StS2AP.Models;
 using StS2AP.UI;
 using StS2AP.Utils;
 using STS2RitsuLib;

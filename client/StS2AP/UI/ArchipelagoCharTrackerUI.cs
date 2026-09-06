@@ -4,7 +4,6 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Potions;
 using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
-using StS2AP.Models;
 using StS2AP.UI.Components;
 using static StS2AP.Patches.Patches_APProgressOnCharSelect;
 

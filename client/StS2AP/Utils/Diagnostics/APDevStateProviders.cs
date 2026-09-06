@@ -2,7 +2,6 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Runs;
-using StS2AP.Models;
 using STS2RitsuLib.Networking.Sidecar;
 
 namespace StS2AP.Utils;

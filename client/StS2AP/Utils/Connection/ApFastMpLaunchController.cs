@@ -2,7 +2,6 @@ using Godot;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Runs;
-using StS2AP.Models;
 using StS2AP.UI;
 
 namespace StS2AP.Utils;
