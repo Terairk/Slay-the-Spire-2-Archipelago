@@ -118,6 +118,7 @@ public static class ModSettingsRegistration
                     .AddSection("charnames", ConfigureModdedCharactersSection)
                     .AddSection("keybinds", ConfigureKeybindsSection)
                     .AddSection("notifications", ConfigureNotificationsSection)
+                    .AddSection("multiplayer", ConfigureMultiplayerSection)
                     .AddSection("relic_rewards", ConfigureRelicRewardsSection)
                     .AddSection("deathlink", ConfigureDeathLinkSection)
         );
@@ -318,6 +319,32 @@ public static class ModSettingsRegistration
             .ConfigureEntryMenu(DeathLink_DamageId, ModSettingsMenuCapabilities.None)
             .WithEntryEnabledWhen(DeathLink_DamageId, IsDeathLinkOverriden);
     }
+
+    private static void ConfigureMultiplayerSection(ModSettingsSectionBuilder section)
+    {
+        const string key = "multiplayer_player_number";
+        section.WithTitle(ModSettingsText.Literal("Multiplayer Settings"))
+            .WithDescription(ModSettingsText.Literal(
+                "Select the player whose items and checks you own in a shared AP slot. "
+                + "Choose a number within the YAML's player_count. People choosing the same number share its AP items and checks. "
+                + "Leave the AP slot and the run/lobby to change it."))
+            .AddIntSlider(key, ModSettingsText.Literal("Player Number"),
+                CreateBinding(static settings => settings.MultiplayerPlayerNumber,
+                    static (settings, value) =>
+                    {
+                        if (CanChangePlayerNumber())
+                            settings.MultiplayerPlayerNumber = value;
+                    }),
+                minValue: 1, maxValue: 4, step: 1,
+                valueFormatter: static value => $"Player {value}")
+            .ConfigureEntryMenu(key, ModSettingsMenuCapabilities.None)
+            .WithEntryEnabledWhen(key, CanChangePlayerNumber);
+    }
+
+    private static bool CanChangePlayerNumber() =>
+        !ArchipelagoClient.HasSlotConnection
+        && !GameUtility.IsInRun && !MultiplayerSupport.IsMultiplayerScope
+        && !ApReconnectController.IsActive;
 
     private static void ConfigureRelicRewardsSection(ModSettingsSectionBuilder section)
     {

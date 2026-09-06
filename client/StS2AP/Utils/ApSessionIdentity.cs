@@ -22,12 +22,15 @@ internal sealed record ApSessionIdentity
 
     [JsonPropertyName("ap_slot_id")]
     public required int ApSlotId { get; init; }
+    [JsonPropertyName("player_number")]
+    public int PlayerNumber { get; init; } = 1;
 
     public static ApSessionIdentity Create(
         string serverAddress,
         string roomSeed,
         int apTeamId,
-        int apSlotId
+        int apSlotId,
+        int playerNumber = 1
     )
     {
         if (string.IsNullOrWhiteSpace(serverAddress))
@@ -43,6 +46,8 @@ internal sealed record ApSessionIdentity
             throw new ArgumentOutOfRangeException(nameof(apTeamId));
         if (apSlotId < 0)
             throw new ArgumentOutOfRangeException(nameof(apSlotId));
+        if (playerNumber is < 1 or > 4)
+            throw new ArgumentOutOfRangeException(nameof(playerNumber));
 
         return new ApSessionIdentity
         {
@@ -50,6 +55,7 @@ internal sealed record ApSessionIdentity
             RoomSeed = roomSeed,
             ApTeamId = apTeamId,
             ApSlotId = apSlotId,
+            PlayerNumber = playerNumber,
         };
     }
 
@@ -62,11 +68,13 @@ internal sealed record ApSessionIdentity
         string canonical = FormattableString.Invariant(
             $"{ServerAuthority.Length}:{ServerAuthority}|{RoomSeed.Length}:{RoomSeed}|{ApTeamId}|{ApSlotId}"
         );
+        if (PlayerNumber != 1)
+            canonical += FormattableString.Invariant($"|player-{PlayerNumber}");
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 
     public override string ToString() =>
-        $"{RoomSeed}/ap-team-{ApTeamId}/ap-slot-{ApSlotId}@{ServerAuthority}";
+        $"{RoomSeed}/ap-team-{ApTeamId}/ap-slot-{ApSlotId}/player-{PlayerNumber}@{ServerAuthority}";
 
     private static string NormalizeServerAuthority(string serverAddress) =>
         serverAddress.Trim().TrimEnd('/').ToLowerInvariant();

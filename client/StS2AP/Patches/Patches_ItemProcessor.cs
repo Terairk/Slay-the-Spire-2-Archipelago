@@ -99,6 +99,9 @@ namespace StS2AP.Patches
         /// <param name="index">The index of the item in the Archipelago Multiworld</param>
         private static void ProcessItem(IndexedItemInfo indexedInfo, bool liveDelivery = true)
         {
+            // Keep the original SDK index, including gaps occupied by the other players.
+            if (!CoopSlot.Owns(indexedInfo.Item.ItemId))
+                return;
             // AP_MP: This is the receipt-level fail-closed gate for unconverted features.
             if (MultiplayerSupport.ShouldDeferItem(indexedInfo))
             {

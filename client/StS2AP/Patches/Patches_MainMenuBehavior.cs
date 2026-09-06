@@ -784,7 +784,7 @@ namespace StS2AP.Patches
                     __instance,
                     out string blockedReason))
                 {
-                    return true;
+                    return ApCoopLobbyWarning.AllowLaunch(__instance);
                 }
                 // FLAG: i bet you if anything softlocks, it'll be here
 

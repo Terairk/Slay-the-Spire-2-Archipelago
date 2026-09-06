@@ -128,7 +128,7 @@ namespace StS2AP.Data
         /// <summary>Whether an item ID is one of the universal ephemeral combat buffs.</summary>
         public static bool IsUniversalCombatBuff(long itemId)
         {
-            return (APItem)itemId switch
+            return (APItem)ArchipelagoIdCodec.WithoutPlayer(itemId) switch
             {
                 APItem.FreeAttack or APItem.FreePower or APItem.FreeSkill
                     or APItem.Dexterity or APItem.Strength or APItem.Plating

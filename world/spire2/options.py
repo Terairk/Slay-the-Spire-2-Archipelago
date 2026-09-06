@@ -13,6 +13,18 @@ from .characters import character_list
 from .constants import NUM_CUSTOM, ASCENSIONS
 
 
+class PlayerCount(Range):
+    """Number of co-op players sharing this AP slot, each with separate items, checks and goals.
+    The final character roster must contain at least this many characters.
+    Random locks give distinct seeded starts. Fixed locks give Player 1 the configured start
+    and the other players distinct seeded starts. Unlocked makes every character available to everyone.
+    Each client must select its own player number before connecting."""
+    display_name = "Player Count"
+    range_start = 1
+    range_end = 4
+    default = 1
+
+
 class Characters(OptionSet):
     """Enter the list of characters to play as.  Valid characters are:
         'Ironclad'
@@ -587,6 +599,7 @@ filler_item_options = OptionGroup(
 
 @dataclass
 class Spire2Options(PerGameCommonOptions):
+    player_count: PlayerCount
     # Character options
     characters: Characters
     modded_characters: ModdedCharacters

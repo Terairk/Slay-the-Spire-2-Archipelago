@@ -166,7 +166,7 @@ namespace StS2AP.Patches
                 }
                 var saveDict = new Dictionary<string, string>();
                 saveDict[GameUtility.CurrentPlayer.getInternalName()] = zipped;
-                const string saveStorageKey = "StS2AP_Saves";
+                string saveStorageKey = CoopSlot.StorageKey("StS2AP_Saves");
                 var saveOperation = session.DataStorage[
                     Scope.Slot,
                     saveStorageKey
@@ -254,6 +254,7 @@ namespace StS2AP.Patches
             JsonElement? saveData = apSave?.SaveData;
             if (
                 apSave == null
+                || apSave.PlayerNumber != CoopSlot.PlayerNumber
                 || apSave.Progress is not { Initialized: true }
                 || saveData == null
                 || saveData.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined

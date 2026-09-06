@@ -335,6 +335,8 @@ public static class ApRunData
             return "incomplete-ap-identity";
         if (state.SlotSettings == null)
             return "ap-settings-incomplete";
+        if (!CoopPlayerSelection.IsValid(state.SlotSettings.PlayerCount, state.SlotSettings.PlayerNumber))
+            return $"invalid-coop-player-number (Player {state.SlotSettings.PlayerNumber}, player_count={state.SlotSettings.PlayerCount})";
         return state.ReceiptSourceReady ? null : "ap-history-incomplete";
     }
 
@@ -807,6 +809,7 @@ public static class ApRunData
         && left.ApTeamId == right.ApTeamId
         && left.ApSlotId == right.ApSlotId
         && (left.SlotSettings == null) == (right.SlotSettings == null)
+        && left.SlotSettings?.PlayerNumber == right.SlotSettings?.PlayerNumber
         && RelicReceiptMapsEqual(
             left.InitialRelicReceiptIndexesByCharacter,
             right.InitialRelicReceiptIndexesByCharacter)

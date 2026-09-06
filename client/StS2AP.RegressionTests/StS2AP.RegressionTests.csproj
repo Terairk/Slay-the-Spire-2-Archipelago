@@ -9,6 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\StS2AP\Data\ArchipelagoIdCodec.cs" Link="Data\ArchipelagoIdCodec.cs" />
+    <Compile Include="..\StS2AP\Utils\CoopGoalPolicy.cs" Link="Utils\CoopGoalPolicy.cs" />
+    <Compile Include="..\StS2AP\Utils\CoopPlayerSelection.cs" Link="Utils\CoopPlayerSelection.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1">
