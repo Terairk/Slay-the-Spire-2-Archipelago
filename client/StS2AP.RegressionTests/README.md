@@ -21,7 +21,7 @@ or files from the locally excluded admission harness. Each case is discoverable 
 | Rest-site policy | Rest/Smith locks, disabled actions, safe exits, relic actions, reached-act check ordering, collected checks, independent player inputs |
 | Session identity | Destination isolation and persisted identity equivalence |
 | Replica construction | Initialization, local counters, compensation, restore |
-| C# interop | Successful domain adapter calls and exception conversion |
+| C# interop | Complete mirrored-reward decoding, actual wire/save DTO fixtures, immutable snapshots, save/reveal/effect preservation, and exception conversion |
 
 The rest-site hook calls the same `RestSitePolicy` compiled into these tests. Tests supply
 option availability and arbitrary location IDs; they do not reimplement native Smith behavior,

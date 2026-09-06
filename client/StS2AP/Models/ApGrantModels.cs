@@ -80,18 +80,10 @@ public sealed class ApMirroredRewardSpec
     public string MaterializationStrategyId { get; set; } = string.Empty;
 
     /// <summary>
-    /// True only when this menu snapshot created the stable assignment. Every replica must run
-    /// the corresponding native card or potion factory exactly once before offering the menu.
-    /// Reopened and save-restored assignments carry their final models without replaying rolls.
+    /// Legacy wire guard only. True is rejected: replica-native generation has been removed.
+    /// Current menus always carry final models and leave this false.
     /// </summary>
     public bool RequiresNativeMaterialization { get; set; }
-
-    /// <summary>
-    /// Deterministic state fingerprints surrounding a new native materialization. They are compared
-    /// on every replica; they are diagnostics and validation data, never state to copy into place.
-    /// </summary>
-    public string StateBeforeMaterialization { get; set; } = string.Empty;
-    public string StateAfterMaterialization { get; set; } = string.Empty;
 
     /// <summary>
     /// Idempotent native state transitions produced by reviewed owner-final card hooks. These are

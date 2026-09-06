@@ -29,11 +29,22 @@ public sealed class PackagingTests
                 context.ResolveFromBundle = resolve;
                 Assembly variant = context.LoadFromAssemblyPath(Path.Combine(root, "lib", compat, "Archipelago.dll"));
                 ValidateEmbeddedManifests(variant, root);
-                MethodInfo decode = variant.GetType("StS2AP.DomainAdapters.RewardMaterializationAdapter", true)!
+                MethodInfo decode = variant.GetType("StS2AP.DomainAdapters.MirroredRewardAdapter", true)!
                     .GetMethod("Decode", BindingFlags.Public | BindingFlags.Static)!;
-                object policy = decode.Invoke(null, ["replica_native_v1", false, "2:42"])!;
-                if ((bool)policy.GetType().GetProperty("RequiresNativeMaterialization")!.GetValue(policy)!)
-                    throw new InvalidOperationException("A packaged restored reward requested new rolls.");
+                Type specType = variant.GetType("StS2AP.Models.ApMirroredRewardSpec", true)!;
+                object spec = JsonSerializer.Deserialize("""
+                    {"SchemaVersion":5,"ApSlotId":2,"ReceivedItemIndex":42,"OwnerNetId":1,
+                     "Kind":0,"CardRewardActIndex":1,"CardHasBeenRevealed":true,
+                     "MaterializationStrategyId":"replica_native_v1","RequiresNativeMaterialization":false,
+                     "SerializedModels":["{\"id\":\"CARD.A\"}"]}
+                    """, specType)!;
+                object reward = decode.Invoke(null, [spec, 3])!;
+                object configuration = variant.GetType("StS2AP.DomainAdapters.MirroredRewardAdapter", true)!
+                    .GetMethod("CardConfiguration", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [spec])!;
+                object provenance = configuration.GetType().GetProperty("Policy")!.GetValue(configuration)!;
+                Assert.Equal("replica_native_v1", provenance.GetType().GetProperty("StrategyId")!.GetValue(provenance));
+                object origin = reward.GetType().GetProperty("Origin")!.GetValue(reward)!;
+                Assert.Equal("2:42", origin.GetType().GetProperty("ReceiptIdentity")!.GetValue(origin));
 
                 foreach (string dependency in new[] { "StS2AP.Domain", "FSharp.Core" })
                 {

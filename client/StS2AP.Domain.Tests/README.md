@@ -21,10 +21,15 @@ inputs and reports replay information: retain that output and turn important cou
 into named regression tests. Reproduce a seed using the property's `Replay` setting when needed;
 do not permanently pin every property to one seed.
 
-Current coverage includes all three valid materialization policies, invalid owner-final
-replay, malformed/null wire values, policy identity, selective delegate evaluation,
-round trips, and repeatability. Properties exercise 500 generated examples each. They do not
+Current coverage includes both supported assignment provenances, malformed/null wire
+values, provenance identity, selective delegate evaluation,
+round trips, and repeatability. `MirroredRewardTests.fs` adds complete reward shapes,
+immutable snapshots, card recipes/reveal transitions,
+effect overflow/duplicates, and idempotent effect application. Properties exercise
+500 generated examples each. They do not
 claim to test native RNG advancement, network ordering, reward grants, saves, or reconnection.
+The C# adapter tests reject obsolete replica-generation requests; generation is no
+longer a representable case in the F# model.
 
 All emitted F# compiler warnings are errors, and unused-variable warning FS1182 is explicitly
 enabled. Intentional unused inputs should be named `_` or `_description`. The domain library

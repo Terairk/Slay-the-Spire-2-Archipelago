@@ -4,8 +4,12 @@ Audit date: 2026-09-05. Branch: `experiment/fsharp`, created from
 `multiplayer-squashed` at `d8b8c7e`. Reassesses the proposal at
 `origin/audit/domain-typing` (`c4eee84`, audited base `b630cc9`).
 
-Status: fresh source audit plus a small implemented F# integration trial. The remaining
-migrations below are proposals, not implemented fixes or confirmed runtime defects.
+Status: the initial trial has been expanded into a typed mirrored-reward execution path.
+See [Mirrored reward domain migration](mirrored-reward-domain.md) for the implementation,
+validation, and remaining runtime checks as of 2026-09-06. The trial notes below are
+historical; the other migrations remain proposals, not confirmed runtime defects.
+The expanded implementation subsequently removed unused new-native generation and
+its agreement protocol. Historical trial cases below are not the current contract.
 
 ## Decision
 
@@ -352,6 +356,9 @@ by the automated tests; normal play does not need a deliberately malformed messa
 | Valid owner-final reward and an unsupported strategy in a development fixture | Valid reward remains usable; invalid fixture yields `AP reward <slot>:<index> used an unknown materialization strategy.` without granting/consuming it. |
 | Public variant singleplayer smoke test | Loader selects 0.107.1; ordinary rewards remain unchanged. This is distinct from the beta multiplayer check. |
 
-Following the reported in-game smoke-test pass, the recommended next implementation should expand the mirrored-reward
-decoder and have execution consume its typed result. Progressive starter modeling is
-the next independent slice; ledger/progress-schema replacement comes later.
+The expanded mirrored-reward decoder and typed execution path are now implemented; see
+[the migration record](mirrored-reward-domain.md). The earlier smoke-test report applies
+only to the trial. On 2026-09-06, the user also reported a successful brief in-game test
+after the expanded refactor and typing cleanup, following the planned multiplayer
+smoke test; detailed scenario coverage remains unconfirmed. Progressive starter modeling
+remains the next independent slice; ledger/progress-schema replacement comes later.

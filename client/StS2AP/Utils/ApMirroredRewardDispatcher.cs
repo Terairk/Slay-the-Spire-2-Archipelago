@@ -25,6 +25,7 @@ using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using StS2AP.Data;
+using StS2AP.Domain;
 using StS2AP.DomainAdapters;
 using StS2AP.Extensions;
 using StS2AP.Models;
@@ -44,154 +45,9 @@ namespace StS2AP.Utils;
 public static class ApMirroredRewardDispatcher
 {
     private const string SidecarMessageKey = "received_reward_menu_v1";
-    private const string MaterializationAckKey = "reward_materialization_ack_v1";
-    private const string MaterializationDecisionKey = "reward_materialization_decision_v1";
-    private const string ReplicaNativeStrategyId = "replica_native_v1";
     private const string OwnerFinalApRngStrategyId = "ap_rng_owner_final_v1";
-    private const string SilkenTressEffectId = "silken_tress_used_v1";
-    private const string SilverCrucibleEffectId = "silver_crucible_times_used_v1";
-
-    private interface IApCardRewardMaterializer
-    {
-        string WireId { get; }
-        bool RequiresReplicaMaterialization { get; }
-        Task<ApNativeCardReward> MaterializeOwner(ApMirroredRewardSpec spec, Player player);
-        Task<ApNativeCardReward> MaterializeReplica(ApMirroredRewardSpec spec, Player player);
-    }
-
-    private interface IApPotionRewardMaterializer
-    {
-        string WireId { get; }
-        bool RequiresReplicaMaterialization { get; }
-        PotionModel MaterializeOwner(ApMirroredRewardSpec spec, Player player);
-        PotionModel MaterializeReplica(ApMirroredRewardSpec spec, Player player);
-    }
-
-    private sealed class ReplicaNativeCardMaterializer : IApCardRewardMaterializer
-    {
-        public string WireId => ReplicaNativeStrategyId;
-        public bool RequiresReplicaMaterialization => true;
-
-        public async Task<ApNativeCardReward> MaterializeOwner(
-            ApMirroredRewardSpec spec,
-            Player player)
-        {
-            spec.StateBeforeMaterialization = CaptureMaterializationState(player);
-            ApNativeCardReward reward = await MaterializeReplicaNativeCardReward(spec, player);
-            spec.StateAfterMaterialization = CaptureMaterializationState(player);
-            return reward;
-        }
-
-        public async Task<ApNativeCardReward> MaterializeReplica(
-            ApMirroredRewardSpec spec,
-            Player player)
-        {
-            ValidateMaterializationState(spec, player, spec.StateBeforeMaterialization, "pre");
-            ApNativeCardReward reward = await MaterializeReplicaNativeCardReward(spec, player);
-            ValidateSerializedModels(spec, reward.Cards.Select(SerializeCard), "card assignment");
-            ValidateMaterializationState(spec, player, spec.StateAfterMaterialization, "post");
-            return reward;
-        }
-    }
-
-    private sealed class OwnerFinalApRngCardMaterializer : IApCardRewardMaterializer
-    {
-        public string WireId => OwnerFinalApRngStrategyId;
-        public bool RequiresReplicaMaterialization => false;
-
-        public Task<ApNativeCardReward> MaterializeOwner(
-            ApMirroredRewardSpec spec,
-            Player player) => MaterializeOwnerFinalApRngCardReward(spec, player);
-
-        public Task<ApNativeCardReward> MaterializeReplica(
-            ApMirroredRewardSpec spec,
-            Player player) => Task.FromResult(RestoreCardReward(
-                spec,
-                player,
-                DeserializeCards(spec, player),
-                spec.CardCanReroll
-            ));
-    }
-
-    private sealed class ReplicaNativePotionMaterializer : IApPotionRewardMaterializer
-    {
-        public string WireId => ReplicaNativeStrategyId;
-        public bool RequiresReplicaMaterialization => true;
-
-        public PotionModel MaterializeOwner(ApMirroredRewardSpec spec, Player player)
-        {
-            spec.StateBeforeMaterialization = CaptureMaterializationState(player);
-            PotionModel potion = PotionFactory.CreateRandomPotionOutOfCombat(
-                player,
-                player.PlayerRng.Rewards
-            ).ToMutable();
-            spec.StateAfterMaterialization = CaptureMaterializationState(player);
-            return potion;
-        }
-
-        public PotionModel MaterializeReplica(ApMirroredRewardSpec spec, Player player)
-        {
-            ValidateMaterializationState(spec, player, spec.StateBeforeMaterialization, "pre");
-            PotionModel potion = PotionFactory.CreateRandomPotionOutOfCombat(
-                player,
-                player.PlayerRng.Rewards
-            ).ToMutable();
-            ValidateSerializedModels(spec, new[] { SerializePotion(potion) }, "potion assignment");
-            ValidateMaterializationState(spec, player, spec.StateAfterMaterialization, "post");
-            return potion;
-        }
-    }
-
-    private sealed class OwnerFinalApRngPotionMaterializer : IApPotionRewardMaterializer
-    {
-        public string WireId => OwnerFinalApRngStrategyId;
-        public bool RequiresReplicaMaterialization => false;
-
-        public PotionModel MaterializeOwner(ApMirroredRewardSpec spec, Player player) =>
-            PotionFactory.CreateRandomPotionOutOfCombat(
-                player,
-                CreateApRewardRng(spec, player, "potion")
-            ).ToMutable();
-
-        public PotionModel MaterializeReplica(ApMirroredRewardSpec spec, Player player) =>
-            PotionModel.FromSerializable(
-                Deserialize<SerializablePotion>(spec.SerializedModels.Single())
-            );
-    }
-
-    private sealed class MaterializationAck
-    {
-        public Guid RunId { get; set; }
-        public Guid MenuId { get; set; }
-        public ulong OwnerNetId { get; set; }
-        public ulong ReplicaNetId { get; set; }
-        public string Digest { get; set; } = string.Empty;
-        public bool Success { get; set; }
-        public string Failure { get; set; } = string.Empty;
-    }
-
-    private sealed class MaterializationDecision
-    {
-        public Guid RunId { get; set; }
-        public Guid MenuId { get; set; }
-        public ulong OwnerNetId { get; set; }
-        public string Digest { get; set; } = string.Empty;
-        public bool Approved { get; set; }
-        public string Failure { get; set; } = string.Empty;
-    }
-
-    private sealed class HostMaterializationAgreement
-    {
-        public required ApRewardMenuSpec Menu { get; init; }
-        public required string Digest { get; init; }
-        public required HashSet<ulong> ExpectedReplicas { get; init; }
-        public Dictionary<ulong, MaterializationAck> Acks { get; } = new();
-    }
 
     private static readonly RitsuLibSidecarJsonSerializer<ApRewardMenuSpec> MenuSerializer = new();
-    private static readonly RitsuLibSidecarJsonSerializer<MaterializationAck> AckSerializer = new();
-    private static readonly RitsuLibSidecarJsonSerializer<MaterializationDecision>
-        DecisionSerializer = new();
     private static readonly RitsuLibSidecarSyncMessageDescriptor<ApRewardMenuSpec> MenuDescriptor =
         new(
             ModEntry.ModId,
@@ -208,23 +64,6 @@ public static class ApMirroredRewardDispatcher
             LogLevel: LogLevel.Debug,
             ShouldBroadcast: true
         );
-    private static readonly RitsuLibSidecarMessageDescriptor<MaterializationAck> AckDescriptor =
-        new(
-            ModEntry.ModId,
-            MaterializationAckKey,
-            AckSerializer.Serialize,
-            AckSerializer.Deserialize,
-            Required: true
-        );
-    private static readonly RitsuLibSidecarMessageDescriptor<MaterializationDecision>
-        DecisionDescriptor = new(
-            ModEntry.ModId,
-            MaterializationDecisionKey,
-            DecisionSerializer.Serialize,
-            DecisionSerializer.Deserialize,
-            Required: true
-        );
-
     private static readonly Dictionary<(ApGrantId GrantId, ApMirroredRewardKind Kind), string>
         LastAttempts = new();
     private static readonly HashSet<(ulong OwnerNetId, Guid MenuId)> ActiveRemoteMenus = new();
@@ -232,39 +71,6 @@ public static class ApMirroredRewardDispatcher
         ReplicaCardAssignments = new();
     private static readonly Dictionary<(ulong OwnerNetId, int ItemIndex), PotionModel>
         ReplicaPotionAssignments = new();
-    private static readonly IApCardRewardMaterializer ReplicaNativeCardStrategy =
-        new ReplicaNativeCardMaterializer();
-    private static readonly IApCardRewardMaterializer OwnerFinalCardStrategy =
-        new OwnerFinalApRngCardMaterializer();
-    private static readonly IApPotionRewardMaterializer ReplicaNativePotionStrategy =
-        new ReplicaNativePotionMaterializer();
-    private static readonly IApPotionRewardMaterializer OwnerFinalPotionStrategy =
-        new OwnerFinalApRngPotionMaterializer();
-    private static readonly Dictionary<Guid, HostMaterializationAgreement> HostAgreements = new();
-    private static readonly Dictionary<Guid, List<MaterializationAck>> EarlyAcks = new();
-    private static readonly Dictionary<Guid, TaskCompletionSource<MaterializationDecision>>
-        PendingDecisions = new();
-    private static IDisposable? _ackSubscription;
-    private static IDisposable? _decisionSubscription;
-    private static int _agreementGeneration;
-
-    /// <summary>
-    /// Retains the old every-replica generation path for targeted diagnostics. Production AP
-    /// rewards use owner-final AP RNG and therefore do not put every ready peer on the critical path.
-    /// </summary>
-    internal static bool UseStrictReplicaMaterializationForDiagnostics { get; set; }
-
-    /*
-     * Production card and potion assignments are generated once by the receipt owner from a stable,
-     * receipt-specific AP RNG. The immutable final models are then materialized on other replicas.
-     * Reviewed persistent relic transitions are transmitted as idempotent before/after effects.
-     * Unknown/modded reward hooks are logged and ignored for AP generation.
-     *
-     * The former replica-native path remains behind the strategy interface for diagnosis. Only menu
-     * entries using that strict strategy require the all-ready-peer materialization agreement. Both
-     * paths restore final cards as live native CardReward objects, so pending-reward behavior such as
-     * Glitter responding to Player.RelicObtained still works.
-     */
     private static string? _activeRunIdentity;
 
     public static string? ActiveRunIdentity => _activeRunIdentity;
@@ -272,20 +78,6 @@ public static class ApMirroredRewardDispatcher
     public static void Initialize()
     {
         RitsuLibSidecarSyncMessages.Register(MenuDescriptor);
-        _ackSubscription ??= RitsuLibSidecarTypedMessageRegistry.Subscribe(
-            AckDescriptor,
-            context => PostAgreementMessage(() => HandleMaterializationAck(
-                context.SenderNetId,
-                context.Message
-            ))
-        );
-        _decisionSubscription ??= RitsuLibSidecarTypedMessageRegistry.Subscribe(
-            DecisionDescriptor,
-            context => PostAgreementMessage(() => HandleMaterializationDecision(
-                context.SenderNetId,
-                context.Message
-            ))
-        );
     }
 
     /// <summary>Binds menu assignments and receipt consumption to the current native run.</summary>
@@ -365,273 +157,12 @@ public static class ApMirroredRewardDispatcher
 
     public static void EndRun()
     {
-        Interlocked.Increment(ref _agreementGeneration);
-        foreach (TaskCompletionSource<MaterializationDecision> pending in PendingDecisions.Values)
-            pending.TrySetCanceled();
         _activeRunIdentity = null;
         ActiveRemoteMenus.Clear();
         LastAttempts.Clear();
         ReplicaCardAssignments.Clear();
         ReplicaPotionAssignments.Clear();
-        HostAgreements.Clear();
-        EarlyAcks.Clear();
-        PendingDecisions.Clear();
     }
-
-    private static void PostAgreementMessage(Action action)
-    {
-        int generation = Volatile.Read(ref _agreementGeneration);
-        if (!RitsuLibSidecarGodotMainLoopScheduling.TryPostToMainLoop(() =>
-            {
-                if (generation != Volatile.Read(ref _agreementGeneration))
-                    return;
-                try
-                {
-                    action();
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.Error($"AP reward materialization agreement failed: {ex}");
-                    MultiplayerSupport.InvalidateRunClaims(
-                        "AP reward materialization agreement failed"
-                    );
-                }
-            }))
-        {
-            LogUtility.Error("Could not dispatch AP reward materialization agreement.");
-        }
-    }
-
-    private static TaskCompletionSource<MaterializationDecision> GetDecisionWaiter(Guid menuId)
-    {
-        if (!PendingDecisions.TryGetValue(menuId, out var pending))
-        {
-            pending = new TaskCompletionSource<MaterializationDecision>(
-                TaskCreationOptions.RunContinuationsAsynchronously
-            );
-            PendingDecisions[menuId] = pending;
-        }
-        return pending;
-    }
-
-    private static void RegisterHostAgreement(ApRewardMenuSpec menu)
-    {
-        if (RunManager.Instance.NetService is not NetHostGameService host)
-            throw new InvalidOperationException("Only the host can coordinate AP materialization.");
-        if (HostAgreements.ContainsKey(menu.MenuId))
-            return;
-
-        var expected = host.ConnectedPeers
-            .Where(peer => peer.readyForBroadcasting)
-            .Select(peer => peer.peerId)
-            .Append(host.NetId)
-            .ToHashSet();
-        var agreement = new HostMaterializationAgreement
-        {
-            Menu = menu,
-            Digest = ComputeMaterializationDigest(menu),
-            ExpectedReplicas = expected,
-        };
-        HostAgreements.Add(menu.MenuId, agreement);
-
-        if (EarlyAcks.Remove(menu.MenuId, out List<MaterializationAck>? early))
-        {
-            foreach (MaterializationAck ack in early)
-                ApplyMaterializationAck(agreement, ack);
-        }
-
-        int generation = Volatile.Read(ref _agreementGeneration);
-        _ = FailAgreementAfterTimeout(menu.MenuId, generation);
-    }
-
-    private static async Task FailAgreementAfterTimeout(Guid menuId, int generation)
-    {
-        await Task.Delay(TimeSpan.FromSeconds(15));
-        PostAgreementMessage(() =>
-        {
-            if (generation != Volatile.Read(ref _agreementGeneration)
-                || !HostAgreements.TryGetValue(
-                    menuId,
-                    out HostMaterializationAgreement? agreement))
-            {
-                return;
-            }
-
-            string missing = string.Join(",", agreement.ExpectedReplicas.Except(
-                agreement.Acks.Keys
-            ));
-            PublishMaterializationDecision(
-                agreement,
-                false,
-                $"Timed out waiting for replicas [{missing}]."
-            );
-        });
-    }
-
-    private static void HandleMaterializationAck(ulong senderNetId, MaterializationAck ack)
-    {
-        if (RunManager.Instance.NetService.Type != NetGameType.Host
-            || senderNetId != ack.ReplicaNetId)
-        {
-            return;
-        }
-
-        if (!HostAgreements.TryGetValue(ack.MenuId, out HostMaterializationAgreement? agreement))
-        {
-            if (!EarlyAcks.TryGetValue(ack.MenuId, out List<MaterializationAck>? early))
-            {
-                early = new List<MaterializationAck>();
-                EarlyAcks.Add(ack.MenuId, early);
-            }
-            early.Add(ack);
-            return;
-        }
-
-        ApplyMaterializationAck(agreement, ack);
-    }
-
-    private static void ApplyMaterializationAck(
-        HostMaterializationAgreement agreement,
-        MaterializationAck ack)
-    {
-        if (ack.RunId != agreement.Menu.RunId
-            || ack.OwnerNetId != agreement.Menu.OwnerNetId
-            || !agreement.ExpectedReplicas.Contains(ack.ReplicaNetId)
-            || !string.Equals(ack.Digest, agreement.Digest, StringComparison.Ordinal))
-        {
-            PublishMaterializationDecision(
-                agreement,
-                false,
-                $"Replica {ack.ReplicaNetId} returned an invalid acknowledgement."
-            );
-            return;
-        }
-
-        agreement.Acks[ack.ReplicaNetId] = ack;
-        if (!ack.Success)
-        {
-            PublishMaterializationDecision(
-                agreement,
-                false,
-                $"Replica {ack.ReplicaNetId}: {ack.Failure}"
-            );
-            return;
-        }
-
-        if (agreement.ExpectedReplicas.All(agreement.Acks.ContainsKey))
-            PublishMaterializationDecision(agreement, true, string.Empty);
-    }
-
-    private static void PublishMaterializationDecision(
-        HostMaterializationAgreement agreement,
-        bool approved,
-        string failure)
-    {
-        if (!HostAgreements.Remove(agreement.Menu.MenuId))
-            return;
-
-        var decision = new MaterializationDecision
-        {
-            RunId = agreement.Menu.RunId,
-            MenuId = agreement.Menu.MenuId,
-            OwnerNetId = agreement.Menu.OwnerNetId,
-            Digest = agreement.Digest,
-            Approved = approved,
-            Failure = failure,
-        };
-        if (!RitsuLibSidecarTypedMessageRegistry.Broadcast(
-                RunManager.Instance.NetService,
-                DecisionDescriptor,
-                decision))
-        {
-            decision.Approved = false;
-            decision.Failure = "The host could not broadcast materialization approval.";
-        }
-        ApplyMaterializationDecision(decision);
-    }
-
-    private static void HandleMaterializationDecision(
-        ulong senderNetId,
-        MaterializationDecision decision)
-    {
-        if (!Sts2Compatibility.TryGetHostNetId(
-                RunManager.Instance.NetService,
-                out ulong hostNetId)
-            || senderNetId != hostNetId)
-        {
-            return;
-        }
-        ApplyMaterializationDecision(decision);
-    }
-
-    private static void ApplyMaterializationDecision(MaterializationDecision decision)
-    {
-        if (GetDecisionWaiter(decision.MenuId).TrySetResult(decision))
-        {
-            LogUtility.Debug(
-                $"AP materialization agreement {decision.MenuId}: approved={decision.Approved}"
-            );
-        }
-    }
-
-    private static async Task WaitForMaterializationDecision(ApRewardMenuSpec menu)
-    {
-        try
-        {
-            MaterializationDecision decision = await GetDecisionWaiter(menu.MenuId)
-                .Task.WaitAsync(TimeSpan.FromSeconds(20));
-            string digest = ComputeMaterializationDigest(menu);
-            if (decision.RunId != menu.RunId
-                || decision.OwnerNetId != menu.OwnerNetId
-                || !string.Equals(decision.Digest, digest, StringComparison.Ordinal)
-                || !decision.Approved)
-            {
-                throw new InvalidOperationException(
-                    $"AP reward materialization {menu.MenuId} was rejected: {decision.Failure}"
-                );
-            }
-        }
-        finally
-        {
-            PendingDecisions.Remove(menu.MenuId);
-        }
-    }
-
-    private static void ReportMaterialization(
-        ApRewardMenuSpec menu,
-        bool success,
-        string failure = "")
-    {
-        INetGameService netService = RunManager.Instance.NetService;
-        var ack = new MaterializationAck
-        {
-            RunId = menu.RunId,
-            MenuId = menu.MenuId,
-            OwnerNetId = menu.OwnerNetId,
-            ReplicaNetId = netService.NetId,
-            Digest = ComputeMaterializationDigest(menu),
-            Success = success,
-            Failure = failure,
-        };
-        if (netService.Type == NetGameType.Host)
-        {
-            HandleMaterializationAck(netService.NetId, ack);
-        }
-        else if (!RitsuLibSidecarTypedMessageRegistry.SendToHost(
-                     netService,
-                     AckDescriptor,
-                     ack))
-        {
-            throw new InvalidOperationException(
-                "Could not report AP reward materialization to the host."
-            );
-        }
-    }
-
-    private static string ComputeMaterializationDigest(ApRewardMenuSpec menu) =>
-        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-            MenuSerializer.Serialize(menu)
-        ))[..16];
 
     /// <summary>Opens the local player's current AP receipt catalog as a native reward screen.</summary>
     public static async Task<bool> OpenMenu()
@@ -659,6 +190,7 @@ public static class ApMirroredRewardDispatcher
         }
 
         ApRewardMenuSpec spec;
+        IReadOnlyList<MirroredReward> rewards;
         bool ownerMaterializationStarted = false;
         try
         {
@@ -670,6 +202,7 @@ public static class ApMirroredRewardDispatcher
                 return false;
             ownerMaterializationStarted = true;
             spec = await BuildOwnerMenuSpec(player, runState, approvedRelics);
+            rewards = DecodeRewards(spec);
         }
         catch (Exception ex)
         {
@@ -687,49 +220,17 @@ public static class ApMirroredRewardDispatcher
         if (MultiplayerSupport.IsRealMultiplayerRun)
         {
             INetGameService netService = RunManager.Instance.NetService;
-            bool needsAgreement = RequiresMaterializationAgreement(spec);
-            if (needsAgreement)
-            {
-                GetDecisionWaiter(spec.MenuId);
-                if (netService.Type == NetGameType.Host)
-                    RegisterHostAgreement(spec);
-            }
             bool sent = netService.Type == NetGameType.Host
                 ? RitsuLibSidecarSyncMessages.Broadcast(netService, MenuDescriptor, spec)
                 : RitsuLibSidecarSyncMessages.SendToHostAndBroadcast(netService, MenuDescriptor, spec);
             if (!sent)
             {
-                if (needsAgreement)
-                {
-                    PendingDecisions.Remove(spec.MenuId);
-                    HostAgreements.Remove(spec.MenuId);
-                }
                 LogUtility.Error($"Could not publish AP reward menu {spec.MenuId} to every peer");
                 MultiplayerSupport.InvalidateRunClaims(
                     $"AP reward menu {spec.MenuId} could not reach every replica"
                 );
                 NotificationUtility.ShowRawText("Could not synchronize the AP reward menu.");
                 return false;
-            }
-
-            if (needsAgreement)
-            {
-                try
-                {
-                    ReportMaterialization(spec, success: true);
-                    await WaitForMaterializationDecision(spec);
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.Error($"AP reward materialization was not approved: {ex}");
-                    MultiplayerSupport.InvalidateRunClaims(
-                        $"AP reward materialization {spec.MenuId} was not approved"
-                    );
-                    NotificationUtility.ShowRawText(
-                        "Could not verify AP reward generation on every player."
-                    );
-                    return false;
-                }
             }
 
             if (apLifecycleVersion != ArchipelagoRewardUI.ApLifecycleVersion
@@ -739,7 +240,7 @@ public static class ApMirroredRewardDispatcher
             }
         }
 
-        RewardsSet set = BuildRewardsSet(spec, player);
+        RewardsSet set = BuildRewardsSet(spec.Gold, rewards, player);
         Task completion = RunManager.Instance.RewardsSetSynchronizer.BeginRewardsSet(set);
         ArchipelagoRewardUI.ShowNativeMenu(
             set,
@@ -880,29 +381,30 @@ public static class ApMirroredRewardDispatcher
                 );
 
                 ApNativeCardReward reward;
+                spec.MaterializationStrategyId = OwnerFinalApRngStrategyId;
                 if (isNew)
                 {
-                    IApCardRewardMaterializer strategy = GetDefaultCardStrategy();
-                    spec.MaterializationStrategyId = strategy.WireId;
-                    spec.RequiresNativeMaterialization = strategy.RequiresReplicaMaterialization;
-                    reward = await strategy.MaterializeOwner(spec, player);
+                    reward = await MaterializeOwnerFinalApRngCardReward(spec, player);
                     ArchipelagoClient.Progress.CardAssignments[itemIndex] = reward;
                     LogUtility.Info(
-                        $"Materialized AP card reward {spec.GrantId} with {strategy.WireId} "
+                        $"Materialized AP card reward {spec.GrantId} with {OwnerFinalApRngStrategyId} "
                             + $"for player {player.NetId}"
                     );
                 }
                 else
                 {
+                    spec.CardCanReroll = existing!.CanReroll;
                     reward = existing as ApNativeCardReward
-                        ?? RestoreCardReward(spec, player, existing!.Cards, existing.CanReroll);
+                        ?? RestoreCardReward(MirroredRewardAdapter.Origin(spec),
+                            MirroredRewardAdapter.CardConfiguration(spec), player, existing.Cards);
                     spec.MaterializationStrategyId = string.IsNullOrEmpty(
                         reward.MaterializationStrategyId
                     )
                         ? OwnerFinalApRngStrategyId
                         : reward.MaterializationStrategyId;
                     spec.AppliedEffects = CloneEffects(reward.AppliedEffects);
-                    reward.Configure(spec);
+                    spec.CardHasBeenRevealed = reward.HasBeenRevealed;
+                    reward.Configure(MirroredRewardAdapter.Origin(spec), MirroredRewardAdapter.CardConfiguration(spec));
                     ArchipelagoClient.Progress.CardAssignments[itemIndex] = reward;
                 }
 
@@ -927,18 +429,14 @@ public static class ApMirroredRewardDispatcher
                     itemIndex,
                     out PotionModel? potion
                 );
-                IApPotionRewardMaterializer strategy = isNew
-                    ? GetDefaultPotionStrategy()
-                    : OwnerFinalPotionStrategy;
-                spec.MaterializationStrategyId = strategy.WireId;
-                spec.RequiresNativeMaterialization =
-                    isNew && strategy.RequiresReplicaMaterialization;
+                spec.MaterializationStrategyId = OwnerFinalApRngStrategyId;
                 if (isNew)
                 {
-                    potion = strategy.MaterializeOwner(spec, player);
+                    potion = PotionFactory.CreateRandomPotionOutOfCombat(
+                        player, CreateApRewardRng(spec, player, "potion")).ToMutable();
                     ArchipelagoClient.Progress.PotionAssignments[itemIndex] = potion;
                     LogUtility.Info(
-                        $"Materialized AP potion reward {spec.GrantId} with {strategy.WireId} "
+                        $"Materialized AP potion reward {spec.GrantId} with {OwnerFinalApRngStrategyId} "
                             + $"as {potion.Id}"
                     );
                 }
@@ -979,71 +477,71 @@ public static class ApMirroredRewardDispatcher
         return spec;
     }
 
-    private static RewardsSet BuildRewardsSet(ApRewardMenuSpec menu, Player owner)
+    private static IReadOnlyList<MirroredReward> DecodeRewards(ApRewardMenuSpec menu)
+    {
+        if (menu.SchemaVersion != 5 || menu.Rewards == null)
+            throw new InvalidOperationException("Invalid AP reward-menu schema.");
+        return Array.AsReadOnly(menu.Rewards.Select(spec =>
+        {
+            if (spec == null || spec.OwnerNetId != menu.OwnerNetId || spec.ApSlotId != menu.ApSlotId)
+                throw new InvalidOperationException("AP reward-menu entry had mismatched ownership.");
+            return MirroredRewardAdapter.Decode(spec, AncientRelicPool.ChoiceCount);
+        }).ToArray());
+    }
+
+    private static RewardsSet BuildRewardsSet(
+        ApMenuGoldSpec? gold, IReadOnlyList<MirroredReward> assignments, Player owner)
     {
         var rewards = new List<Reward>();
-        if (menu.Gold != null)
-            rewards.Add(new ApNativeGoldReward(menu.Gold.ToClaim(), owner));
+        if (gold != null)
+            rewards.Add(new ApNativeGoldReward(gold.ToClaim(), owner));
 
-        foreach (ApMirroredRewardSpec spec in menu.Rewards)
+        foreach (MirroredReward spec in assignments)
             rewards.Add(BuildNativeReward(spec, owner));
 
         return new RewardsSet(owner).WithCustomRewards(rewards);
     }
 
-    private static Reward BuildNativeReward(ApMirroredRewardSpec spec, Player owner)
-    {
-        return spec.Kind switch
-        {
-            ApMirroredRewardKind.Card => BuildCardReward(spec, owner),
-            ApMirroredRewardKind.Relic => BuildStandardRelicReward(spec, owner),
-            ApMirroredRewardKind.Potion => new ApNativePotionReward(
-                GetReplicaPotionAssignment(spec, owner),
-                owner,
-                spec
-            ),
-            ApMirroredRewardKind.Ancient => BuildAncientReward(spec, owner),
-            ApMirroredRewardKind.Unavailable => new ApUnavailableReward(
-                spec.ItemName,
-                spec.UnavailableReason,
-                owner,
-                spec
-            ),
-            _ => throw new ArgumentOutOfRangeException(nameof(spec.Kind)),
-        };
-    }
+    private static Reward BuildNativeReward(MirroredReward spec, Player owner) => spec.Match<Reward>(
+        card => BuildCardReward(spec.Origin, card, owner),
+        potion => new ApNativePotionReward(GetReplicaPotionAssignment(spec.Origin, potion, owner), owner, spec.Origin),
+        relic => BuildStandardRelicReward(spec.Origin, relic, owner),
+        choices => BuildAncientReward(spec.Origin, choices, owner),
+        reason => new ApUnavailableReward(spec.Origin.ItemName, reason, owner, spec.Origin));
 
-    private static Reward BuildCardReward(ApMirroredRewardSpec spec, Player player)
+    private static Reward BuildCardReward(RewardOrigin origin, CardRewardData card, Player player)
     {
         if (!ReplicaCardAssignments.TryGetValue(
-                (player.NetId, spec.ReceivedItemIndex),
+                (player.NetId, origin.ReceivedItemIndex),
                 out ApNativeCardReward? reward))
         {
             reward = RestoreCardReward(
-                spec,
+                origin,
+                card.Configuration,
                 player,
-                DeserializeCards(spec, player),
-                spec.CardCanReroll
+                DeserializeCards(card, player)
             );
-            ReplicaCardAssignments[(player.NetId, spec.ReceivedItemIndex)] = reward;
+            ReplicaCardAssignments[(player.NetId, origin.ReceivedItemIndex)] = reward;
         }
 
-        ValidateSerializedModels(spec, reward.Cards.Select(SerializeCard), "card assignment");
+        ValidateSerializedModels(origin, card.Models, reward.Cards.Select(SerializeCard), "card assignment");
+        reward.Configure(origin, card.Configuration);
         return reward;
     }
 
     private static PotionModel GetReplicaPotionAssignment(
-        ApMirroredRewardSpec spec,
+        RewardOrigin origin,
+        PotionRewardData assignment,
         Player player)
     {
         if (!ReplicaPotionAssignments.TryGetValue(
-                (player.NetId, spec.ReceivedItemIndex),
+                (player.NetId, origin.ReceivedItemIndex),
                 out PotionModel? potion))
         {
             potion = PotionModel.FromSerializable(
-                Deserialize<SerializablePotion>(spec.SerializedModels.Single())
+                Deserialize<SerializablePotion>(assignment.Model)
             );
-            ReplicaPotionAssignments[(player.NetId, spec.ReceivedItemIndex)] = potion;
+            ReplicaPotionAssignments[(player.NetId, origin.ReceivedItemIndex)] = potion;
         }
 
         // PotionFactory returns canonical pool entries, but PotionReward owns and may mutate the
@@ -1052,26 +550,23 @@ public static class ApMirroredRewardDispatcher
         if (!potion.IsMutable)
         {
             potion = potion.ToMutable();
-            ReplicaPotionAssignments[(player.NetId, spec.ReceivedItemIndex)] = potion;
+            ReplicaPotionAssignments[(player.NetId, origin.ReceivedItemIndex)] = potion;
             if (LocalContext.IsMe(player)
                 && ArchipelagoClient.Progress.PotionAssignments.ContainsKey(
-                    spec.ReceivedItemIndex
+                    origin.ReceivedItemIndex
                 ))
             {
-                ArchipelagoClient.Progress.PotionAssignments[spec.ReceivedItemIndex] = potion;
+                ArchipelagoClient.Progress.PotionAssignments[origin.ReceivedItemIndex] = potion;
             }
         }
 
-        ValidateSerializedModels(spec, new[] { SerializePotion(potion) }, "potion assignment");
+        ValidateSerializedModels(origin, new[] { assignment.Model }, new[] { SerializePotion(potion) }, "potion assignment");
         return potion;
     }
 
-    private static Reward BuildAncientReward(ApMirroredRewardSpec spec, Player player)
+    private static Reward BuildAncientReward(RewardOrigin origin, IReadOnlyList<string> models, Player player)
     {
-        if (spec.SerializedModels.Count != AncientRelicPool.ChoiceCount)
-            throw new InvalidOperationException($"Ancient reward {spec.GrantId} had invalid choices.");
-
-        var children = spec.SerializedModels
+        var children = models
             .Select(serialized =>
             {
                 RelicModel relic = DeserializeRelic(serialized);
@@ -1083,7 +578,7 @@ public static class ApMirroredRewardDispatcher
                 return (Reward)new ApNativeRelicReward(
                     relic,
                     player,
-                    spec,
+                    origin,
                     ApMirroredRewardKind.Ancient
                 );
             })
@@ -1092,16 +587,17 @@ public static class ApMirroredRewardDispatcher
     }
 
     private static Reward BuildStandardRelicReward(
-        ApMirroredRewardSpec spec,
+        RewardOrigin origin,
+        string model,
         Player player)
     {
-        RelicModel relic = DeserializeRelic(spec.SerializedModels.Single());
-        RelicReceiptMultiplayer.RecordMenuAssignment(player, spec.ReceivedItemIndex, spec.SerializedModels.Single());
+        RelicModel relic = DeserializeRelic(model);
+        RelicReceiptMultiplayer.RecordMenuAssignment(player, origin.ReceivedItemIndex, model);
         StandardRelicPool.ReserveChoice(player, relic);
         return new ApNativeRelicReward(
             relic,
             player,
-            spec,
+            origin,
             ApMirroredRewardKind.Relic
         );
     }
@@ -1119,34 +615,6 @@ public static class ApMirroredRewardDispatcher
             )
         );
     }
-
-    private static IApCardRewardMaterializer GetDefaultCardStrategy() =>
-        UseStrictReplicaMaterializationForDiagnostics
-            ? ReplicaNativeCardStrategy
-            : OwnerFinalCardStrategy;
-
-    private static IApPotionRewardMaterializer GetDefaultPotionStrategy() =>
-        UseStrictReplicaMaterializationForDiagnostics
-            ? ReplicaNativePotionStrategy
-            : OwnerFinalPotionStrategy;
-
-    private static IApCardRewardMaterializer GetCardStrategy(string wireId) => wireId switch
-    {
-        ReplicaNativeStrategyId => ReplicaNativeCardStrategy,
-        OwnerFinalApRngStrategyId => OwnerFinalCardStrategy,
-        _ => throw new InvalidOperationException(
-            $"Unknown AP card materialization strategy '{wireId}'."
-        ),
-    };
-
-    private static IApPotionRewardMaterializer GetPotionStrategy(string wireId) => wireId switch
-    {
-        ReplicaNativeStrategyId => ReplicaNativePotionStrategy,
-        OwnerFinalApRngStrategyId => OwnerFinalPotionStrategy,
-        _ => throw new InvalidOperationException(
-            $"Unknown AP potion materialization strategy '{wireId}'."
-        ),
-    };
 
     private static Rng CreateApRewardRng(
         ApMirroredRewardSpec spec,
@@ -1169,35 +637,6 @@ public static class ApMirroredRewardDispatcher
         return new Rng(BinaryPrimitives.ReadUInt32LittleEndian(digest));
     }
 
-    private static async Task<ApNativeCardReward> MaterializeReplicaNativeCardReward(
-        ApMirroredRewardSpec spec,
-        Player player)
-    {
-        CardCreationOptions options = CreateCardOptions(player, spec.IsRareCardReward)
-            .WithFlags(CardCreationFlags.IsCardReward);
-
-        List<CardCreationResult> cards;
-        List<AbstractModel> modifiers;
-        bool modified;
-        using (Patches_APCardRewardUpgradeOdds.EnterRewardAct(spec.CardRewardActIndex))
-        {
-            cards = Patches_APCardRewardUpgradeOdds.RunDeferringOptionHooks(
-                () => CardFactory.CreateForReward(player, 3, options).ToList()
-            );
-            modified = Hook.TryModifyCardRewardOptions(
-                player.RunState,
-                player,
-                cards,
-                options,
-                out modifiers
-            );
-        }
-        if (modified)
-            await Hook.AfterModifyingCardRewardOptions(player.RunState, modifiers);
-
-        return new ApNativeCardReward(cards, player, options, spec, canReroll: false);
-    }
-
     private static async Task<ApNativeCardReward> MaterializeOwnerFinalApRngCardReward(
         ApMirroredRewardSpec spec,
         Player player)
@@ -1206,8 +645,9 @@ public static class ApMirroredRewardDispatcher
             throw new InvalidOperationException("AP reward generation requires a native run state.");
         List<CardModel> allCards = runState._allCards;
         var preexistingCards = allCards.ToHashSet();
+        CardRewardConfiguration configuration = MirroredRewardAdapter.CardConfiguration(spec);
         Rng rng = CreateApRewardRng(spec, player, "card");
-        CardCreationOptions options = CreateCardOptions(player, spec.IsRareCardReward)
+        CardCreationOptions options = CreateCardOptions(player, configuration.Recipe.IsRareReward)
             .WithFlags(CardCreationFlags.IsCardReward)
             .WithRngOverride(rng);
 
@@ -1217,7 +657,7 @@ public static class ApMirroredRewardDispatcher
         List<AbstractModel> modifiers;
         bool modified;
         using (Patches_APCardRewardUpgradeOdds.EnterApRewardRng(rng))
-        using (Patches_APCardRewardUpgradeOdds.EnterRewardAct(spec.CardRewardActIndex))
+        using (Patches_APCardRewardUpgradeOdds.EnterRewardAct(configuration.Recipe.ActIndex))
         {
             cards = Patches_APCardRewardUpgradeOdds.RunDeferringOptionHooks(
                 () => CardFactory.CreateForReward(player, 3, options).ToList()
@@ -1234,29 +674,8 @@ public static class ApMirroredRewardDispatcher
         if (modified)
             await Hook.AfterModifyingCardRewardOptions(player.RunState, modifiers);
 
-        var effects = new List<ApRewardEffectSpec>();
         int silkenAfter = player.GetRelic<SilkenTress>()?.IsUsedUp == true ? 1 : 0;
-        if (silkenBefore != silkenAfter)
-        {
-            effects.Add(new ApRewardEffectSpec
-            {
-                EffectId = SilkenTressEffectId,
-                BeforeValue = silkenBefore,
-                AfterValue = silkenAfter,
-            });
-        }
         int? crucibleAfter = player.GetRelic<SilverCrucible>()?.TimesUsed;
-        if (crucibleBefore.HasValue && crucibleAfter.HasValue
-            && crucibleBefore.Value != crucibleAfter.Value)
-        {
-            effects.Add(new ApRewardEffectSpec
-            {
-                EffectId = SilverCrucibleEffectId,
-                BeforeValue = crucibleBefore.Value,
-                AfterValue = crucibleAfter.Value,
-            });
-        }
-        spec.AppliedEffects = effects;
 
         // Final cards are the wire contract. Remove every temporary original/clone created by
         // native hooks and reload only those finals, matching the representation other replicas use.
@@ -1274,21 +693,38 @@ public static class ApMirroredRewardDispatcher
             ))
             .ToList();
         spec.SerializedModels = serializedFinalCards;
-        return RestoreCardReward(spec, player, normalizedCards, canReroll: false);
+
+        // Preserve the existing validation boundary after temporary-card cleanup. Validate the
+        // counters captured immediately after the hooks, not values read during restoration.
+        var effects = new List<RewardEffect>();
+        if (silkenBefore != silkenAfter)
+        {
+            effects.Add(MirroredRewardAdapter.ObserveSilkenTress(
+                silkenBefore, silkenAfter, spec.GrantId.ToString()));
+        }
+        if (crucibleBefore.HasValue && crucibleAfter.HasValue
+            && crucibleBefore.Value != crucibleAfter.Value)
+        {
+            effects.Add(MirroredRewardAdapter.ObserveSilverCrucible(
+                crucibleBefore.Value, crucibleAfter.Value, spec.GrantId.ToString()));
+        }
+        spec.AppliedEffects = MirroredRewardAdapter.EncodeEffects(effects);
+        return RestoreCardReward(MirroredRewardAdapter.Origin(spec),
+            MirroredRewardAdapter.CardConfiguration(spec), player, normalizedCards);
     }
 
     private static ApNativeCardReward RestoreCardReward(
-        ApMirroredRewardSpec spec,
+        RewardOrigin origin,
+        CardRewardConfiguration configuration,
         Player player,
-        IEnumerable<CardModel> cards,
-        bool canReroll) =>
+        IEnumerable<CardModel> cards) =>
         new(
             cards.Select(card => new CardCreationResult(card)).ToList(),
             player,
-            CreateCardOptions(player, spec.IsRareCardReward)
+            CreateCardOptions(player, configuration.Recipe.IsRareReward)
                 .WithFlags(CardCreationFlags.IsCardReward),
-            spec,
-            canReroll
+            origin,
+            configuration
         );
 
     internal static CardReward RestorePersistedCardAssignment(
@@ -1297,81 +733,34 @@ public static class ApMirroredRewardDispatcher
         Player player,
         IReadOnlyList<CardModel> cards)
     {
-        var spec = new ApMirroredRewardSpec
-        {
-            ReceivedItemIndex = itemIndex,
-            OwnerNetId = player.NetId,
-            Kind = ApMirroredRewardKind.Card,
-            IsRareCardReward = assignment.IsRare,
-            CardRewardActIndex = assignment.RewardActIndex,
-            CardHasBeenRevealed = assignment.HasBeenRevealed,
-            MaterializationStrategyId = string.IsNullOrEmpty(assignment.MaterializationStrategyId)
-                ? OwnerFinalApRngStrategyId
-                : assignment.MaterializationStrategyId,
-            AppliedEffects = CloneEffects(assignment.AppliedEffects),
-        };
+        var restored = MirroredRewardAdapter.DecodeSavedCardAssignment(
+            itemIndex, assignment, player.NetId);
         ApNativeCardReward reward = RestoreCardReward(
-            spec,
-            player,
-            cards,
-            assignment.CanReroll
-        );
+            restored.Origin, restored.Card.Configuration, player, cards);
         ReplicaCardAssignments[(player.NetId, itemIndex)] = reward;
         return reward;
     }
 
-    private static List<CardModel> DeserializeCards(ApMirroredRewardSpec spec, Player player) =>
-        spec.SerializedModels
+    private static List<CardModel> DeserializeCards(CardRewardData card, Player player) =>
+        card.Models
             .Select(serialized => player.RunState.LoadCard(
                 Deserialize<SerializableCard>(serialized),
                 player
             ))
             .ToList();
 
-    private static string CaptureMaterializationState(Player player)
-    {
-        if (player.RunState is not RunState runState)
-            throw new InvalidOperationException("AP reward materialization requires a native run state.");
-        List<CardModel> allCards = runState._allCards;
-
-        return StableHash(Serialize(new
-        {
-            Player = player.ToSerializable(),
-            RunRng = runState.Rng.ToSerializable(),
-            RunOdds = runState.Odds.ToSerializable(),
-            AllCards = allCards.Select(SerializeCard)
-                .OrderBy(serialized => serialized, StringComparer.Ordinal)
-                .ToList(),
-        }));
-    }
-
-    private static void ValidateMaterializationState(
-        ApMirroredRewardSpec spec,
-        Player player,
-        string expected,
-        string boundary)
-    {
-        string actual = CaptureMaterializationState(player);
-        if (!string.Equals(expected, actual, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                $"AP {spec.Kind} materialization {spec.GrantId} had a mismatched {boundary} "
-                    + $"state (expectedHash={expected}, actualHash={actual})."
-            );
-        }
-    }
-
     private static void ValidateSerializedModels(
-        ApMirroredRewardSpec spec,
+        RewardOrigin origin,
+        IReadOnlyList<string> expectedModels,
         IEnumerable<string> actualModels,
         string description)
     {
         string[] actual = actualModels.ToArray();
-        if (!spec.SerializedModels.SequenceEqual(actual, StringComparer.Ordinal))
+        if (!expectedModels.SequenceEqual(actual, StringComparer.Ordinal))
         {
             throw new InvalidOperationException(
-                $"AP {description} {spec.GrantId} differed after native materialization "
-                    + $"(expectedHash={StableHash(string.Join("\n", spec.SerializedModels))}, "
+                $"AP {description} {origin.ReceiptIdentity} differed after native materialization "
+                    + $"(expectedHash={StableHash(string.Join("\n", expectedModels))}, "
                     + $"actualHash={StableHash(string.Join("\n", actual))})."
             );
         }
@@ -1392,139 +781,40 @@ public static class ApMirroredRewardDispatcher
         })
         .ToList();
 
-    private static bool RequiresMaterializationAgreement(ApRewardMenuSpec menu) =>
-        menu.Rewards.Any(reward => reward.RequiresNativeMaterialization);
-
     private static async Task ApplyOwnerFinalEffects(
-        ApRewardMenuSpec menu,
-        Player owner)
+        IReadOnlyList<MirroredReward> rewards, Player owner)
     {
-        foreach (ApRewardEffectSpec effect in menu.Rewards
-                     .OrderBy(reward => reward.ReceivedItemIndex)
-                     .SelectMany(reward => reward.AppliedEffects))
+        foreach (MirroredReward reward in rewards.OrderBy(reward => reward.Origin.ReceivedItemIndex))
+        foreach (RewardEffect effect in reward.Effects)
         {
-            switch (effect.EffectId)
-            {
-                case SilkenTressEffectId:
+            await effect.Match(
+                async () =>
                 {
                     SilkenTress relic = owner.GetRelic<SilkenTress>()
                         ?? throw new InvalidOperationException(
-                            "An AP reward expected Silken Tress, but the replica did not have it."
-                        );
-                    int current = relic.IsUsedUp ? 1 : 0;
-                    if (current == effect.AfterValue)
-                        break;
-                    if (current != effect.BeforeValue)
-                        throw new InvalidOperationException(
-                            $"Silken Tress AP effect expected {effect.BeforeValue}, found {current}."
-                        );
+                            "An AP reward expected Silken Tress, but the replica did not have it.");
+                    if (!MirroredRewardAdapter.NeedsApplication(effect, relic.IsUsedUp ? 1 : 0, reward.Origin.ReceiptIdentity))
+                        return;
                     await relic.AfterModifyingCardRewardOptions();
                     relic.InvokeExecutionFinished();
                     int after = relic.IsUsedUp ? 1 : 0;
                     if (after != effect.AfterValue)
                         throw new InvalidOperationException(
-                            $"Silken Tress AP effect produced {after}, expected {effect.AfterValue}."
-                        );
-                    break;
-                }
-                case SilverCrucibleEffectId:
+                            $"Silken Tress AP effect produced {after}, expected {effect.AfterValue}.");
+                },
+                async (_, after) =>
                 {
                     SilverCrucible relic = owner.GetRelic<SilverCrucible>()
                         ?? throw new InvalidOperationException(
-                            "An AP reward expected Silver Crucible, but the replica did not have it."
-                        );
-                    // A later pending AP assignment may already have advanced this monotonic
-                    // counter past an earlier persisted transition in the same reopened menu.
-                    if (relic.TimesUsed >= effect.AfterValue)
-                        break;
-                    if (relic.TimesUsed != effect.BeforeValue)
-                        throw new InvalidOperationException(
-                            $"Silver Crucible AP effect expected {effect.BeforeValue}, "
-                                + $"found {relic.TimesUsed}."
-                        );
+                            "An AP reward expected Silver Crucible, but the replica did not have it.");
+                    if (!MirroredRewardAdapter.NeedsApplication(effect, relic.TimesUsed, reward.Origin.ReceiptIdentity))
+                        return;
                     await relic.AfterModifyingCardRewardOptions();
                     relic.InvokeExecutionFinished();
-                    if (relic.TimesUsed != effect.AfterValue)
+                    if (relic.TimesUsed != after)
                         throw new InvalidOperationException(
-                            $"Silver Crucible AP effect produced {relic.TimesUsed}, "
-                                + $"expected {effect.AfterValue}."
-                        );
-                    break;
-                }
-                default:
-                    throw new InvalidOperationException(
-                        $"Unknown AP card-reward effect '{effect.EffectId}'."
-                    );
-            }
-        }
-    }
-
-    private static async Task PrepareReplicaMaterializations(
-        ApRewardMenuSpec menu,
-        Player owner)
-    {
-        foreach (ApMirroredRewardSpec spec in menu.Rewards
-                     .Where(reward => reward.RequiresNativeMaterialization)
-                     .OrderBy(reward => reward.ReceivedItemIndex))
-        {
-            switch (spec.Kind)
-            {
-                case ApMirroredRewardKind.Card:
-                {
-                    if (ReplicaCardAssignments.TryGetValue(
-                            (owner.NetId, spec.ReceivedItemIndex),
-                            out ApNativeCardReward? existing))
-                    {
-                        ValidateSerializedModels(
-                            spec,
-                            existing.Cards.Select(SerializeCard),
-                            "card assignment"
-                        );
-                        break;
-                    }
-
-                    IApCardRewardMaterializer strategy = GetCardStrategy(
-                        spec.MaterializationStrategyId
-                    );
-                    if (!strategy.RequiresReplicaMaterialization)
-                        throw new InvalidOperationException(
-                            $"AP card strategy {strategy.WireId} requested unnecessary replica generation."
-                        );
-                    ApNativeCardReward reward = await strategy.MaterializeReplica(spec, owner);
-                    ReplicaCardAssignments[(owner.NetId, spec.ReceivedItemIndex)] = reward;
-                    break;
-                }
-                case ApMirroredRewardKind.Potion:
-                {
-                    if (ReplicaPotionAssignments.TryGetValue(
-                            (owner.NetId, spec.ReceivedItemIndex),
-                            out PotionModel? existing))
-                    {
-                        ValidateSerializedModels(
-                            spec,
-                            new[] { SerializePotion(existing) },
-                            "potion assignment"
-                        );
-                        break;
-                    }
-
-                    IApPotionRewardMaterializer strategy = GetPotionStrategy(
-                        spec.MaterializationStrategyId
-                    );
-                    if (!strategy.RequiresReplicaMaterialization)
-                        throw new InvalidOperationException(
-                            $"AP potion strategy {strategy.WireId} requested unnecessary replica generation."
-                        );
-                    PotionModel potion = strategy.MaterializeReplica(spec, owner);
-                    ReplicaPotionAssignments[(owner.NetId, spec.ReceivedItemIndex)] = potion;
-                    break;
-                }
-                default:
-                    throw new InvalidOperationException(
-                        $"AP reward {spec.GrantId} requested unsupported native materialization "
-                            + $"for {spec.Kind}."
-                    );
-            }
+                            $"Silver Crucible AP effect produced {relic.TimesUsed}, expected {after}.");
+                });
         }
     }
 
@@ -1550,67 +840,22 @@ public static class ApMirroredRewardDispatcher
         return completion.Task;
     }
 
-    private static void ValidateMenuOnHost(ApRewardMenuSpec menu)
+    private static void ValidateMenuOnHost(ApRewardMenuSpec menu, IReadOnlyList<MirroredReward> rewards)
     {
         if (!TryGetCurrentMenuOwner(menu, out RunState runState, out ApPlayerRunState ownerState))
             throw new InvalidOperationException("AP reward menu did not match the active run owner.");
-
-        if (ownerState.Participation == ApParticipationKind.OwnApSlot
-            && ownerState.ApSlotId != menu.ApSlotId)
-        {
+        if (ownerState.Participation == ApParticipationKind.OwnApSlot && ownerState.ApSlotId != menu.ApSlotId)
             throw new InvalidOperationException("AP reward menu did not match its owner's slot.");
-        }
 
-        foreach (ApMirroredRewardSpec reward in menu.Rewards)
+        // Authentication and live receipt reservations are integration facts, not pure domain rules.
+        foreach (MirroredReward reward in rewards)
         {
-            if (reward.SchemaVersion != 5)
-                throw new InvalidOperationException("Invalid AP reward-menu entry schema.");
-            if (reward.OwnerNetId != menu.OwnerNetId || reward.ApSlotId != menu.ApSlotId)
-                throw new InvalidOperationException("AP reward-menu entry had mismatched ownership.");
-            if (ApRunData.IsReceiptUsed(runState, menu.OwnerNetId, reward.ReceivedItemIndex))
-                throw new InvalidOperationException($"AP receipt {reward.GrantId} was already consumed.");
-            if (reward.Kind == ApMirroredRewardKind.Relic
-                && !RelicReceiptMultiplayer.State(runState).CanUseMenu(
-                    menu.OwnerNetId, reward.ReceivedItemIndex))
-                throw new InvalidOperationException($"AP relic {reward.GrantId} has no host menu reservation.");
-
-            if (reward.Kind is ApMirroredRewardKind.Card or ApMirroredRewardKind.Potion)
-            {
-                _ = RewardMaterializationAdapter.Decode(
-                    reward.MaterializationStrategyId,
-                    reward.RequiresNativeMaterialization,
-                    reward.GrantId.ToString());
-            }
-            else if (reward.RequiresNativeMaterialization || reward.AppliedEffects.Count > 0)
-            {
-                throw new InvalidOperationException(
-                    $"AP reward {reward.GrantId} attached card/potion materialization data to {reward.Kind}."
-                );
-            }
-
-            if (reward.AppliedEffects.Select(effect => effect.EffectId).Distinct().Count()
-                != reward.AppliedEffects.Count)
-                throw new InvalidOperationException(
-                    $"AP reward {reward.GrantId} repeated a persistent effect."
-                );
-            foreach (ApRewardEffectSpec effect in reward.AppliedEffects)
-            {
-                bool valid = effect.EffectId switch
-                {
-                    SilkenTressEffectId => effect.BeforeValue == 0 && effect.AfterValue == 1,
-                    SilverCrucibleEffectId => effect.BeforeValue >= 0
-                        && effect.AfterValue == effect.BeforeValue + 1,
-                    _ => false,
-                };
-                if (reward.Kind != ApMirroredRewardKind.Card
-                    || reward.MaterializationStrategyId != OwnerFinalApRngStrategyId
-                    || !valid)
-                {
-                    throw new InvalidOperationException(
-                        $"AP reward {reward.GrantId} had invalid effect '{effect.EffectId}'."
-                    );
-                }
-            }
+            RewardOrigin origin = reward.Origin;
+            if (ApRunData.IsReceiptUsed(runState, menu.OwnerNetId, origin.ReceivedItemIndex))
+                throw new InvalidOperationException($"AP receipt {origin.ReceiptIdentity} was already consumed.");
+            if (reward.IsRelic && !RelicReceiptMultiplayer.State(runState).CanUseMenu(
+                    menu.OwnerNetId, origin.ReceivedItemIndex))
+                throw new InvalidOperationException($"AP relic {origin.ReceiptIdentity} has no host menu reservation.");
         }
     }
 
@@ -1638,8 +883,6 @@ public static class ApMirroredRewardDispatcher
         TaskCompletionSource sidecarCompletion)
     {
         var key = (menu.OwnerNetId, menu.MenuId);
-        bool materializationReported = false;
-        bool needsAgreement = RequiresMaterializationAgreement(menu);
         try
         {
             if (!ActiveRemoteMenus.Add(key))
@@ -1648,49 +891,18 @@ public static class ApMirroredRewardDispatcher
                 throw new InvalidOperationException("No matching player exists for the AP reward menu.");
             Player owner = runState.GetPlayer(menu.OwnerNetId)
                 ?? throw new InvalidOperationException($"Player {menu.OwnerNetId} is not in the run.");
+            IReadOnlyList<MirroredReward> rewards = DecodeRewards(menu);
             if (RunManager.Instance.NetService.Type == NetGameType.Host)
-            {
-                if (needsAgreement)
-                    RegisterHostAgreement(menu);
-                ValidateMenuOnHost(menu);
-            }
-            if (needsAgreement)
-                GetDecisionWaiter(menu.MenuId);
+                ValidateMenuOnHost(menu, rewards);
             await RelicReceiptMultiplayer.WaitForMenuReservations(owner,
-                menu.Rewards.Where(r => r.Kind == ApMirroredRewardKind.Relic).Select(r => r.ReceivedItemIndex));
-            if (needsAgreement)
-            {
-                await PrepareReplicaMaterializations(menu, owner);
-                ReportMaterialization(menu, success: true);
-                materializationReported = true;
-                await WaitForMaterializationDecision(menu);
-            }
-            else
-            {
-                await ApplyOwnerFinalEffects(menu, owner);
-            }
-            RewardsSet set = BuildRewardsSet(menu, owner);
+                rewards.Where(r => r.IsRelic).Select(r => r.Origin.ReceivedItemIndex));
+            await ApplyOwnerFinalEffects(rewards, owner);
+            RewardsSet set = BuildRewardsSet(menu.Gold, rewards, owner);
             await RunManager.Instance.RewardsSetSynchronizer.BeginRewardsSet(set);
             sidecarCompletion.SetResult();
         }
         catch (Exception ex)
         {
-            if (needsAgreement && !materializationReported
-                && MultiplayerSupport.IsRealMultiplayerRun)
-            {
-                try
-                {
-                    ReportMaterialization(menu, success: false, ex.GetBaseException().Message);
-                }
-                catch (Exception reportException)
-                {
-                    LogUtility.Error(
-                        $"Could not report failed AP materialization {menu.MenuId}: {reportException}"
-                    );
-                }
-            }
-            if (needsAgreement)
-                PendingDecisions.Remove(menu.MenuId);
             sidecarCompletion.SetException(ex);
             if (MultiplayerSupport.IsRealMultiplayerRun && TryGetCurrentMenuOwner(menu, out _, out _))
                 MultiplayerSupport.InvalidateRunClaims($"remote AP reward menu {menu.MenuId} failed");
@@ -1865,10 +1077,10 @@ public static class ApMirroredRewardDispatcher
     private static int _descriptionSequence;
     private const int RewardOriginFontSize = 16;
 
-    private static LocString CreateApDescription(LocString primary, ApMirroredRewardSpec spec) =>
+    private static LocString CreateApDescription(LocString primary, RewardOrigin spec) =>
         CreateApDescription(primary.GetFormattedText(), spec);
 
-    private static LocString CreateApDescription(string primary, ApMirroredRewardSpec spec)
+    private static LocString CreateApDescription(string primary, RewardOrigin spec)
     {
         string location = string.IsNullOrWhiteSpace(spec.FoundLocation)
             ? string.Empty
@@ -1920,7 +1132,7 @@ public static class ApMirroredRewardDispatcher
         public ApNativeRelicReward(
             RelicModel relic,
             Player player,
-            ApMirroredRewardSpec spec,
+            RewardOrigin spec,
             ApMirroredRewardKind kind)
             : base(relic, player)
         {
@@ -1959,7 +1171,7 @@ public static class ApMirroredRewardDispatcher
         public ApNativePotionReward(
             PotionModel potion,
             Player player,
-            ApMirroredRewardSpec spec)
+            RewardOrigin spec)
             : base(potion, player)
         {
             _itemIndex = spec.ReceivedItemIndex;
@@ -1987,20 +1199,16 @@ public static class ApMirroredRewardDispatcher
     internal sealed class ApNativeCardReward : CardReward, IApNativeReward
     {
         private readonly int _itemIndex;
-        private bool _isRare;
-        private int? _rewardActIndex;
-        private bool _hasBeenRevealed;
-        private string _materializationStrategyId = string.Empty;
-        private List<ApRewardEffectSpec> _appliedEffects = new();
+        private CardRewardConfiguration _configuration;
         private LocString _description;
 
-        internal bool IsRare => _isRare;
-        internal int? RewardActIndex => _rewardActIndex;
-        internal bool HasBeenRevealed => _hasBeenRevealed;
-        internal string MaterializationStrategyId => _materializationStrategyId;
-        internal IReadOnlyList<ApRewardEffectSpec> AppliedEffects => _appliedEffects;
+        internal bool IsRare => _configuration.Recipe.IsRareReward;
+        internal int? RewardActIndex => _configuration.Recipe.ActIndex;
+        internal bool HasBeenRevealed => _configuration.HasBeenRevealed;
+        internal string MaterializationStrategyId => _configuration.Policy.StrategyId;
+        internal IReadOnlyList<ApRewardEffectSpec> AppliedEffects => MirroredRewardAdapter.EncodeEffects(_configuration.Effects);
 
-        protected override string IconPath => _isRare
+        protected override string IconPath => IsRare
             ? ImageHelper.GetImagePath("ui/reward_screen/reward_icon_rare.png")
             : base.IconPath;
 
@@ -2010,28 +1218,24 @@ public static class ApMirroredRewardDispatcher
             IReadOnlyList<CardCreationResult> cards,
             Player player,
             CardCreationOptions options,
-            ApMirroredRewardSpec spec,
-            bool canReroll)
+            RewardOrigin origin,
+            CardRewardConfiguration configuration)
             : base(options, cards.Count, player)
         {
             _cards.AddRange(cards);
-            _itemIndex = spec.ReceivedItemIndex;
+            _itemIndex = origin.ReceivedItemIndex;
+            _configuration = configuration;
             _description = new LocString("gameplay_ui", "COMBAT_REWARD_ADD_CARD");
-            Configure(spec);
-            CanReroll = canReroll;
+            Configure(origin, configuration);
         }
 
-        internal void Configure(ApMirroredRewardSpec spec)
+        internal void Configure(RewardOrigin origin, CardRewardConfiguration configuration)
         {
-            _isRare = spec.IsRareCardReward;
-            _rewardActIndex = spec.CardRewardActIndex;
-            _hasBeenRevealed = spec.CardHasBeenRevealed;
-            if (!string.IsNullOrEmpty(spec.MaterializationStrategyId))
-                _materializationStrategyId = spec.MaterializationStrategyId;
-            _appliedEffects = CloneEffects(spec.AppliedEffects);
+            _configuration = configuration;
+            CanReroll = configuration.CanReroll;
             _description = CreateApDescription(
                 new LocString("gameplay_ui", "COMBAT_REWARD_ADD_CARD"),
-                spec
+                origin
             );
         }
 
@@ -2042,8 +1246,8 @@ public static class ApMirroredRewardDispatcher
 
         protected override async Task<bool> OnSelect()
         {
-            bool newlyRevealed = !_hasBeenRevealed;
-            _hasBeenRevealed = true;
+            bool newlyRevealed = !HasBeenRevealed;
+            _configuration = _configuration.WithRevealed();
             HashSet<CardModel>? deckBefore = LocalContext.IsMe(Player)
                 ? Player.Deck.Cards.ToHashSet()
                 : null;
@@ -2090,7 +1294,7 @@ public static class ApMirroredRewardDispatcher
             string itemName,
             string reason,
             Player player,
-            ApMirroredRewardSpec spec)
+            RewardOrigin spec)
             : base(player)
         {
             _description = CreateApDescription(itemName, spec);

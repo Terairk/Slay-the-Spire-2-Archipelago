@@ -16,8 +16,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <ProjectReference Include="..\StS2AP.Domain\StS2AP.Domain.fsproj" />
-    <Compile Include="..\StS2AP\DomainAdapters\RewardMaterializationAdapter.cs"
-             Link="DomainAdapters\RewardMaterializationAdapter.cs" />
+    <Compile Include="..\StS2AP\DomainAdapters\MirroredRewardAdapter.cs"
+             Link="DomainAdapters\MirroredRewardAdapter.cs" />
+    <Compile Include="..\StS2AP\Models\ApGrantModels.cs" Link="Models\ApGrantModels.cs" />
+    <Compile Include="..\StS2AP\Models\ApGoldClaim.cs" Link="Models\ApGoldClaim.cs" />
     <Compile Include="..\StS2AP\Persistence\ApReplicaConstructionState.cs"
              Link="Persistence\ApReplicaConstructionState.cs" />
     <Compile Include="..\StS2AP\Utils\ApSessionIdentity.cs"
