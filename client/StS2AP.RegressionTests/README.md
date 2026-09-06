@@ -22,6 +22,7 @@ or files from the locally excluded admission harness. Each case is discoverable 
 | Session identity | Destination isolation and persisted identity equivalence |
 | Replica construction | Initialization, local counters, compensation, restore |
 | C# interop | Complete mirrored-reward decoding, actual wire/save DTO fixtures, immutable snapshots, save/reveal/effect preservation, and exception conversion |
+| Progressive starters | Shared singleplayer/multiplayer tier transitions, initialization-only removal, recipe identity, strict state/payload decoding, applied-state ordering, and save round trips |
 
 The rest-site hook calls the same `RestSitePolicy` compiled into these tests. Tests supply
 option availability and arbitrary location IDs; they do not reimplement native Smith behavior,

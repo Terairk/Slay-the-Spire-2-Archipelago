@@ -18,6 +18,12 @@
     <ProjectReference Include="..\StS2AP.Domain\StS2AP.Domain.fsproj" />
     <Compile Include="..\StS2AP\DomainAdapters\MirroredRewardAdapter.cs"
              Link="DomainAdapters\MirroredRewardAdapter.cs" />
+    <Compile Include="..\StS2AP\DomainAdapters\ProgressiveStarterAdapter.cs"
+             Link="DomainAdapters\ProgressiveStarterAdapter.cs" />
+    <Compile Include="..\StS2AP\Persistence\ApProgressiveStarterKindState.cs"
+             Link="Persistence\ApProgressiveStarterKindState.cs" />
+    <Compile Include="..\StS2AP\Models\ApProgressiveStarterActionMessage.cs"
+             Link="Models\ApProgressiveStarterActionMessage.cs" />
     <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGrantId.cs" Link="Models\Rewards\Grants\ApGrantId.cs" />
     <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGrantState.cs" Link="Models\Rewards\Grants\ApGrantState.cs" />
     <Compile Include="..\StS2AP\Models\Rewards\Specs\ApMirroredRewardKind.cs" Link="Models\Rewards\Specs\ApMirroredRewardKind.cs" />

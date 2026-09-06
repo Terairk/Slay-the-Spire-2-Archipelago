@@ -116,22 +116,22 @@ Next, decode the complete reward once and pass that validated value through the
 dispatcher. Revalidating and discarding the domain value at every stage would leave
 mutable DTOs as the true source of domain truth.
 
-### 2. Progressive starter states (P1)
+### 2. Progressive starter states (implemented)
 
 Sources: `ApProgressiveStarterKindState`, `ApProgressiveStarterState`,
 `ProgressiveStarterMultiplayer` (construction, validation, application), and
 `ProgressiveStarterUtility`.
 
-Use `Uninitialized | Unsupported | Supported(recipe, tier)`. The supported tier type
-must contain only `None | Basic | Upgraded`; reusing the current `ProgressiveStarterTier`
-unchanged would still allow `Supported(..., Unsupported)`. Keep card and relic recipes
-separate. Validate identifiers and required serialized models before constructing recipes.
+`ProgressiveStarter.fs` models `Uninitialized | Unsupported | Supported(recipe, tier)`.
+The supported tier type contains only `None | Basic | Upgraded`. Singleplayer uses
+validated card/relic mappings; multiplayer uses captured card/relic recipes with exact
+serialized payloads. The C# boundary checks JSON structure and MegaCrit model identities.
 
-F# owns tier decisions; C# retains MegaCrit deck/relic command orchestration by default.
-Keep pure transitions distinct from effects. Introduce direct F# interop only if necessary
-for this feature; Godot dispatch and Harmony entry points remain C#.
-Maintain receipt idempotency, initialization, reset, and save/load mappings together.
-Do not add retry/rollback around an authoritative item as part of this typing migration.
+Both paths use the same pure F# transition planner. C# retains MegaCrit deck/relic command
+orchestration, Godot dispatch, authentication, and per-player persistence. It acknowledges
+each operation only after successful execution. No retry/rollback mechanism was added.
+See [progressive starter domain](progressive-starter-domain.md) for the execution chain,
+validation scope, and runtime test matrix.
 
 ### 3. Participant contributions and readiness (P1)
 

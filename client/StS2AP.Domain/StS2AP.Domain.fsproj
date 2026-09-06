@@ -9,5 +9,6 @@
     <PackageReference Update="FSharp.Core" Version="10.1.302" />
     <Compile Include="RewardMaterialization.fs" />
     <Compile Include="MirroredReward.fs" />
+    <Compile Include="ProgressiveStarter.fs" />
   </ItemGroup>
 </Project>

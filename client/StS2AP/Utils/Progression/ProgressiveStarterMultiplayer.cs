@@ -1,17 +1,15 @@
 using System.Text.Json;
-using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Relics;
-using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using StS2AP.Extensions;
-using StS2AP.Models;
-using StS2AP.Persistence;
+using StS2AP.Domain;
+using StS2AP.DomainAdapters;
 using STS2RitsuLib.Networking.ManagedActions;
 
 namespace StS2AP.Utils;
@@ -23,6 +21,11 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ProgressiveStarterMultiplayer
 {
+    private sealed record ValidatedTarget(
+        ulong PlayerNetId,
+        StarterKind Kind,
+        StarterPlan<CapturedStarterRecipe> Plan);
+
     private const int SchemaVersion = 1;
     private const string ActionKey = "progressive_starter_v1";
 
@@ -37,7 +40,7 @@ public static class ProgressiveStarterMultiplayer
         );
     private static readonly Dictionary<
         (Guid RunId, ulong PlayerNetId, ApProgressiveStarterActionMessage.StarterKind Kind),
-        ApProgressiveStarterKindState
+        StarterState<CapturedStarterRecipe>
     > PendingSpecifications = new();
     private static bool _initialized;
 
@@ -120,17 +123,15 @@ public static class ProgressiveStarterMultiplayer
             if (localPlayer.GetAPCharacterNumber() != characterOffset || !IsEnabledFor(localPlayer, kind))
                 return;
 
-            ApProgressiveStarterKindState specification = GetOrCaptureSpecification(localPlayer, kind);
+            var specification = GetOrCaptureSpecification(localPlayer, kind);
             var targets = new List<ApProgressiveStarterActionMessage.Target>
             {
                 new()
                 {
                     PlayerNetId = localPlayer.NetId,
                     Kind = kind,
-                    TargetTier = specification.Supported
-                        ? (ProgressiveStarterTier)receivedCount
-                        : ProgressiveStarterTier.Unsupported,
-                    Specification = Clone(specification),
+                    TargetTier = ProgressiveStarterAdapter.ReceivedTarget(specification, receivedCount),
+                    Specification = ProgressiveStarterAdapter.Encode(specification),
                 },
             };
 
@@ -164,7 +165,7 @@ public static class ProgressiveStarterMultiplayer
 
         if (IsEnabledFor(player, ApProgressiveStarterActionMessage.StarterKind.Card))
         {
-            ApProgressiveStarterKindState specification = GetOrCaptureSpecification(
+            var specification = GetOrCaptureSpecification(
                 player,
                 ApProgressiveStarterActionMessage.StarterKind.Card
             );
@@ -172,16 +173,15 @@ public static class ProgressiveStarterMultiplayer
             {
                 PlayerNetId = player.NetId,
                 Kind = ApProgressiveStarterActionMessage.StarterKind.Card,
-                TargetTier = specification.Supported
-                    ? GetReceivedTier(ArchipelagoClient.Progress.ProgressiveStarterCards, offset.Value)
-                    : ProgressiveStarterTier.Unsupported,
-                Specification = Clone(specification),
+                TargetTier = ProgressiveStarterAdapter.ReceivedTarget(specification,
+                    ArchipelagoClient.Progress.ProgressiveStarterCards.GetValueOrDefault(offset.Value)),
+                Specification = ProgressiveStarterAdapter.Encode(specification),
             });
         }
 
         if (IsEnabledFor(player, ApProgressiveStarterActionMessage.StarterKind.Relic))
         {
-            ApProgressiveStarterKindState specification = GetOrCaptureSpecification(
+            var specification = GetOrCaptureSpecification(
                 player,
                 ApProgressiveStarterActionMessage.StarterKind.Relic
             );
@@ -189,10 +189,9 @@ public static class ProgressiveStarterMultiplayer
             {
                 PlayerNetId = player.NetId,
                 Kind = ApProgressiveStarterActionMessage.StarterKind.Relic,
-                TargetTier = specification.Supported
-                    ? GetReceivedTier(ArchipelagoClient.Progress.ProgressiveStarterRelics, offset.Value)
-                    : ProgressiveStarterTier.Unsupported,
-                Specification = Clone(specification),
+                TargetTier = ProgressiveStarterAdapter.ReceivedTarget(specification,
+                    ArchipelagoClient.Progress.ProgressiveStarterRelics.GetValueOrDefault(offset.Value)),
+                Specification = ProgressiveStarterAdapter.Encode(specification),
             });
         }
     }
@@ -232,35 +231,31 @@ public static class ProgressiveStarterMultiplayer
             _ => false,
         };
 
-    private static ApProgressiveStarterKindState GetOrCaptureSpecification(
-        Player player,
-        ApProgressiveStarterActionMessage.StarterKind kind)
+    private static StarterState<CapturedStarterRecipe> GetOrCaptureSpecification(
+        Player player, ApProgressiveStarterActionMessage.StarterKind kind)
     {
+        StarterKind domainKind = ProgressiveStarterAdapter.Kind(kind);
+        StarterState<CapturedStarterRecipe> Capture() => ProgressiveStarterAdapter.Decode(
+            domainKind.Match(() => CaptureCardSpecification(player), () => CaptureRelicSpecification(player)), domainKind);
+
         if (player.RunState is RunState runState
             && ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState playerState))
         {
-            ApProgressiveStarterKindState saved = SelectKind(playerState.ProgressiveStarters, kind);
-            if (saved.Initialized)
-                return Clone(saved);
+            var saved = ProgressiveStarterAdapter.Decode(SelectKind(playerState.ProgressiveStarters, domainKind), domainKind);
+            if (saved.Match(() => false, () => true, (_, _) => true))
+                return saved;
 
             if (ApRunData.TryGetSharedState(runState, out ApRunSharedState shared))
             {
                 var key = (shared.RunId, player.NetId, kind);
-                if (PendingSpecifications.TryGetValue(key, out ApProgressiveStarterKindState? pending))
-                    return Clone(pending);
-
-                ApProgressiveStarterKindState captured = kind ==
-                        ApProgressiveStarterActionMessage.StarterKind.Card
-                    ? CaptureCardSpecification(player)
-                    : CaptureRelicSpecification(player);
-                PendingSpecifications[key] = Clone(captured);
+                if (PendingSpecifications.TryGetValue(key, out var pending))
+                    return pending;
+                var captured = Capture();
+                PendingSpecifications[key] = captured;
                 return captured;
             }
         }
-
-        return kind == ApProgressiveStarterActionMessage.StarterKind.Card
-            ? CaptureCardSpecification(player)
-            : CaptureRelicSpecification(player);
+        return Capture();
     }
 
     private static ApProgressiveStarterKindState CaptureCardSpecification(Player player)
@@ -415,7 +410,7 @@ public static class ProgressiveStarterMultiplayer
         RitsuLibManagedNetActionContext<ApProgressiveStarterActionMessage> context)
     {
         ApProgressiveStarterActionMessage message = context.Message;
-        if (!TryValidate(message, context.Player, out RunState runState))
+        if (!TryValidate(message, context.Player, out RunState runState, out var targets))
         {
             string reason = $"invalid managed Progressive Starter action {message.ActionId}";
             LogUtility.Error(reason);
@@ -425,7 +420,7 @@ public static class ProgressiveStarterMultiplayer
 
         try
         {
-            foreach (ApProgressiveStarterActionMessage.Target target in message.Targets)
+            foreach (ValidatedTarget target in targets)
             {
                 Player player = runState.GetPlayer(target.PlayerNetId)
                     ?? throw new InvalidOperationException(
@@ -446,9 +441,11 @@ public static class ProgressiveStarterMultiplayer
     private static bool TryValidate(
         ApProgressiveStarterActionMessage message,
         Player owner,
-        out RunState runState)
+        out RunState runState,
+        out List<ValidatedTarget> targets)
     {
         runState = null!;
+        targets = new();
         if (!MultiplayerSupport.IsRealMultiplayerRun
             || !MultiplayerSupport.ShouldRunReplicatedConstruction(
                 MultiplayerFeature.ProgressiveStarters
@@ -482,7 +479,7 @@ public static class ProgressiveStarterMultiplayer
         var identities = new HashSet<(ulong, ApProgressiveStarterActionMessage.StarterKind)>();
         foreach (ApProgressiveStarterActionMessage.Target target in message.Targets)
         {
-            if (!identities.Add((target.PlayerNetId, target.Kind))
+            if (target == null || !identities.Add((target.PlayerNetId, target.Kind))
                 || current.GetPlayer(target.PlayerNetId) is not Player player
                 || !ApRunData.TryGetPlayerState(
                     current,
@@ -491,10 +488,7 @@ public static class ProgressiveStarterMultiplayer
                 )
                 || target.PlayerNetId != owner.NetId
                 || targetState.Participation != ApParticipationKind.OwnApSlot
-                || !IsEnabledFor(player, target.Kind)
-                || target.TargetTier is < ProgressiveStarterTier.Unsupported
-                    or > ProgressiveStarterTier.Upgraded
-                || !ValidateSpecification(target.Specification, target.TargetTier, player, target.Kind))
+                || !IsEnabledFor(player, target.Kind))
             {
                 return false;
             }
@@ -502,13 +496,27 @@ public static class ProgressiveStarterMultiplayer
             if (message.Reason == ApProgressiveStarterActionMessage.ActionReason.LiveReceipt
                 && (message.ReceivedItemIndex <= 0
                     || !message.CharacterOffset.HasValue
-                    || player.GetAPCharacterNumber() != message.CharacterOffset
-                    || (target.Specification.Supported
-                        && target.TargetTier is not (
-                            ProgressiveStarterTier.Basic
-                            or ProgressiveStarterTier.Upgraded
-                        ))))
+                    || player.GetAPCharacterNumber() != message.CharacterOffset))
             {
+                return false;
+            }
+
+            try
+            {
+                StarterKind kind = ProgressiveStarterAdapter.Kind(target.Kind);
+                var specification = ProgressiveStarterAdapter.Decode(target.Specification, kind);
+                if (!specification.Match(() => false, () => true,
+                        (recipe, _) => ValidateRecipe(recipe, player)))
+                    return false;
+
+                var saved = ProgressiveStarterAdapter.Decode(SelectKind(targetState.ProgressiveStarters, kind), kind);
+                var plan = ProgressiveStarterAdapter.Require(StarterProgression.Plan(saved, specification,
+                    ProgressiveStarterAdapter.Context(message.Reason), (int)target.TargetTier));
+                targets.Add(new ValidatedTarget(target.PlayerNetId, kind, plan));
+            }
+            catch (InvalidOperationException ex)
+            {
+                LogUtility.Warn($"Invalid Progressive Starter {target.Kind} for {player.NetId}: {ex.Message}");
                 return false;
             }
         }
@@ -517,223 +525,116 @@ public static class ProgressiveStarterMultiplayer
         return true;
     }
 
-    private static bool ValidateSpecification(
-        ApProgressiveStarterKindState specification,
-        ProgressiveStarterTier targetTier,
-        Player player,
-        ApProgressiveStarterActionMessage.StarterKind kind)
+    private static bool ValidateRecipe(CapturedStarterRecipe recipe, Player player)
     {
-        if (!specification.Initialized)
-            return false;
-        if (!specification.Supported)
-        {
-            return targetTier == ProgressiveStarterTier.Unsupported
-                && specification.AppliedTier == ProgressiveStarterTier.Unsupported
-                && specification.BaseId == null
-                && specification.UpgradedId == null
-                && specification.SerializedBaseModel == null
-                && specification.SerializedUpgradeRelic == null;
-        }
-        if (targetTier == ProgressiveStarterTier.Unsupported
-            || specification.AppliedTier is < ProgressiveStarterTier.None
-                or > ProgressiveStarterTier.Upgraded
-            || string.IsNullOrWhiteSpace(specification.BaseId)
-            || string.IsNullOrWhiteSpace(specification.UpgradedId)
-            || string.IsNullOrWhiteSpace(specification.SerializedBaseModel)
-            || string.IsNullOrWhiteSpace(specification.SerializedUpgradeRelic))
-        {
-            return false;
-        }
-
         try
         {
-            RelicModel upgradeRelic;
-            if (kind == ApProgressiveStarterActionMessage.StarterKind.Card)
-            {
-                SerializableCard baseCard = Deserialize<SerializableCard>(
-                    specification.SerializedBaseModel
-                );
-                if (!IdEquals(baseCard.Id?.ToString(), specification.BaseId))
-                    return false;
-            }
-            else
-            {
-                RelicModel baseRelic = RelicModel.FromSerializable(
-                    Deserialize<SerializableRelic>(specification.SerializedBaseModel)
-                );
-                if (!IdEquals(baseRelic.Id.ToString(), specification.BaseId))
-                    return false;
-            }
-            upgradeRelic = RelicModel.FromSerializable(
-                Deserialize<SerializableRelic>(specification.SerializedUpgradeRelic)
-            );
-            return kind switch
-            {
-                ApProgressiveStarterActionMessage.StarterKind.Card =>
-                    upgradeRelic is ArchaicTooth tooth
-                    && IdEquals(tooth.StarterCard?.Id?.ToString(), specification.BaseId)
-                    && IdEquals(tooth.AncientCard?.Id?.ToString(), specification.UpgradedId),
-                ApProgressiveStarterActionMessage.StarterKind.Relic =>
-                    upgradeRelic is TouchOfOrobas touch
-                    && IdEquals(touch.StarterRelic?.ToString(), specification.BaseId)
-                    && IdEquals(touch.UpgradedRelic?.ToString(), specification.UpgradedId),
-                _ => false,
-            };
+            StarterMapping mapping = recipe.Mapping;
+            bool baseMatches = mapping.Kind.Match(
+                () => IdEquals(Deserialize<SerializableCard>(recipe.SerializedBaseModel).Id?.ToString(), mapping.BaseId),
+                () => IdEquals(RelicModel.FromSerializable(Deserialize<SerializableRelic>(recipe.SerializedBaseModel))
+                    .Id.ToString(), mapping.BaseId));
+            if (!baseMatches)
+                return false;
+
+            RelicModel upgrade = RelicModel.FromSerializable(Deserialize<SerializableRelic>(recipe.SerializedUpgradeRelic));
+            return mapping.Kind.Match(
+                () => upgrade is ArchaicTooth tooth
+                    && IdEquals(tooth.StarterCard?.Id?.ToString(), mapping.BaseId)
+                    && IdEquals(tooth.AncientCard?.Id?.ToString(), mapping.UpgradedId),
+                () => upgrade is TouchOfOrobas touch
+                    && IdEquals(touch.StarterRelic?.ToString(), mapping.BaseId)
+                    && IdEquals(touch.UpgradedRelic?.ToString(), mapping.UpgradedId));
         }
         catch (Exception ex)
         {
-            LogUtility.Warn(
-                $"Invalid Progressive Starter {kind} specification for {player.NetId}: {ex.Message}"
-            );
+            LogUtility.Warn($"Invalid Progressive Starter {recipe.Mapping.Kind} specification for {player.NetId}: {ex.Message}");
             return false;
         }
     }
 
-    private static async Task ApplyTarget(
-        RunState runState,
-        Player player,
-        ApProgressiveStarterActionMessage.Target target)
+    private static async Task ApplyTarget(RunState runState, Player player, ValidatedTarget target)
     {
         if (!ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState playerState))
             throw new InvalidOperationException($"No AP run state exists for {player.NetId}.");
 
-        ApProgressiveStarterKindState current = SelectKind(playerState.ProgressiveStarters, target.Kind);
-        if (!current.Initialized)
+        var state = target.Plan.State;
+        SetKind(playerState.ProgressiveStarters, target.Kind, ProgressiveStarterAdapter.Encode(state));
+        foreach (StarterOperation operation in target.Plan.Operations)
         {
-            current = Clone(target.Specification);
-            SetKind(playerState.ProgressiveStarters, target.Kind, current);
-        }
-        else if (!SpecificationsMatch(current, target.Specification))
-        {
-            throw new InvalidOperationException(
-                $"Progressive Starter {target.Kind} recipe changed for {player.NetId}."
-            );
+            await state.Match(
+                () => throw new InvalidOperationException("Cannot execute an uninitialized starter."),
+                () => throw new InvalidOperationException("Cannot execute an unsupported starter."),
+                (recipe, _) => operation.Match(
+                    () => RemoveBase(player, recipe),
+                    () => RestoreBase(player, recipe),
+                    () => GrantUpgradeRelic(player, recipe)));
+            // Preserve successful intermediate commands if a later command fails. No replay or rollback.
+            state = ProgressiveStarterAdapter.Require(StarterProgression.AfterApplied(state, operation));
+            SetKind(playerState.ProgressiveStarters, target.Kind, ProgressiveStarterAdapter.Encode(state));
         }
 
-        if (!current.Supported)
-        {
-            if (!ApRunData.SetProgressiveStarterState(
-                    runState,
-                    player.NetId,
-                    playerState.ProgressiveStarters
-                ))
+        if (!ApRunData.SetProgressiveStarterState(runState, player.NetId, playerState.ProgressiveStarters))
+            throw new InvalidOperationException($"Could not persist Progressive Starter state for {player.NetId}.");
+
+        state.Match(
+            () => false,
+            () =>
             {
-                throw new InvalidOperationException(
-                    $"Could not persist unsupported Progressive Starter state for {player.NetId}."
-                );
-            }
-            LogUtility.Info(
-                $"Managed Progressive Starter {target.Kind} is unsupported for "
-                    + $"{player.Character.Id.Entry} ({player.NetId}); no mutation was applied."
-            );
-            return;
-        }
-
-        ProgressiveStarterTier targetTier = target.TargetTier;
-        if (current.AppliedTier == ProgressiveStarterTier.Basic
-            && targetTier == ProgressiveStarterTier.None)
-        {
-            await RemoveBase(player, target.Kind, current);
-            current.AppliedTier = ProgressiveStarterTier.None;
-        }
-        else
-        {
-            if (current.AppliedTier == ProgressiveStarterTier.None
-                && targetTier >= ProgressiveStarterTier.Basic)
+                LogUtility.Info($"Managed Progressive Starter {target.Kind} is unsupported for "
+                    + $"{player.Character.Id.Entry} ({player.NetId}); no mutation was applied.");
+                return true;
+            },
+            (_, tier) =>
             {
-                await RestoreBase(player, target.Kind, current);
-                current.AppliedTier = ProgressiveStarterTier.Basic;
-            }
-
-            if (current.AppliedTier == ProgressiveStarterTier.Basic
-                && targetTier == ProgressiveStarterTier.Upgraded)
-            {
-                await GrantUpgradeRelic(player, current);
-                current.AppliedTier = ProgressiveStarterTier.Upgraded;
-            }
-        }
-
-        if (current.AppliedTier != targetTier)
-        {
-            throw new InvalidOperationException(
-                $"Progressive Starter {target.Kind} for {player.NetId} could not transition "
-                    + $"from {current.AppliedTier} to {targetTier}."
-            );
-        }
-
-        SetKind(playerState.ProgressiveStarters, target.Kind, current);
-        if (!ApRunData.SetProgressiveStarterState(
-                runState,
-                player.NetId,
-                playerState.ProgressiveStarters
-            ))
-        {
-            throw new InvalidOperationException(
-                $"Could not persist Progressive Starter state for {player.NetId}."
-            );
-        }
-
-        LogUtility.Success(
-            $"Managed Progressive Starter {target.Kind} applied tier {targetTier} for "
-                + $"{player.Character.Id.Entry} ({player.NetId})."
-        );
+                LogUtility.Success($"Managed Progressive Starter {target.Kind} applied tier {tier} for "
+                    + $"{player.Character.Id.Entry} ({player.NetId}).");
+                return true;
+            });
     }
 
-    private static async Task RemoveBase(
-        Player player,
-        ApProgressiveStarterActionMessage.StarterKind kind,
-        ApProgressiveStarterKindState state)
-    {
-        if (kind == ApProgressiveStarterActionMessage.StarterKind.Card)
-        {
-            CardModel? card = FindDeckCard(player, state.BaseId!);
-            if (card != null)
-                await CardPileCmd.RemoveFromDeck(card, showPreview: false);
-            return;
-        }
+    private static Task RemoveBase(Player player, CapturedStarterRecipe recipe) =>
+        recipe.Mapping.Kind.Match(
+            async () =>
+            {
+                CardModel? card = FindDeckCard(player, recipe.Mapping.BaseId);
+                if (card != null)
+                    await CardPileCmd.RemoveFromDeck(card, showPreview: false);
+            },
+            async () =>
+            {
+                RelicModel? relic = FindOwnedRelic(player, recipe.Mapping.BaseId);
+                if (relic != null)
+                    await RelicCmd.Remove(relic);
+            });
 
-        RelicModel? relic = FindOwnedRelic(player, state.BaseId!);
-        if (relic != null)
-            await RelicCmd.Remove(relic);
-    }
-
-    private static async Task RestoreBase(
-        Player player,
-        ApProgressiveStarterActionMessage.StarterKind kind,
-        ApProgressiveStarterKindState state)
-    {
-        if (kind == ApProgressiveStarterActionMessage.StarterKind.Card)
-        {
-            if (FindDeckCard(player, state.BaseId!) != null)
-                return;
-
-            CardModel card = player.RunState.LoadCard(
-                Deserialize<SerializableCard>(state.SerializedBaseModel!),
-                player
-            );
-            var addResult = await CardPileCmd.Add(card, PileType.Deck, skipVisuals: true);
-            if (!addResult.success)
-                throw new InvalidOperationException($"The game rejected starter card {card.Id}.");
-            return;
-        }
-
-        if (FindOwnedRelic(player, state.BaseId!) != null)
-            return;
-
-        RelicModel relic = RelicModel.FromSerializable(
-            Deserialize<SerializableRelic>(state.SerializedBaseModel!)
-        );
-        await RelicCmd.Obtain(relic, player);
-        if (FindOwnedRelic(player, state.BaseId!) == null)
-            throw new InvalidOperationException($"The game rejected starter relic {state.BaseId}.");
-    }
+    private static Task RestoreBase(Player player, CapturedStarterRecipe recipe) =>
+        recipe.Mapping.Kind.Match(
+            async () =>
+            {
+                if (FindDeckCard(player, recipe.Mapping.BaseId) != null)
+                    return;
+                CardModel card = player.RunState.LoadCard(Deserialize<SerializableCard>(recipe.SerializedBaseModel), player);
+                var addResult = await CardPileCmd.Add(card, PileType.Deck, skipVisuals: true);
+                if (!addResult.success)
+                    throw new InvalidOperationException($"The game rejected starter card {card.Id}.");
+            },
+            async () =>
+            {
+                if (FindOwnedRelic(player, recipe.Mapping.BaseId) != null)
+                    return;
+                RelicModel relic = RelicModel.FromSerializable(Deserialize<SerializableRelic>(recipe.SerializedBaseModel));
+                await RelicCmd.Obtain(relic, player);
+                if (FindOwnedRelic(player, recipe.Mapping.BaseId) == null)
+                    throw new InvalidOperationException($"The game rejected starter relic {recipe.Mapping.BaseId}.");
+            });
 
     private static async Task GrantUpgradeRelic(
         Player player,
-        ApProgressiveStarterKindState state)
+        CapturedStarterRecipe state)
     {
         RelicModel relic = RelicModel.FromSerializable(
-            Deserialize<SerializableRelic>(state.SerializedUpgradeRelic!)
+            Deserialize<SerializableRelic>(state.SerializedUpgradeRelic)
         );
         if (FindOwnedRelic(player, relic.Id.ToString()) != null)
             return;
@@ -743,58 +644,13 @@ public static class ProgressiveStarterMultiplayer
             throw new InvalidOperationException($"The game rejected Orobas relic {relic.Id}.");
     }
 
-    private static ProgressiveStarterTier GetReceivedTier(
-        IReadOnlyDictionary<long, int> received,
-        long characterOffset)
-    {
-        received.TryGetValue(characterOffset, out int count);
-        return (ProgressiveStarterTier)Math.Clamp(count, 0, 2);
-    }
-
     private static ApProgressiveStarterKindState SelectKind(
-        ApProgressiveStarterPlayerState state,
-        ApProgressiveStarterActionMessage.StarterKind kind) =>
-        kind == ApProgressiveStarterActionMessage.StarterKind.Card ? state.Card : state.Relic;
+        ApProgressiveStarterPlayerState state, StarterKind kind) =>
+        kind.Match(() => state.Card, () => state.Relic);
 
-    private static void SetKind(
-        ApProgressiveStarterPlayerState state,
-        ApProgressiveStarterActionMessage.StarterKind kind,
-        ApProgressiveStarterKindState value)
-    {
-        if (kind == ApProgressiveStarterActionMessage.StarterKind.Card)
-            state.Card = value;
-        else
-            state.Relic = value;
-    }
-
-    private static bool SpecificationsMatch(
-        ApProgressiveStarterKindState left,
-        ApProgressiveStarterKindState right) =>
-        left.Supported == right.Supported
-        && string.Equals(left.BaseId, right.BaseId, StringComparison.Ordinal)
-        && string.Equals(left.UpgradedId, right.UpgradedId, StringComparison.Ordinal)
-        && string.Equals(
-            left.SerializedBaseModel,
-            right.SerializedBaseModel,
-            StringComparison.Ordinal
-        )
-        && string.Equals(
-            left.SerializedUpgradeRelic,
-            right.SerializedUpgradeRelic,
-            StringComparison.Ordinal
-        );
-
-    private static ApProgressiveStarterKindState Clone(
-        ApProgressiveStarterKindState source) => new()
-    {
-        Initialized = source.Initialized,
-        Supported = source.Supported,
-        BaseId = source.BaseId,
-        UpgradedId = source.UpgradedId,
-        SerializedBaseModel = source.SerializedBaseModel,
-        SerializedUpgradeRelic = source.SerializedUpgradeRelic,
-        AppliedTier = source.AppliedTier,
-    };
+    private static void SetKind(ApProgressiveStarterPlayerState state, StarterKind kind,
+        ApProgressiveStarterKindState value) => kind.Match(
+            () => state.Card = value, () => state.Relic = value);
 
     private static CardModel? FindDeckCard(Player player, string idEntry) =>
         player.Deck.Cards.FirstOrDefault(card =>

@@ -6,7 +6,8 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Relics;
 using StS2AP.Extensions;
-using StS2AP.Models;
+using StS2AP.Domain;
+using StS2AP.DomainAdapters;
 
 namespace StS2AP.Utils
 {
@@ -50,7 +51,7 @@ namespace StS2AP.Utils
             if (ArchipelagoClient.Settings?.ProgressiveStarterRelic == true)
                 CaptureStarterRelic(player);
 
-            await ReconcileAsync(player);
+            await ReconcileAsync(player, StarterContext.Initialization);
         }
 
         /// <summary>
@@ -140,7 +141,7 @@ namespace StS2AP.Utils
             }
         }
 
-        private static async Task ReconcileAsync(Player player)
+        private static async Task ReconcileAsync(Player player, StarterContext? context = null)
         {
             await ReconcileLock.WaitAsync();
             try
@@ -153,7 +154,7 @@ namespace StS2AP.Utils
                 {
                     try
                     {
-                        await ReconcileCardAsync(player);
+                        await ReconcileStarterAsync(player, StarterKind.Card, context ?? StarterContext.Reconciliation);
                     }
                     catch (Exception ex)
                     {
@@ -167,7 +168,7 @@ namespace StS2AP.Utils
                 {
                     try
                     {
-                        await ReconcileRelicAsync(player);
+                        await ReconcileStarterAsync(player, StarterKind.Relic, context ?? StarterContext.Reconciliation);
                     }
                     catch (Exception ex)
                     {
@@ -183,201 +184,123 @@ namespace StS2AP.Utils
             }
         }
 
-        private static async Task ReconcileCardAsync(Player player)
+        private static async Task ReconcileStarterAsync(Player player, StarterKind kind, StarterContext context)
         {
             var progress = ArchipelagoClient.Progress;
-            if (progress.ProgressiveStarterCardBaseId == null ||
-                progress.ProgressiveStarterCardUpgradedId == null ||
-                progress.ProgressiveStarterCardTier == ProgressiveStarterTier.Unsupported)
+            var state = kind.Match(
+                () => ProgressiveStarterAdapter.DecodeSingleplayer(kind, progress.ProgressiveStarterCardBaseId,
+                    progress.ProgressiveStarterCardUpgradedId, progress.ProgressiveStarterCardTier),
+                () => ProgressiveStarterAdapter.DecodeSingleplayer(kind, progress.ProgressiveStarterRelicBaseId,
+                    progress.ProgressiveStarterRelicUpgradedId, progress.ProgressiveStarterRelicTier));
+            var received = kind.Match(() => progress.ProgressiveStarterCards, () => progress.ProgressiveStarterRelics);
+            var target = GetTargetTier(received, player);
+            if (target == ProgressiveStarterTier.Unsupported)
+                return; // No configured AP character offset: retain the existing fail-open behavior.
+            int desired = state.Match(() => -1, () => -1, (_, _) => (int)target);
+            var plan = ProgressiveStarterAdapter.Require(StarterProgression.Plan(state, state, context, desired));
+
+            foreach (StarterOperation operation in plan.Operations)
             {
-                return;
-            }
+                bool applied = await state.Match(
+                    () => Task.FromResult(false),
+                    () => Task.FromResult(false),
+                    (mapping, _) => mapping.Kind.Match(
+                        () => ApplyCardOperation(player, mapping, operation),
+                        () => ApplyRelicOperation(player, mapping, operation)));
+                if (!applied)
+                    return; // A missing native model leaves the prior applied state unchanged.
 
-            var targetTier = GetTargetTier(progress.ProgressiveStarterCards, player);
-            if (targetTier == ProgressiveStarterTier.Unsupported)
-                return;
-            var currentTier = progress.ProgressiveStarterCardTier;
-            if (targetTier == currentTier)
-                return;
-
-            // A new run is constructed with its vanilla tier-one starter before AP reconciliation.
-            // This is the only expected downward transition; received AP items only increase later.
-            if (currentTier == ProgressiveStarterTier.Basic && targetTier == ProgressiveStarterTier.None)
-            {
-                var baseCard = FindDeckCard(player, progress.ProgressiveStarterCardBaseId);
-                if (baseCard == null)
+                state = ProgressiveStarterAdapter.Require(StarterProgression.AfterApplied(state, operation));
+                var appliedTier = (ProgressiveStarterTier)state.AppliedWireValue;
+                kind.Match(
+                    () => progress.ProgressiveStarterCardTier = appliedTier,
+                    () => progress.ProgressiveStarterRelicTier = appliedTier);
+                state.Match(() => false, () => false, (mapping, tier) =>
                 {
-                    LogUtility.Warn(
-                        $"Could not find progressive starter card {progress.ProgressiveStarterCardBaseId} " +
-                        "in the deck; leaving its current state unchanged."
-                    );
-                    return;
-                }
-
-                await CardPileCmd.RemoveFromDeck(baseCard, showPreview: false);
-                progress.ProgressiveStarterCardTier = ProgressiveStarterTier.None;
-                LogTierTransition("Card", player, ProgressiveStarterTier.None, progress.ProgressiveStarterCardBaseId);
-                return;
-            }
-
-            if (currentTier == ProgressiveStarterTier.None &&
-                targetTier is ProgressiveStarterTier.Basic or ProgressiveStarterTier.Upgraded)
-            {
-                var baseCanonical = FindCanonicalCard(progress.ProgressiveStarterCardBaseId);
-                if (baseCanonical == null)
-                {
-                    LogUtility.Warn(
-                        $"Could not resolve progressive starter card {progress.ProgressiveStarterCardBaseId}; " +
-                        "leaving its current state unchanged."
-                    );
-                    return;
-                }
-
-                var cardToAdd = player.RunState.CreateCard(baseCanonical, player);
-                var addResult = await CardPileCmd.Add(
-                    cardToAdd,
-                    PileType.Deck,
-                    skipVisuals: true
-                );
-                if (!addResult.success)
-                    throw new InvalidOperationException($"The game rejected starter card {cardToAdd.Id}.");
-
-                currentTier = ProgressiveStarterTier.Basic;
-                progress.ProgressiveStarterCardTier = currentTier;
-                LogTierTransition("Card", player, currentTier, cardToAdd.Id.ToString());
-            }
-
-            if (currentTier == ProgressiveStarterTier.Basic && targetTier == ProgressiveStarterTier.Upgraded)
-            {
-                // Compatibility test point: grant the actual Ancient instead of reproducing its
-                // transformation. This delegates upgrade/enchantment preservation, visual feedback,
-                // and BaseLib/RitsuLib patches to Archaic Tooth's normal obtain behavior.
-                var archaicTooth = (ArchaicTooth)ModelDb.Relic<ArchaicTooth>().ToMutable();
-                if (!archaicTooth.SetupForPlayer(player))
-                {
-                    throw new InvalidOperationException(
-                        "Archaic Tooth could not configure itself for the current starter card."
-                    );
-                }
-                await RelicCmd.Obtain(archaicTooth, player);
-
-                if (FindOwnedRelic(player, archaicTooth.Id.ToString()) == null)
-                {
-                    throw new InvalidOperationException(
-                        "The game did not add Archaic Tooth after receiving the upgraded starter-card tier."
-                    );
-                }
-
-                progress.ProgressiveStarterCardTier = ProgressiveStarterTier.Upgraded;
-                if (FindDeckCard(player, progress.ProgressiveStarterCardUpgradedId) == null)
-                {
-                    LogUtility.Warn(
-                        $"Archaic Tooth was obtained, but expected transformed starter card " +
-                        $"{progress.ProgressiveStarterCardUpgradedId} was not found."
-                    );
-                }
-                LogTierTransition(
-                    "Card",
-                    player,
-                    ProgressiveStarterTier.Upgraded,
-                    progress.ProgressiveStarterCardUpgradedId
-                );
+                    string modelId = operation.Match(() => mapping.BaseId, () => mapping.BaseId, () => mapping.UpgradedId);
+                    LogTierTransition(kind.ToString(), player, appliedTier, modelId);
+                    return true;
+                });
             }
         }
 
-        private static async Task ReconcileRelicAsync(Player player)
-        {
-            var progress = ArchipelagoClient.Progress;
-            if (progress.ProgressiveStarterRelicBaseId == null ||
-                progress.ProgressiveStarterRelicUpgradedId == null ||
-                progress.ProgressiveStarterRelicTier == ProgressiveStarterTier.Unsupported)
-            {
-                return;
-            }
-
-            var targetTier = GetTargetTier(progress.ProgressiveStarterRelics, player);
-            if (targetTier == ProgressiveStarterTier.Unsupported)
-                return;
-            var currentTier = progress.ProgressiveStarterRelicTier;
-            if (targetTier == currentTier)
-                return;
-
-            // As with cards, the run initially contains the vanilla tier-one relic. Removing it for
-            // target tier zero is initialization, not a reversal of received AP progression.
-            if (currentTier == ProgressiveStarterTier.Basic && targetTier == ProgressiveStarterTier.None)
-            {
-                var baseRelic = FindOwnedRelic(player, progress.ProgressiveStarterRelicBaseId);
-                if (baseRelic == null)
+        private static Task<bool> ApplyCardOperation(Player player, StarterMapping mapping, StarterOperation operation) =>
+            operation.Match(
+                async () =>
                 {
-                    LogUtility.Warn(
-                        $"Could not find progressive starter relic {progress.ProgressiveStarterRelicBaseId}; " +
-                        "leaving its current state unchanged."
-                    );
-                    return;
-                }
-
-                await RelicCmd.Remove(baseRelic);
-                progress.ProgressiveStarterRelicTier = ProgressiveStarterTier.None;
-                LogTierTransition("Relic", player, ProgressiveStarterTier.None, progress.ProgressiveStarterRelicBaseId);
-                return;
-            }
-
-            if (currentTier == ProgressiveStarterTier.None &&
-                targetTier is ProgressiveStarterTier.Basic or ProgressiveStarterTier.Upgraded)
-            {
-                var relicCanonical = FindCanonicalRelic(progress.ProgressiveStarterRelicBaseId);
-                if (relicCanonical == null)
+                    var baseCard = FindDeckCard(player, mapping.BaseId);
+                    if (baseCard == null)
+                    {
+                        LogUtility.Warn($"Could not find progressive starter card {mapping.BaseId} in the deck; leaving its current state unchanged.");
+                        return false;
+                    }
+                    await CardPileCmd.RemoveFromDeck(baseCard, showPreview: false);
+                    return true;
+                },
+                async () =>
                 {
-                    LogUtility.Warn(
-                        $"Could not resolve progressive starter relic {progress.ProgressiveStarterRelicBaseId}; " +
-                        "leaving its current state unchanged."
-                    );
-                    return;
-                }
-
-                await RelicCmd.Obtain(relicCanonical.ToMutable(), player);
-                currentTier = ProgressiveStarterTier.Basic;
-                progress.ProgressiveStarterRelicTier = currentTier;
-                LogTierTransition("Relic", player, currentTier, relicCanonical.Id.ToString());
-            }
-
-            if (currentTier == ProgressiveStarterTier.Basic && targetTier == ProgressiveStarterTier.Upgraded)
-            {
-                // Compatibility test point: grant Touch itself so its normal obtain behavior owns
-                // the replacement and any BaseLib/RitsuLib compatibility patches. If a modded
-                // starter behaves unexpectedly, this is the isolated call to disable while testing.
-                var touchOfOrobas = (TouchOfOrobas)ModelDb.Relic<TouchOfOrobas>().ToMutable();
-                if (!touchOfOrobas.SetupForPlayer(player))
+                    var baseCanonical = FindCanonicalCard(mapping.BaseId);
+                    if (baseCanonical == null)
+                    {
+                        LogUtility.Warn($"Could not resolve progressive starter card {mapping.BaseId}; leaving its current state unchanged.");
+                        return false;
+                    }
+                    var cardToAdd = player.RunState.CreateCard(baseCanonical, player);
+                    var result = await CardPileCmd.Add(cardToAdd, PileType.Deck, skipVisuals: true);
+                    if (!result.success)
+                        throw new InvalidOperationException($"The game rejected starter card {cardToAdd.Id}.");
+                    return true;
+                },
+                async () =>
                 {
-                    throw new InvalidOperationException(
-                        "Touch of Orobas could not configure itself for the current starter relic."
-                    );
-                }
-                await RelicCmd.Obtain(touchOfOrobas, player);
+                    // The native Ancient owns transformations and BaseLib/RitsuLib compatibility.
+                    var tooth = (ArchaicTooth)ModelDb.Relic<ArchaicTooth>().ToMutable();
+                    if (!tooth.SetupForPlayer(player))
+                        throw new InvalidOperationException("Archaic Tooth could not configure itself for the current starter card.");
+                    await RelicCmd.Obtain(tooth, player);
+                    if (FindOwnedRelic(player, tooth.Id.ToString()) == null)
+                        throw new InvalidOperationException("The game did not add Archaic Tooth after receiving the upgraded starter-card tier.");
+                    if (FindDeckCard(player, mapping.UpgradedId) == null)
+                        LogUtility.Warn($"Archaic Tooth was obtained, but expected transformed starter card {mapping.UpgradedId} was not found.");
+                    return true;
+                });
 
-                if (FindOwnedRelic(player, touchOfOrobas.Id.ToString()) == null)
+        private static Task<bool> ApplyRelicOperation(Player player, StarterMapping mapping, StarterOperation operation) =>
+            operation.Match(
+                async () =>
                 {
-                    throw new InvalidOperationException(
-                        "The game did not add Touch of Orobas after receiving the upgraded starter-relic tier."
-                    );
-                }
-
-                progress.ProgressiveStarterRelicTier = ProgressiveStarterTier.Upgraded;
-                if (FindOwnedRelic(player, progress.ProgressiveStarterRelicUpgradedId) == null)
+                    var baseRelic = FindOwnedRelic(player, mapping.BaseId);
+                    if (baseRelic == null)
+                    {
+                        LogUtility.Warn($"Could not find progressive starter relic {mapping.BaseId}; leaving its current state unchanged.");
+                        return false;
+                    }
+                    await RelicCmd.Remove(baseRelic);
+                    return true;
+                },
+                async () =>
                 {
-                    LogUtility.Warn(
-                        $"Touch of Orobas was obtained, but expected upgraded starter relic " +
-                        $"{progress.ProgressiveStarterRelicUpgradedId} was not found."
-                    );
-                }
-                LogTierTransition(
-                    "Relic",
-                    player,
-                    ProgressiveStarterTier.Upgraded,
-                    progress.ProgressiveStarterRelicUpgradedId
-                );
-            }
-        }
+                    var baseCanonical = FindCanonicalRelic(mapping.BaseId);
+                    if (baseCanonical == null)
+                    {
+                        LogUtility.Warn($"Could not resolve progressive starter relic {mapping.BaseId}; leaving its current state unchanged.");
+                        return false;
+                    }
+                    await RelicCmd.Obtain(baseCanonical.ToMutable(), player);
+                    return true;
+                },
+                async () =>
+                {
+                    var touch = (TouchOfOrobas)ModelDb.Relic<TouchOfOrobas>().ToMutable();
+                    if (!touch.SetupForPlayer(player))
+                        throw new InvalidOperationException("Touch of Orobas could not configure itself for the current starter relic.");
+                    await RelicCmd.Obtain(touch, player);
+                    if (FindOwnedRelic(player, touch.Id.ToString()) == null)
+                        throw new InvalidOperationException("The game did not add Touch of Orobas after receiving the upgraded starter-relic tier.");
+                    if (FindOwnedRelic(player, mapping.UpgradedId) == null)
+                        LogUtility.Warn($"Touch of Orobas was obtained, but expected upgraded starter relic {mapping.UpgradedId} was not found.");
+                    return true;
+                });
 
         private static void LogTierTransition(
             string kind,
@@ -406,7 +329,7 @@ namespace StS2AP.Utils
             }
 
             received.TryGetValue(offset.Value, out var count);
-            return (ProgressiveStarterTier)Math.Clamp(count, 0, 2);
+            return ProgressiveStarterAdapter.ReceivedTier(count);
         }
 
         private static CardModel? FindDeckCard(Player player, string idEntry) =>
