@@ -111,7 +111,7 @@ public static class ApMultiplayerCampaignFlow
             if (screen._runLobby is not LoadRunLobby lobby)
                 return true;
 
-            HashSet<ulong> connectedIds = Sts2Compatibility
+            HashSet<ulong> connectedIds = BetaMainCompatibility
                 .GetConnectedRunPlayerNetIds(lobby)
                 .ToHashSet();
             connectedIds.Add(lobby.NetService.NetId);

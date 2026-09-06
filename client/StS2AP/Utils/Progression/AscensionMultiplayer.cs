@@ -77,7 +77,7 @@ public static class AscensionMultiplayer
         currentAscensions = new List<int>();
         handledReceiptIndexes = new List<int>();
 
-        var character = Sts2Compatibility.GetLocalCharacter(lobby);
+        var character = BetaMainCompatibility.GetLocalCharacter(lobby);
         if (!hostSettings.Characters.TryGetValue(
                 character.Id.Entry,
                 out CharacterConfig? config))
@@ -510,7 +510,7 @@ public static class AscensionMultiplayer
             || message.ReceivedItemIndex <= 0
             || message.AscensionLevel is < 1 or > 10
             || RunManager.Instance.DebugOnlyGetState() is not RunState current
-            || !Sts2Compatibility.TryGetHostNetId(
+            || !BetaMainCompatibility.TryGetHostNetId(
                 RunManager.Instance.NetService,
                 out ulong hostNetId)
             || owner.NetId != hostNetId

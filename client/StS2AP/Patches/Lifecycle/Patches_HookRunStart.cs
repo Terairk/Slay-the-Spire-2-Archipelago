@@ -75,7 +75,7 @@ namespace StS2AP.Patches
             {
                 MultiplayerSupport.SelectDestination(ApPlayDestination.Multiplayer);
                 if (!MultiplayerSupport.CanEmbark(
-                        Sts2Compatibility.GetLocalCharacter(lobby),
+                        BetaMainCompatibility.GetLocalCharacter(lobby),
                         out string blockedReason))
                 {
                     NotificationUtility.ShowRawText(blockedReason);

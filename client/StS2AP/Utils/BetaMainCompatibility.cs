@@ -22,7 +22,7 @@ namespace StS2AP.Utils;
 /// Compile-time differences between the two explicitly supported STS2 APIs. Each release variant
 /// compiles this file against the matching game reference assembly.
 /// </summary>
-public static class Sts2Compatibility
+public static class BetaMainCompatibility
 {
     public static bool TrySkipCardRewardSelection(CardReward reward, NCardRewardSelectionScreen picker)
     {
@@ -64,7 +64,7 @@ public static class Sts2Compatibility
 #elif STS2_0_111_0
         return RunSaveManager.GetRunSavePath(profileId, fileName, null);
 #else
-#error Sts2Compatibility requires one exact STS2 target constant.
+#error BetaMainCompatibility requires one exact STS2 target constant.
 #endif
     }
 

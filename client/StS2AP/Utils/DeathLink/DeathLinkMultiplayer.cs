@@ -487,7 +487,7 @@ public static class DeathLinkMultiplayer
 
         ActionSynchronizerCombatState synchronizerState =
             RunManager.Instance.ActionQueueSynchronizer.CombatState;
-        if (Sts2Compatibility.IsActionSynchronizerCombatState(
+        if (BetaMainCompatibility.IsActionSynchronizerCombatState(
                 synchronizerState,
                 ActionSynchronizerCombatState.PlayPhase))
         {
@@ -498,7 +498,7 @@ public static class DeathLinkMultiplayer
             return true;
         }
         if (!combat.IsInProgress
-            && Sts2Compatibility.IsActionSynchronizerCombatState(
+            && BetaMainCompatibility.IsActionSynchronizerCombatState(
                 synchronizerState,
                 ActionSynchronizerCombatState.NotInCombat))
         {
@@ -751,7 +751,7 @@ public static class DeathLinkMultiplayer
         out RunState runState)
     {
         runState = null!;
-        if (!Sts2Compatibility.TryGetHostNetId(
+        if (!BetaMainCompatibility.TryGetHostNetId(
                 RunManager.Instance.NetService,
                 out ulong hostNetId
             )
@@ -882,7 +882,7 @@ public static class DeathLinkMultiplayer
     {
         INetGameService netService = RunManager.Instance.NetService;
         return netService.Type == NetGameType.Client
-            && Sts2Compatibility.TryGetHostNetId(netService, out ulong hostNetId)
+            && BetaMainCompatibility.TryGetHostNetId(netService, out ulong hostNetId)
             && senderNetId == hostNetId
             && message.SchemaVersion == SchemaVersion
             && message.RunId != Guid.Empty

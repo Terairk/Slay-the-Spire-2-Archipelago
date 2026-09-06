@@ -696,7 +696,7 @@ namespace StS2AP.Patches
                     return true;
 
                 ApRunData.StageLocalPlayer(__instance.Lobby);
-                CharacterModel character = Sts2Compatibility.GetLocalCharacter(__instance.Lobby);
+                CharacterModel character = BetaMainCompatibility.GetLocalCharacter(__instance.Lobby);
                 if (!MultiplayerSupport.CanEmbark(character, out string blockedReason))
                     return BlockReady(__instance, blockedReason);
 
@@ -720,7 +720,7 @@ namespace StS2AP.Patches
                 NCharacterSelectScreen screen,
                 string blockedReason)
             {
-                if (Sts2Compatibility.IsLocalPlayerReady(screen.Lobby))
+                if (BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
                     screen.Lobby.SetReady(ready: false);
                 NotificationUtility.ShowRawText(blockedReason);
                 LogUtility.Warn($"Blocked AP multiplayer embark: {blockedReason}");

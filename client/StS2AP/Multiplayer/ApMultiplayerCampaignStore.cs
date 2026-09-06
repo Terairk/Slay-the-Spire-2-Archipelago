@@ -153,7 +153,7 @@ public static class ApMultiplayerCampaignStore
         out CampaignMetadata metadata)
     {
         IReadOnlyList<(ulong NetId, string CharacterId)> roster =
-            Sts2Compatibility.GetLobbyPlayerCharacters(lobby);
+            BetaMainCompatibility.GetLobbyPlayerCharacters(lobby);
         metadata = ListCampaigns()
             .Where(entry => entry.IsUsable && entry.Metadata != null)
             .Select(entry => entry.Metadata!)
@@ -719,7 +719,7 @@ public static class ApMultiplayerCampaignStore
 
     private static string GetActiveSavePath()
     {
-        string storePath = Sts2Compatibility.GetRunSavePath(
+        string storePath = BetaMainCompatibility.GetRunSavePath(
             SaveManager.Instance.CurrentProfileId,
             "current_run_mp.save"
         );

@@ -54,7 +54,7 @@ public static class MultiplayerSupport
 
     internal static bool IsSynchronizedCombatActive =>
         CombatManager.Instance.IsStarting
-        || !Sts2Compatibility.IsActionSynchronizerCombatState(
+        || !BetaMainCompatibility.IsActionSynchronizerCombatState(
             RunManager.Instance.ActionQueueSynchronizer.CombatState,
             ActionSynchronizerCombatState.NotInCombat
         );
@@ -640,7 +640,7 @@ public static class MultiplayerSupport
                     screen.Lobby,
                     out string hostBlockedReason))
             {
-                bool wasReady = Sts2Compatibility.IsLocalPlayerReady(screen.Lobby);
+                bool wasReady = BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby);
                 EnsureLocalPlayerUnready(screen);
                 embarkButton.Disable();
                 if (wasReady)
@@ -652,10 +652,10 @@ public static class MultiplayerSupport
                 return;
             }
 
-            if (Sts2Compatibility.IsLocalPlayerReady(screen.Lobby))
+            if (BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
                 return;
 
-            if (CanEmbark(Sts2Compatibility.GetLocalCharacter(screen.Lobby), out _))
+            if (CanEmbark(BetaMainCompatibility.GetLocalCharacter(screen.Lobby), out _))
                 embarkButton.Enable();
             else
                 embarkButton.Disable();
@@ -668,7 +668,7 @@ public static class MultiplayerSupport
 
     private static void EnsureLocalPlayerUnready(NCharacterSelectScreen screen)
     {
-        if (!Sts2Compatibility.IsLocalPlayerReady(screen.Lobby))
+        if (!BetaMainCompatibility.IsLocalPlayerReady(screen.Lobby))
             return;
 
         // Use the native UI transition so auto-unready restores character buttons and the

@@ -60,7 +60,7 @@ and [cross-language project references](https://learn.microsoft.com/en-us/dotnet
 | Earlier proposal or assumption | Finding in the merged checkout | Revised decision |
 | --- | --- | --- |
 | No tracked solution | `StS2AP.sln` is tracked | Add the F# project to that solution. |
-| Validate one client assembly and dependency copy | `StS2AP.csproj`, `Sts2Compatibility`, `StS2AP.Loader/Bootstrap.cs`, and `assemble_client_variants.ps1` build/select public `0.107.1` and beta `0.111.0` variants | Validate both variants and the shared domain/Core DLLs in the bundle root. The domain assembly must be independent of game API variants. |
+| Validate one client assembly and dependency copy | `StS2AP.csproj`, `BetaMainCompatibility`, `StS2AP.Loader/Bootstrap.cs`, and `assemble_client_variants.ps1` build/select public `0.107.1` and beta `0.111.0` variants | Validate both variants and the shared domain/Core DLLs in the bundle root. The domain assembly must be independent of game API variants. |
 | Collapse progress and construction into a richer state model | `ApPlayerRunState` explicitly separates `Progress` from `Construction`; `ApRunData.EnsureConstructionInitialized` seeds only once | Preserve canonical owner progress, replica-local cursors, and host checkpoint ownership as separate types and transitions. Never apply a live owner delta to another replica's construction cursor. |
 | Start with a complete mirrored-reward decoder | `ApMirroredRewardSpec` now has strategy, new-generation flag, reveal state, fingerprints, and persistent effects; restored native rewards retain their strategy but must not reroll | Start with strategy/generation policy, then model the full assignment and effect contract. |
 | A single receipt ledger keyed by slot/index is sufficient | `ApRelicReceiptState.Claims` intentionally keys by player Net ID and received index; players can share a slot and still receive separate in-game rewards | Distinguish AP receipt identity from per-player grant identity and from run/menu identity. Scope every ledger explicitly. |
@@ -78,11 +78,11 @@ language preference or the fact that F# can call the library.
 
 | Priority | Source and current shape | Proposed C# change | Boundary |
 | --- | --- | --- | --- |
-| P1 | `Models/ApGrantModels.cs` mixes a receipt record, enums, wire DTOs, and diagnostic snapshots | Split public types into their own files; retain explicit JSON DTOs. Mark transport versus domain intent clearly. | No DTO/property/enum renaming on the wire as incidental cleanup. |
-| P1 | `Utils/NonCombatActionAdmissionState.BlockedReason` derives prose from a ten-boolean engine snapshot | Introduce an engine-local `NonCombatBlocker` enum and render its reason separately, preserving priority. | The raw flags are observations that can overlap during transitions; ten flags do not imply a 1,024-case F# lifecycle model. Keep capture and scheduling in C#. |
-| P1 | `Utils/ApSessionIdentity` and nested `MultiplayerSupport.ApSessionIdentity` share a name but have different scopes | Name the durable server-qualified identity and lobby slot identity distinctly; retain their intentional relationship. Separate deserialized data from validated identity if construction must be enforced. | `required init` plus a public record is not factory-only validation. URI normalization, hashing, and file paths can move with the owning feature. |
-| P1 | `Utils/ManagedActionRequestScheduler`, `ApReconnectController`, `ApFastMpLaunchController` manage callbacks and lifecycle states | Retain named status enums; group coherent callback/request data in sealed records and replace unnamed tuples where roles are easy to swap. | Delegates, cancellation, timers, Godot frame callbacks, and cleanup stay local to the C# owner. |
-| P1 | `Utils/Sts2Compatibility`, `AscensionManager.GetLevel` and `CharacterConfig.fromJObject` bridge game enums and names | Validate parsed game enum values; map game-specific identities to semantic domain keys explicitly per compiled API target. | Do not copy MegaCrit enum ordinals into the shared F# assembly. Existing version interpretation is not changed by this trial. |
+| P1 | `Models/Rewards/ApGrantModels.cs` mixes a receipt record, enums, wire DTOs, and diagnostic snapshots | Split public types into their own files; retain explicit JSON DTOs. Mark transport versus domain intent clearly. | No DTO/property/enum renaming on the wire as incidental cleanup. |
+| P1 | `Utils/Actions/NonCombatActionAdmissionState.BlockedReason` derives prose from a ten-boolean engine snapshot | Introduce an engine-local `NonCombatBlocker` enum and render its reason separately, preserving priority. | The raw flags are observations that can overlap during transitions; ten flags do not imply a 1,024-case F# lifecycle model. Keep capture and scheduling in C#. |
+| P1 | `Utils/Connection/ApSessionIdentity` and nested `MultiplayerSupport.ApSessionIdentity` share a name but have different scopes | Name the durable server-qualified identity and lobby slot identity distinctly; retain their intentional relationship. Separate deserialized data from validated identity if construction must be enforced. | `required init` plus a public record is not factory-only validation. URI normalization, hashing, and file paths can move with the owning feature. |
+| P1 | `Utils/Actions/ManagedActionRequestScheduler`, `ApReconnectController`, `ApFastMpLaunchController` manage callbacks and lifecycle states | Retain named status enums; group coherent callback/request data in sealed records and replace unnamed tuples where roles are easy to swap. | Delegates, cancellation, timers, Godot frame callbacks, and cleanup stay local to the C# owner. |
+| P1 | `Utils/BetaMainCompatibility`, `AscensionManager.GetLevel` and `CharacterConfig.fromJObject` bridge game enums and names | Validate parsed game enum values; map game-specific identities to semantic domain keys explicitly per compiled API target. | Do not copy MegaCrit enum ordinals into the shared F# assembly. Existing version interpretation is not changed by this trial. |
 | P2 | `Patches_ShopSanity.ApSlotCounts`, `UniversalBuffGold`, `DeathLinkEventLedger` already name compact computations/state | Preserve these structures; use named event/delivery keys and bounded inputs where needed. | A short set operation or arithmetic helper does not require an F# migration merely because it is pure. |
 | P2 | `Models/IndexedItemInfo.Index` is mutable and described as the only unique identity | Make receipt-envelope mutation deliberate; correct documentation to specify index scope. | External `ItemInfo` remains an adapter input. It must not enter an F# core as an opaque mutable engine object. |
 
@@ -96,8 +96,8 @@ appropriate; avoid a shared utility type that accumulates unrelated domain decis
 
 ### 1. Mirrored reward specifications and materialization (P1, first production slice)
 
-Sources: `Models/ApGrantModels.cs`, `Persistence/ApCardAssignmentState.cs`, and
-`Utils/ApMirroredRewardDispatcher` (`BuildSpec`, `ValidateMenuOnHost`,
+Sources: `Models/Rewards/ApGrantModels.cs`, `Persistence/ApCardAssignmentState.cs`, and
+`Utils/Rewards/ApMirroredRewardDispatcher` (`BuildSpec`, `ValidateMenuOnHost`,
 `PrepareReplicaMaterializations`, `RestoreCardReward`, `MarkConsumed`).
 
 Replace `Kind` plus unrelated fields in the *internal* model with `Card`, `Potion`,

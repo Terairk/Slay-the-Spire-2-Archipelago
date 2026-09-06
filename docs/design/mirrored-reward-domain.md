@@ -18,7 +18,7 @@ and the saved-card decoder. Exact serialized model strings are retained, includi
 their order, for deterministic comparison. MegaCrit still interprets their contents;
 a syntactically valid JSON object is not proof of a valid game model.
 
-The execution chain in `client/StS2AP/Utils/ApMirroredRewardDispatcher.cs` is:
+The execution chain in `client/StS2AP/Utils/Rewards/ApMirroredRewardDispatcher.cs` is:
 
 1. Owner: `BuildOwnerMenuSpec` / `BuildAssignedSpec` use native factories and mutable
    construction DTOs. Card factories consume a validated `CardRewardConfiguration`;

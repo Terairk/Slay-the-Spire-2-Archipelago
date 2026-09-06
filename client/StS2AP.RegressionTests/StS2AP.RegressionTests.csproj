@@ -18,24 +18,24 @@
     <ProjectReference Include="..\StS2AP.Domain\StS2AP.Domain.fsproj" />
     <Compile Include="..\StS2AP\DomainAdapters\MirroredRewardAdapter.cs"
              Link="DomainAdapters\MirroredRewardAdapter.cs" />
-    <Compile Include="..\StS2AP\Models\ApGrantModels.cs" Link="Models\ApGrantModels.cs" />
-    <Compile Include="..\StS2AP\Models\ApGoldClaim.cs" Link="Models\ApGoldClaim.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\ApGrantModels.cs" Link="Models\Rewards\ApGrantModels.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\ApGoldClaim.cs" Link="Models\Rewards\ApGoldClaim.cs" />
     <Compile Include="..\StS2AP\Persistence\ApReplicaConstructionState.cs"
              Link="Persistence\ApReplicaConstructionState.cs" />
-    <Compile Include="..\StS2AP\Utils\ApSessionIdentity.cs"
-             Link="Utils\ApSessionIdentity.cs" />
-    <Compile Include="..\StS2AP\Utils\ApBugReportFiles.cs" Link="Utils\ApBugReportFiles.cs" />
-    <Compile Include="..\StS2AP\Utils\NonCombatActionAdmissionState.cs" Link="Utils\NonCombatActionAdmissionState.cs" />
-    <Compile Include="..\StS2AP\Utils\DeathLinkEventLedger.cs" Link="Utils\DeathLinkEventLedger.cs" />
-    <Compile Include="..\StS2AP\Utils\UniversalBuffGold.cs" Link="Utils\UniversalBuffGold.cs" />
-    <Compile Include="..\StS2AP\Utils\ApRewardTravelGuard.cs" Link="Utils\ApRewardTravelGuard.cs" />
+    <Compile Include="..\StS2AP\Utils\Connection\ApSessionIdentity.cs"
+             Link="Utils\Connection\ApSessionIdentity.cs" />
+    <Compile Include="..\StS2AP\Utils\Diagnostics\ApBugReportFiles.cs" Link="Utils\Diagnostics\ApBugReportFiles.cs" />
+    <Compile Include="..\StS2AP\Utils\Actions\NonCombatActionAdmissionState.cs" Link="Utils\Actions\NonCombatActionAdmissionState.cs" />
+    <Compile Include="..\StS2AP\Utils\DeathLink\DeathLinkEventLedger.cs" Link="Utils\DeathLink\DeathLinkEventLedger.cs" />
+    <Compile Include="..\StS2AP\Utils\Rewards\UniversalBuffGold.cs" Link="Utils\Rewards\UniversalBuffGold.cs" />
+    <Compile Include="..\StS2AP\Utils\Rewards\ApRewardTravelGuard.cs" Link="Utils\Rewards\ApRewardTravelGuard.cs" />
     <Compile Include="..\StS2AP\Utils\RestSitePolicy.cs" Link="Utils\RestSitePolicy.cs" />
     <Compile Include="..\StS2AP\Persistence\CampaignSaveFiles.cs" Link="Persistence\CampaignSaveFiles.cs" />
     <Compile Include="..\StS2AP\Persistence\ApRelicReceiptState.cs" Link="Persistence\ApRelicReceiptState.cs" />
     <Compile Include="..\StS2AP\Persistence\ApRunProgressState.cs" Link="Persistence\ApRunProgressState.cs" />
     <Compile Include="..\StS2AP\Persistence\ApCardAssignmentState.cs" Link="Persistence\ApCardAssignmentState.cs" />
     <Compile Include="..\StS2AP\Models\ProgressiveStarterTier.cs" Link="Models\ProgressiveStarterTier.cs" />
-    <Compile Include="..\StS2AP\Models\ApRewardEffectSpec.cs" Link="Models\ApRewardEffectSpec.cs" />
+    <Compile Include="..\StS2AP\Models\Rewards\ApRewardEffectSpec.cs" Link="Models\Rewards\ApRewardEffectSpec.cs" />
     <Using Include="StS2AP.Models" />
   </ItemGroup>
 </Project>
