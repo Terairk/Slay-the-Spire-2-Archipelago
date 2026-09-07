@@ -214,7 +214,11 @@ namespace StS2AP.Patches
                          child.GetSignalConnectionList(NRewardButton.SignalName.RewardClaimed))
                 {
                     Callable callback = connection["callable"].AsCallable();
-                    child.Disconnect(NRewardButton.SignalName.RewardClaimed, callback);
+                    // Godot also reports the generated C# signal-event bridge here even though it
+                    // is not a disconnectable native connection. Only remove callbacks which the
+                    // signal registry can resolve; otherwise Disconnect logs an engine error.
+                    if (child.IsConnected(NRewardButton.SignalName.RewardClaimed, callback))
+                        child.Disconnect(NRewardButton.SignalName.RewardClaimed, callback);
                 }
 
                 child.Connect(

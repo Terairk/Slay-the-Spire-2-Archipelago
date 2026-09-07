@@ -616,12 +616,22 @@ namespace StS2AP
                     return;
                 }
 
-                Settings = GetPlayerSettings();
-
                 int apWorldAgeComparison = CompareMajorMinor(
                     bundledApWorldVersion,
                     apWorldVersion
                 );
+                if (apWorldAgeComparison < 0)
+                {
+                    RejectIncompatibleConnection(
+                        $"The server uses APWorld v{apWorldVersion}, which is newer than this "
+                            + $"client's bundled APWorld v{bundledApWorldVersion}. Update the client "
+                            + "before connecting."
+                    );
+                    return;
+                }
+
+                Settings = GetPlayerSettings();
+
                 if (apWorldAgeComparison > 0)
                 {
                     LogUtility.Warn(
