@@ -80,7 +80,7 @@ language preference or the fact that F# can call the library.
 | --- | --- | --- | --- |
 | Done | Grant types now have individual files under `Models/Rewards/Grants` and `Models/Rewards/Specs` | Split receipt identity, status, wire DTOs, and diagnostic snapshots; retain explicit JSON DTOs. Folder roles are documented in the client README. | Type names, namespaces, properties, and enum values remain unchanged. |
 | P1 | `Utils/Actions/NonCombatActionAdmissionState.BlockedReason` derives prose from a ten-boolean engine snapshot | Introduce an engine-local `NonCombatBlocker` enum and render its reason separately, preserving priority. | The raw flags are observations that can overlap during transitions; ten flags do not imply a 1,024-case F# lifecycle model. Keep capture and scheduling in C#. |
-| P1 | `Utils/Connection/ApSessionIdentity` and nested `MultiplayerSupport.ApSessionIdentity` share a name but have different scopes | Name the durable server-qualified identity and lobby slot identity distinctly; retain their intentional relationship. Separate deserialized data from validated identity if construction must be enforced. | `required init` plus a public record is not factory-only validation. URI normalization, hashing, and file paths can move with the owning feature. |
+| Done | `Utils/Connection/ApSessionIdentity` owns the server-qualified destination; `ApSlotIdentity` owns room/team/slot equality | Both have validated construction and get-only properties. The outbox JSON codec validates its transport fields through the same factory. Multiplayer uses typed deferred-session equality and saved-slot comparison. | Existing outbox fields, file keys, and run matching scope are preserved. Participant readiness is covered below. |
 | P1 | `Utils/Actions/ManagedActionRequestScheduler`, `ApReconnectController`, `ApFastMpLaunchController` manage callbacks and lifecycle states | Retain named status enums; group coherent callback/request data in sealed records and replace unnamed tuples where roles are easy to swap. | Delegates, cancellation, timers, Godot frame callbacks, and cleanup stay local to the C# owner. |
 | P1 | `Utils/BetaMainCompatibility`, `AscensionManager.GetLevel` and `CharacterConfig.fromJObject` bridge game enums and names | Validate parsed game enum values; map game-specific identities to semantic domain keys explicitly per compiled API target. | Do not copy MegaCrit enum ordinals into the shared F# assembly. Existing version interpretation is not changed by this trial. |
 | P2 | `Patches_ShopSanity.ApSlotCounts`, `UniversalBuffGold`, `DeathLinkEventLedger` already name compact computations/state | Preserve these structures; use named event/delivery keys and bounded inputs where needed. | A short set operation or arithmetic helper does not require an F# migration merely because it is pure. |
@@ -133,21 +133,43 @@ each operation only after successful execution. No retry/rollback mechanism was 
 See [progressive starter domain](progressive-starter-domain.md) for the execution chain,
 validation scope, and runtime test matrix.
 
-### 3. Participant contributions and readiness (P1)
+### 3. Participant contributions and readiness (implemented)
 
 Sources: `ApPlayerRunState`, `ApPlayerContextResolver`,
 `ApRunData.TryValidateHostLobbyContributions`, and `MultiplayerSupport`.
 
-Model a guest separately from an own-slot contribution. Within own-slot state,
-distinguish awaiting identity/settings/receipt history from ready-to-launch. Preserve
-offline continuation from a valid checkpoint: "not connected" does not mean "no valid
-participant". A ready contribution owns validated room/team/slot identity, frozen settings,
-and a receipt source. An AP receipt uses room/team/slot/index scope; its per-player
-realization also needs run/player scope. `ApGrantId` alone is not a globally unique key.
+`Participant.fs` evaluates each contribution as `Ready`, `Waiting`, or `Rejected`.
+Ready carries only the validated participant identity. Empty prepared history is valid.
+Missing contributions and missing prerequisites wait; unknown schemas/kinds, invalid
+identities, or malformed receipt maps reject. F# checks settings presence and receipt
+structure, not configuration semantics or whether a peer's history is truthful or complete.
 
-Keep Net ID lookup, host/sender authentication, connection state, and RitsuLib callbacks
-in C# by default. Pass authenticated facts to pure validators; a domain record cannot establish
-that a network sender really owns a player.
+`ParticipantAdapter` projects the C# DTO for synchronous validation. Receipt collections are
+borrowed, must remain stable during evaluation, and are neither copied nor retained by the
+result. This is a decision about current input, not an immutable contribution or authorization
+for later launch. `StageLocalPlayer` owns settings/history capture; existing settings are
+reused only for the same validated slot and schema. No settings JSON round trip or domain
+payload reconstruction is involved. `TryValidateHostLobbyContributions` evaluates the latest
+active roster and uses the validated host identity; host-wide settings/ascension checks and
+final launch revalidation remain in C#. No persistent ready token is cached.
+
+`ParticipantResume.Match` separately checks schema, participation kinds, and exact slot
+identity. `CanLaunchRun` and `BeginRun` use that decision; the latter binds saved participation
+only after a successful match. Resume identity has no connection/settings/history-readiness
+input. Existing C# connection and lobby-entry gates still apply; the domain decision alone
+does not establish offline engine/network continuation. The C# `ApSlotIdentity` facade shares
+the F# slot validator rather than keeping a second implementation.
+
+Save/message DTOs and schema versions are unchanged. Canonical progress, replica construction,
+and host checkpoint ownership remain separate. An AP receipt uses room/team/slot/index scope;
+its per-player realization also needs run/player scope. `ApGrantId` alone is not globally unique.
+
+Net ID lookup, host/sender authentication, connection state, RitsuLib callbacks, and JSON remain
+in C#. Pure tests cover prerequisite arrival combinations, non-mutating validation, re-evaluation
+after input changes, empty history, invalid input, and resume matching. C# interop tests cover
+wire kinds and mutable/null input.
+In-game launch, reconnect, and continue behavior still requires the runtime matrix in the
+regression-test README; compilation and pure decisions do not prove native lifecycle timing.
 
 ### 4. Reward claim state and host destinations (P1, high correctness value)
 

@@ -11,6 +11,7 @@
   <ItemGroup>
     <Compile Include="RewardMaterializationTests.fs" />
     <Compile Include="MirroredRewardTests.fs" />
+    <Compile Include="ParticipantTests.fs" />
     <ProjectReference Include="..\StS2AP.Domain\StS2AP.Domain.fsproj" />
     <PackageReference Update="FSharp.Core" Version="10.1.302" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

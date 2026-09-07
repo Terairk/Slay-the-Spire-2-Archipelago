@@ -9,19 +9,21 @@ namespace StS2AP.Utils;
 /// The server authority is included so separately hosted rooms with the same generated seed do
 /// not share an outbox.
 /// </summary>
+[JsonConverter(typeof(ApSessionIdentityJsonConverter))]
 internal sealed record ApSessionIdentity
 {
-    [JsonPropertyName("server_authority")]
-    public required string ServerAuthority { get; init; }
+    public string ServerAuthority { get; }
+    public ApSlotIdentity Slot { get; }
 
-    [JsonPropertyName("room_seed")]
-    public required string RoomSeed { get; init; }
+    public string RoomSeed => Slot.RoomSeed;
+    public int ApTeamId => Slot.ApTeamId;
+    public int ApSlotId => Slot.ApSlotId;
 
-    [JsonPropertyName("ap_team_id")]
-    public required int ApTeamId { get; init; }
-
-    [JsonPropertyName("ap_slot_id")]
-    public required int ApSlotId { get; init; }
+    private ApSessionIdentity(string serverAuthority, ApSlotIdentity slot)
+    {
+        ServerAuthority = serverAuthority;
+        Slot = slot;
+    }
 
     public static ApSessionIdentity Create(
         string serverAddress,
@@ -37,20 +39,13 @@ internal sealed record ApSessionIdentity
                 nameof(serverAddress)
             );
         }
-        if (string.IsNullOrWhiteSpace(roomSeed))
-            throw new ArgumentException("The AP room seed is unavailable.", nameof(roomSeed));
-        if (apTeamId < 0)
-            throw new ArgumentOutOfRangeException(nameof(apTeamId));
-        if (apSlotId < 0)
-            throw new ArgumentOutOfRangeException(nameof(apSlotId));
-
-        return new ApSessionIdentity
+        string authority = NormalizeServerAuthority(serverAddress);
+        if (string.IsNullOrWhiteSpace(authority))
         {
-            ServerAuthority = NormalizeServerAuthority(serverAddress),
-            RoomSeed = roomSeed,
-            ApTeamId = apTeamId,
-            ApSlotId = apSlotId,
-        };
+            throw new ArgumentException(
+                "The AP server address is unavailable.", nameof(serverAddress));
+        }
+        return new ApSessionIdentity(authority, ApSlotIdentity.Create(roomSeed, apTeamId, apSlotId));
     }
 
     /// <summary>
@@ -66,7 +61,7 @@ internal sealed record ApSessionIdentity
     }
 
     public override string ToString() =>
-        $"{RoomSeed}/ap-team-{ApTeamId}/ap-slot-{ApSlotId}@{ServerAuthority}";
+        $"{Slot}@{ServerAuthority}";
 
     private static string NormalizeServerAuthority(string serverAddress) =>
         serverAddress.Trim().TrimEnd('/').ToLowerInvariant();

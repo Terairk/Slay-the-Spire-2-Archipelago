@@ -3,6 +3,8 @@ using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Utils;
+using StS2AP.Domain;
+using StS2AP.DomainAdapters;
 using STS2RitsuLib;
 using STS2RitsuLib.Networking.Sidecar;
 using STS2RitsuLib.RunData;
@@ -97,29 +99,36 @@ public static class ApRunData
         ulong localNetId = lobby.NetService.NetId;
         ApParticipationKind participation = MultiplayerSupport.PendingParticipation;
         _players.Lobby.TryGet(lobby, localNetId, out ApPlayerRunState? existing);
+        ApSlotIdentity? preparedSlot = MultiplayerSupport.PreparedSlotIdentity;
+        bool sameSlot = existing?.Participation == ApParticipationKind.OwnApSlot
+            && existing.SchemaVersion == RunSchemaVersion
+            && ApSlotIdentity.TryCreate(existing.ApRoomSeed, existing.ApTeamId, existing.ApSlotId,
+                out var existingSlot)
+            && existingSlot == preparedSlot;
+        ArchipelagoProgress progress = ArchipelagoClient.Progress;
         var state = new ApPlayerRunState
         {
             Participation = participation,
             ApRoomSeed = participation == ApParticipationKind.OwnApSlot
-                ? MultiplayerSupport.PreparedApRoomSeed
+                ? preparedSlot?.RoomSeed
                 : null,
             ApTeamId = participation == ApParticipationKind.OwnApSlot
-                ? MultiplayerSupport.PreparedApTeamId
+                ? preparedSlot?.ApTeamId
                 : null,
             ApSlotId = participation == ApParticipationKind.OwnApSlot
-                ? MultiplayerSupport.PreparedApSlotId
+                ? preparedSlot?.ApSlotId
                 : null,
             SlotSettings = participation == ApParticipationKind.OwnApSlot
-                ? existing?.SlotSettings ?? MultiplayerSupport.CreateEffectiveHostSettingsSnapshot()
+                ? (sameSlot ? existing?.SlotSettings : null) ?? MultiplayerSupport.CreateEffectiveHostSettingsSnapshot()
                 : null,
             InitialRelicReceiptIndexesByCharacter = participation ==
                     ApParticipationKind.VanillaGuest
                 ? new Dictionary<long, List<int>>()
-                : ArchipelagoClient.Progress.GetRelicReceiptIndexSnapshot(),
+                : progress.GetRelicReceiptIndexSnapshot(),
             InitialProgressiveAncientsByCharacter = participation ==
                     ApParticipationKind.VanillaGuest
                 ? new Dictionary<long, int>()
-                : new Dictionary<long, int>(ArchipelagoClient.Progress.ProgressiveAncients),
+                : new Dictionary<long, int>(progress.ProgressiveAncients),
             ReceiptSourceReady = participation switch
             {
                 ApParticipationKind.OwnApSlot => MultiplayerSupport.InitialItemsLoaded,
@@ -282,26 +291,25 @@ public static class ApRunData
             return false;
         }
 
+        ulong fixedHostNetId = lobby.NetService.NetId;
+        ParticipantIdentity? hostIdentity = null;
         foreach (ulong netId in BetaMainCompatibility.GetLobbyPlayerNetIds(lobby))
         {
-            if (!TryGetLobbyPlayerState(lobby, netId, out ApPlayerRunState state))
-            {
-                reason = $"Player {netId} has not contributed AP lobby state.";
-                return false;
-            }
-
-            string? blocker = GetLobbyContributionBlocker(state);
+            bool contributed = TryGetLobbyPlayerState(lobby, netId, out ApPlayerRunState state);
+            ContributionReadiness readiness = ParticipantAdapter.Evaluate(contributed ? state : null);
+            string? blocker = ParticipantAdapter.Blocker(readiness);
             if (blocker != null)
             {
-                reason = $"Player {netId}: {blocker}.";
+                reason = contributed
+                    ? $"Player {netId}: {blocker}."
+                    : $"Player {netId} has not contributed AP lobby state.";
                 return false;
             }
+            if (netId == fixedHostNetId)
+                hostIdentity = readiness.Match<ParticipantIdentity?>(ready => ready, _ => null, _ => null);
         }
 
-        ulong fixedHostNetId = lobby.NetService.NetId;
-        if (!TryGetLobbyPlayerState(lobby, fixedHostNetId, out ApPlayerRunState fixedHost)
-            || fixedHost.Participation != ApParticipationKind.OwnApSlot
-            || !fixedHost.ReceiptSourceReady)
+        if (hostIdentity?.Kind != ParticipantKind.OwnApSlot)
         {
             reason = "The fixed STS host must have a prepared AP slot.";
             return false;
@@ -321,20 +329,8 @@ public static class ApRunData
         return true;
     }
 
-    public static string? GetLobbyContributionBlocker(ApPlayerRunState state)
-    {
-        if (state.SchemaVersion != RunSchemaVersion)
-            return $"unsupported-ap-run-schema-{state.SchemaVersion}";
-        if (state.Participation == ApParticipationKind.VanillaGuest)
-            return null;
-        if (state.Participation != ApParticipationKind.OwnApSlot)
-            return "unsupported-ap-participation";
-        if (state.ApRoomSeed == null || state.ApTeamId == null || state.ApSlotId == null)
-            return "incomplete-ap-identity";
-        if (state.SlotSettings == null)
-            return "ap-settings-incomplete";
-        return state.ReceiptSourceReady ? null : "ap-history-incomplete";
-    }
+    public static string? GetLobbyContributionBlocker(ApPlayerRunState state) =>
+        ParticipantAdapter.Blocker(ParticipantAdapter.Evaluate(state));
 
     /// <summary>
     /// Replaces the process-local AP view with the fixed host's checkpoint for this player. The

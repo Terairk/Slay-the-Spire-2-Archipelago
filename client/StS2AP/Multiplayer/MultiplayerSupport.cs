@@ -13,6 +13,7 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Data;
+using StS2AP.DomainAdapters;
 using StS2AP.Patches;
 using StS2AP.Utils;
 using static StS2AP.Data.ItemTable;
@@ -61,7 +62,7 @@ public static class MultiplayerSupport
     private static NCharacterSelectScreen? _observedStartLobbyScreen;
     private static bool _claimInvalidationNoticeShown;
     private static bool _apHistoryPrepared;
-    private static string? _deferredSessionKey;
+    private static ApSessionIdentity? _deferredSessionIdentity;
     private static ApSessionIdentity? _preparedSessionIdentity;
     private static ApParticipationKind? _activeParticipation;
     private static IReadOnlyList<ItemInfo> _preparedReceivedItems = Array.Empty<ItemInfo>();
@@ -105,6 +106,8 @@ public static class MultiplayerSupport
 
     public static IReadOnlyCollection<IndexedItemInfo> PendingUnsupportedItems =>
         DeferredItems.Values.OrderBy(item => item.Index).ToArray();
+
+    internal static ApSlotIdentity? PreparedSlotIdentity => _preparedSessionIdentity?.Slot;
 
     public static string? PreparedApRoomSeed => _preparedSessionIdentity?.RoomSeed;
 
@@ -313,8 +316,7 @@ public static class MultiplayerSupport
     {
         var identity = ApSessionIdentity.Create(
             ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId);
-        string sessionKey = identity.ToString();
-        if (_deferredSessionKey != null && _deferredSessionKey != sessionKey)
+        if (_deferredSessionIdentity != null && _deferredSessionIdentity != identity)
         {
             LogUtility.Info(
                 $"Discarding {DeferredItems.Count} deferred multiplayer item(s) from the previous AP session"
@@ -324,7 +326,7 @@ public static class MultiplayerSupport
         }
 
         _preparedSessionIdentity = identity;
-        _deferredSessionKey = sessionKey;
+        _deferredSessionIdentity = identity;
     }
 
     /// <summary>
@@ -358,7 +360,6 @@ public static class MultiplayerSupport
 
         var identity = ApSessionIdentity.Create(
             ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId);
-        string sessionKey = identity.ToString();
 
         DeferredItems.Clear();
         var receipts = new List<IndexedItemInfo>();
@@ -477,7 +478,7 @@ public static class MultiplayerSupport
         ArchipelagoClient.Progress.Items.ReplaceReceivedItems(receipts);
         ApGrantDispatcher.RebuildGoldBank(receivedItems);
         _preparedSessionIdentity = identity;
-        _deferredSessionKey = sessionKey;
+        _deferredSessionIdentity = identity;
         _preparedReceivedItems = receivedItems.ToArray();
 
         // Durable consumption and assignments are restored separately from the host-owned
@@ -507,7 +508,7 @@ public static class MultiplayerSupport
         _observedStartLobbyScreen = null;
         _apHistoryPrepared = false;
         _preparedSessionIdentity = null;
-        _deferredSessionKey = null;
+        _deferredSessionIdentity = null;
         _preparedReceivedItems = Array.Empty<ItemInfo>();
         DeferredItems.Clear();
     }
@@ -732,15 +733,21 @@ public static class MultiplayerSupport
         _activeParticipation = PendingParticipation;
         if (ApRunData.TryGetLocalPlayerState(runState, localPlayer.NetId, out var savedPlayerState))
         {
-            _activeParticipation = savedPlayerState.Participation;
-            if (!ValidateReturningPlayerIdentity(savedPlayerState, out string identityReason))
+            var match = ParticipantAdapter.MatchReturning(
+                savedPlayerState, PendingParticipation, PreparedSlotIdentity);
+            if (match.IsOk)
+            {
+                _activeParticipation = (ApParticipationKind)match.ResultValue.Kind.WireValue;
+            }
+            else
             {
                 ClaimsInvalidated = true;
-                LogUtility.Error($"Saved AP multiplayer identity mismatch: {identityReason}");
+                LogUtility.Error($"Saved AP multiplayer identity mismatch: {match.ErrorValue.Description}");
                 Callable.From(() => NotificationUtility.ShowRawText(
                     "This saved campaign belongs to a different AP participation identity. "
                         + "AP progress and rewards are disabled for this run."
                 )).CallDeferred();
+                return localPlayer;
             }
         }
 
@@ -769,45 +776,9 @@ public static class MultiplayerSupport
         ApPlayerRunState savedState,
         out string reason)
     {
-        if (savedState.SchemaVersion != ApRunData.RunSchemaVersion)
-        {
-            reason = "This multiplayer save uses an unsupported schema. Start a new campaign.";
-            return false;
-        }
-
-        if (savedState.Participation != PendingParticipation)
-        {
-            reason = $"saved participation is {savedState.Participation}, but this process "
-                + $"entered as {PendingParticipation}";
-            return false;
-        }
-
-        if (savedState.Participation != ApParticipationKind.OwnApSlot)
-        {
-            reason = string.Empty;
-            return true;
-        }
-
-        if (_preparedSessionIdentity is not { } prepared
-            || savedState.ApRoomSeed == null
-            || savedState.ApTeamId == null
-            || savedState.ApSlotId == null)
-        {
-            reason = "the saved or currently prepared AP slot identity is incomplete";
-            return false;
-        }
-
-        if (!string.Equals(savedState.ApRoomSeed, prepared.RoomSeed, StringComparison.Ordinal)
-            || savedState.ApTeamId != prepared.ApTeamId
-            || savedState.ApSlotId != prepared.ApSlotId)
-        {
-            reason = $"saved={savedState.ApRoomSeed}/ap-team-{savedState.ApTeamId}/"
-                + $"ap-slot-{savedState.ApSlotId}, prepared={prepared}";
-            return false;
-        }
-
-        reason = string.Empty;
-        return true;
+        var match = ParticipantAdapter.MatchReturning(savedState, PendingParticipation, PreparedSlotIdentity);
+        reason = match.IsOk ? string.Empty : match.ErrorValue.Description;
+        return match.IsOk;
     }
 
     public static IReadOnlyList<ItemInfo> GetPreparedReceivedItems() => _preparedReceivedItems;

@@ -19,6 +19,7 @@
     <ProjectReference Include="..\StS2AP.Domain\StS2AP.Domain.fsproj" />
     <Compile Include="..\StS2AP\Models\ApReceivedItemLedger.cs" Link="Models\ApReceivedItemLedger.cs" />
     <Compile Include="..\StS2AP\Models\IndexedItemInfo.cs" Link="Models\IndexedItemInfo.cs" />
+    <Compile Include="..\StS2AP\Multiplayer\ApParticipationKind.cs" Link="Multiplayer\ApParticipationKind.cs" />
     <Compile Include="..\StS2AP\DomainAdapters\MirroredRewardAdapter.cs"
              Link="DomainAdapters\MirroredRewardAdapter.cs" />
     <Compile Include="..\StS2AP\DomainAdapters\ProgressiveStarterAdapter.cs"
@@ -39,6 +40,12 @@
              Link="Persistence\ApReplicaConstructionState.cs" />
     <Compile Include="..\StS2AP\Utils\Connection\ApSessionIdentity.cs"
              Link="Utils\Connection\ApSessionIdentity.cs" />
+    <Compile Include="..\StS2AP\Utils\Connection\ApSlotIdentity.cs"
+             Link="Utils\Connection\ApSlotIdentity.cs" />
+    <Compile Include="..\StS2AP\Utils\Connection\ApSessionIdentityJsonConverter.cs"
+             Link="Utils\Connection\ApSessionIdentityJsonConverter.cs" />
+    <Compile Include="..\StS2AP\Utils\Connection\PendingCheckOutbox.cs"
+             Link="Utils\Connection\PendingCheckOutbox.cs" />
     <Compile Include="..\StS2AP\Utils\Diagnostics\ApBugReportFiles.cs" Link="Utils\Diagnostics\ApBugReportFiles.cs" />
     <Compile Include="..\StS2AP\Utils\Actions\NonCombatActionAdmissionState.cs" Link="Utils\Actions\NonCombatActionAdmissionState.cs" />
     <Compile Include="..\StS2AP\Utils\DeathLink\DeathLinkEventLedger.cs" Link="Utils\DeathLink\DeathLinkEventLedger.cs" />

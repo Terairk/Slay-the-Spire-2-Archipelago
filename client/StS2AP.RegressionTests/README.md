@@ -20,7 +20,8 @@ or files from the locally excluded admission harness. Each case is discoverable 
 | Reward travel | Stale menu generations, travel/loading gates, reset, old travel completion |
 | Noncombat admission | Idle admission and each independently unsafe state; scheduler execution is excluded |
 | Rest-site policy | Rest/Smith locks, disabled actions, safe exits, relic actions, reached-act check ordering, collected checks, independent player inputs |
-| Session identity | Destination isolation and persisted identity equivalence |
+| Session identity | Server-qualified destination versus run-slot equality, validated persisted identities, missing/invalid field rejection, and existing outbox JSON/file-key compatibility |
+| Participant interop | Existing wire kinds, missing/null inputs, and validated identities across C# mutation and fresh readiness checks; F# tests cover readiness and resume decisions |
 | Replica construction | Initialization, local counters, compensation, restore |
 | C# interop | Complete mirrored-reward decoding, actual wire/save DTO fixtures, immutable snapshots, save/reveal/effect preservation, and exception conversion |
 | Progressive starters | Shared singleplayer/multiplayer tier transitions, initialization-only removal, recipe identity, strict state/payload decoding, applied-state ordering, and save round trips |
@@ -75,6 +76,10 @@ variant. Unit tests establish the behavior of our policies, not native callbacks
 | Claim a relic, reopen rewards, reconnect, save/continue | One grant at the established boundary; stable assignment and no repeated bank spending |
 | Skip an AP card or try a potion with no space, then reopen rewards | Receipt remains claimable with its existing assignment |
 | Consume AP rewards, continue the save, then start a fresh run | Continue preserves consumption while history is rebuilt; the fresh run resets consumption and retains known receipts |
+| Reconnect to the same AP destination; try a different room/team/slot when continuing | The same destination retains deferred receipts/outbox ownership; mismatched saved participation is rejected |
+| Own-slot lobby with delayed preparation, then prepared empty history | Ready/launch remains blocked with `ap-history-incomplete` until preparation; zero receipts do not block a prepared participant |
+| Explicit vanilla guest, absent contribution, or a participant joining just before launch | Vanilla needs no AP data; missing/new contributors are checked against the latest roster at the final launch boundary |
+| Continue as the same participant, then try the wrong participation kind or slot | Matching preserves saved progress; mismatches report `Saved AP multiplayer identity mismatch` if reached during binding and disable AP claims |
 | DeathLink with same-slot peers, lethal damage, and death prevention | Intended recipients are affected once; no echo loop; later legitimate deaths still send |
 | Open rewards while starting travel, then return or start a new run | Stale pending menu work cannot open in the next room/run |
 | Save at a checkpoint, advance, then continue/recover | Correct checkpoint/recovery selected and native run data restored |
