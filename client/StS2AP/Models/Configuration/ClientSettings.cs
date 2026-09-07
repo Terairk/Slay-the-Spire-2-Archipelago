@@ -8,6 +8,7 @@
     /// </summary>
     public sealed class ClientSettings
     {
+        public int MultiplayerPlayerNumber { get; set; } = 1;
         #region Notifications
 
         /// <summary>

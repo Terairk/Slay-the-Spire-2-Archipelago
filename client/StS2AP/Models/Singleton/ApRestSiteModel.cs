@@ -64,7 +64,8 @@ public sealed class ApRestSiteModel : HookedSingletonModel
                 : $"Custom Character {config.ModNum}";
             foreach (var (act, campfire, locationId) in policy.GetAvailableChecks(
                          checkedLocations,
-                         (act, campfire) => LocationData.GetCampfireLocationId(config.CharOffset, act, campfire)))
+                         (act, campfire) => ArchipelagoIdCodec.ForPlayer(
+                             LocationData.GetCampfireLocationId(config.CharOffset, act, campfire), settings.PlayerNumber)))
             {
                 string locationName = $"{characterName} Act {act} Campfire {campfire}";
                 options.Add(new ApRestSiteOption(player, locationId, locationName));

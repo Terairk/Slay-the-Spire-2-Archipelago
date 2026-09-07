@@ -1,6 +1,7 @@
 ﻿using Archipelago.MultiClient.Net;
 using MegaCrit.Sts2.Core.Models;
 using StS2AP.Extensions;
+using StS2AP.Utils;
 
 namespace StS2AP.Data
 {
@@ -37,7 +38,7 @@ namespace StS2AP.Data
                 return -1;
             }
 
-            return combinedLocationId;
+            return CoopSlot.Location(combinedLocationId);
         }
 
         /// <summary>
@@ -172,7 +173,7 @@ namespace StS2AP.Data
                 {
                     try
                     {
-                        var id = session.Locations.GetLocationIdFromName("Slay the Spire II", $"{character.APName()} Act {a} Campfire {c}");
+                        var id = session.Locations.GetLocationIdFromName("Slay the Spire II", CoopSlot.Name($"{character.APName()} Act {a} Campfire {c}"));
                         ids.Add(id);
                     } 
                     catch 
@@ -241,7 +242,7 @@ namespace StS2AP.Data
             {
                 try
                 {
-                    var id = session.Locations.GetLocationIdFromName("Slay the Spire II", pattern.Replace("#", i.ToString()));
+                    var id = session.Locations.GetLocationIdFromName("Slay the Spire II", CoopSlot.Name(pattern.Replace("#", i.ToString())));
                     ids.Add(id);
                 } catch { }
             }

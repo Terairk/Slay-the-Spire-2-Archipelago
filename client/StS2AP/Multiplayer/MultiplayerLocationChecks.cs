@@ -279,7 +279,7 @@ public static class MultiplayerLocationChecks
         {
             return session.Locations.GetLocationIdFromName(
                 "Slay the Spire II",
-                locationName
+                CoopSlot.Name(locationName)
             );
         }
         catch (Exception ex)
@@ -308,6 +308,11 @@ public static class MultiplayerLocationChecks
         if (locationId == -1)
         {
             LogUtility.Warn($"Location '{locationName}' not found in the owning Archipelago slot");
+            return false;
+        }
+        if (!CoopSlot.Owns(locationId))
+        {
+            LogUtility.Error($"Refusing location {locationId} belonging to another co-op player.");
             return false;
         }
         if (ArchipelagoClient.CheckedLocations.Contains(locationId))

@@ -178,7 +178,9 @@ namespace StS2AP.UI
             var charsToGoal = settings.NumCharsGoal > 0 ? settings.NumCharsGoal : settings.TotalCharacters;
 
             // Update the UI
-            SetContent($"[gold]Goal: Slay the Spire with {charsToGoal} Characters[/gold]\nProgress: {GameUtility.GoaledCharactersCount} / {charsToGoal}");
+            string owner = settings.PlayerCount > 1 ? $"Player {settings.PlayerNumber} progress" : "Progress";
+            SetContent($"[gold]Goal: Slay the Spire with {charsToGoal} Characters[/gold]\n{owner}: {GameUtility.GoaledCharactersCount} / {charsToGoal}"
+                + (settings.PlayerCount > 1 ? $"\nAll {settings.PlayerCount} players must finish to goal the slot." : ""));
         }
 
         #endregion

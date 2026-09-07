@@ -135,6 +135,13 @@ public static class MultiplayerSupport
         return false;
     }
 
+    internal static NCharacterSelectScreen? GetObservedStartLobbyScreen(StartRunLobby lobby)
+    {
+        NCharacterSelectScreen? screen = _observedStartLobbyScreen;
+        return screen != null && GodotObject.IsInstanceValid(screen)
+            && ReferenceEquals(screen.Lobby, lobby) ? screen : null;
+    }
+
     /// <summary>
     /// Requests re-evaluation of the host's Ready UI after authoritative lobby staging changes
     /// or the final launch guard rejects a race. Defer the Godot work because either call can
@@ -295,7 +302,8 @@ public static class MultiplayerSupport
     {
         reason = string.Empty;
         var candidate = ApSessionIdentity.Create(
-            ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId);
+            ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId,
+            ArchipelagoClient.LocalSettings.Value.MultiplayerPlayerNumber);
         bool identityLocked =
             ApReconnectController.IsActive
             || _observedStartLobbyScreen != null
@@ -315,7 +323,7 @@ public static class MultiplayerSupport
     public static void NoteApSessionConnected(string roomSeed, int apTeamId, int apSlotId)
     {
         var identity = ApSessionIdentity.Create(
-            ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId);
+            ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId, CoopSlot.PlayerNumber);
         if (_deferredSessionIdentity != null && _deferredSessionIdentity != identity)
         {
             LogUtility.Info(
@@ -359,7 +367,7 @@ public static class MultiplayerSupport
         }
 
         var identity = ApSessionIdentity.Create(
-            ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId);
+            ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId, CoopSlot.PlayerNumber);
 
         DeferredItems.Clear();
         var receipts = new List<IndexedItemInfo>();
@@ -385,6 +393,8 @@ public static class MultiplayerSupport
         for (int index = 0; index < receivedItems.Count; index++)
         {
             ItemInfo item = receivedItems[index];
+            if (!CoopSlot.Owns(item.ItemId))
+                continue;
             var indexedItem = new IndexedItemInfo(item, index + 1);
             MultiplayerFeature feature = GetFeatureForItem(indexedItem);
             if (feature == MultiplayerFeature.CharacterUnlocks)
@@ -849,6 +859,8 @@ public static class MultiplayerSupport
         // TODO: is there seriously no automatic setter for this? where snapshot = source and then do slight modifications after
         var snapshot = new ArchipelagoSettings
         {
+            PlayerCount = source.PlayerCount,
+            PlayerNumber = source.PlayerNumber,
             AscensionLevel = source.AscensionLevel,
             ShouldShuffleAllCards = source.ShouldShuffleAllCards,
             IsSeeded = source.IsSeeded,

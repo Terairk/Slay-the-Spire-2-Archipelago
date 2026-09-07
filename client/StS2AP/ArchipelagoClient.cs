@@ -123,6 +123,11 @@ namespace StS2AP
             out string reason)
         {
             ArgumentNullException.ThrowIfNull(settings);
+            if (settings.PlayerNumber != CoopSlot.PlayerNumber)
+            {
+                reason = $"The saved host uses Player {settings.PlayerNumber}, but this connection uses Player {CoopSlot.PlayerNumber}.";
+                return false;
+            }
 
             // RitsuLib's JSON round-trip does not preserve the comparer from the initialized
             // ConcurrentDictionary. Native character IDs are upper-case while AP slot-data keys
@@ -687,7 +692,16 @@ namespace StS2AP
                     return;
                 }
 
-                Settings = GetPlayerSettings(apWorldVersion);
+                try
+                {
+                    Settings = GetPlayerSettings(apWorldVersion);
+                }
+                catch (Exception ex)
+                {
+                    RejectIncompatibleConnection($"Invalid AP player settings: {ex.Message}", wasAutomaticReconnect);
+                    return;
+                }
+                LogUtility.Info($"Using co-op Player {Settings.PlayerNumber}/{Settings.PlayerCount} in AP slot {apSlotId}.");
                 if (!TryValidateConfiguredCharacters(Settings, out string characterError))
                 {
                     RejectIncompatibleConnection(characterError, wasAutomaticReconnect);
@@ -994,7 +1008,7 @@ namespace StS2AP
             PendingCheckUtility.BindAuthenticatedSession(session, ServerAddress, Seed);
 
             // Restore checked locations from server so "Claimed" state survives restarts
-            CheckedLocations = new List<long>(session.Locations.AllLocationsChecked);
+            CheckedLocations = session.Locations.AllLocationsChecked.Where(CoopSlot.Owns).ToList();
             LogUtility.Info(
                 $"Restored {CheckedLocations.Count} previously checked location(s) from server."
             );
@@ -1411,7 +1425,7 @@ namespace StS2AP
                 RunForSession(_session, () =>
                 {
                     foreach (long id in ids)
-                        if (!CheckedLocations.Contains(id))
+                        if (CoopSlot.Owns(id) && !CheckedLocations.Contains(id))
                             CheckedLocations.Add(id);
                     // This SDK event also includes optimistic local checks. Do not use it
                     // to acknowledge durable outbox entries; fresh login still owns that.
@@ -1476,7 +1490,14 @@ namespace StS2AP
             ArchipelagoSettings settings = new()
             {
                 APWorldVersion = apWorldVersion,
+                PlayerCount = Convert.ToInt32(slotData["player_count"]),
+                PlayerNumber = LocalSettings.Value.MultiplayerPlayerNumber,
             };
+            if (!CoopPlayerSelection.IsValid(settings.PlayerCount, settings.PlayerNumber))
+                throw new InvalidDataException($"Player {settings.PlayerNumber} is outside this slot's player_count={settings.PlayerCount}. Change Player Number in Multiplayer Settings before connecting.");
+            if (slotData["players"] is not JObject players
+                || players[settings.PlayerNumber.ToString()] is not JArray playerCharacters)
+                throw new InvalidDataException("The AP slot is missing the selected player's character configuration.");
 
             // Apply all found settings
             if (slotData.ContainsKey("seeded"))
@@ -1496,10 +1517,7 @@ namespace StS2AP
                 );
             if (slotData.ContainsKey("num_chars_goal"))
                 settings.NumCharsGoal = Convert.ToInt32(slotData["num_chars_goal"]);
-            if (
-                slotData.ContainsKey("characters")
-                && slotData["characters"] is System.Collections.IList charsList
-            )
+            if (playerCharacters is System.Collections.IList charsList)
             {
                 // Grab the total number of characters
                 settings.TotalCharacters = charsList.Count;
