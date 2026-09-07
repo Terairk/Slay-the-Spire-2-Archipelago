@@ -200,9 +200,8 @@ namespace StS2AP.Patches
             => source.TryGetValue(id, out int v) ? v : 0;
 
         /// <summary>
-        /// Resolves the frozen AP source settings for the local shop owner. Shared-slot AP
-        /// Guests use the host settings even when location-check scope is HostCharacterOnly;
-        /// that scope controls checks, not passive shop unlocks.
+        /// Resolves the local shop owner's slot settings. Multiplayer uses the settings frozen
+        /// in that player's run contribution, including when several players share an AP slot.
         /// </summary>
         private static bool TryGetLocalShopSettings(
             Player player,

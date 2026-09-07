@@ -113,6 +113,10 @@ namespace StS2AP
         /// </summary>
         public static ArchipelagoSettings? Settings { get; private set; }
 
+        // Retain YAML defaults even when multiplayer installs an effective settings snapshot.
+        public static AncientRewardSettings AncientSlotDefaults { get; private set; } =
+            new(AncientRelicLocation.StartOfAct, AncientRelicPoolMode.Balanced);
+
         /// <summary>Restores the fixed host's frozen settings on its own process.</summary>
         internal static bool TryUseMultiplayerHostSettings(
             ArchipelagoSettings settings,
@@ -1527,6 +1531,7 @@ namespace StS2AP
                 settings.AncientRelicLocation = (AncientRelicLocation)Convert.ToInt32(slotData["ancient_relic_location"]);
             if(slotData.ContainsKey("ancient_relic_pool"))
                 settings.AncientRelicPool = (AncientRelicPoolMode)Convert.ToInt32(slotData["ancient_relic_pool"]);
+            AncientSlotDefaults = new(settings.AncientRelicLocation, settings.AncientRelicPool);
             // These keys are one APWorld/client contract. Missing values should reject the slot
             // instead of silently changing the run's reward rules.
             if(slotData.ContainsKey("relic_rewards_available_anytime"))

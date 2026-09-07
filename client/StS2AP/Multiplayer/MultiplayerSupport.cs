@@ -408,10 +408,7 @@ public static class MultiplayerSupport
                 ancientCounts[characterOffset] = count;
                 ArchipelagoClient.Progress.ProgressiveAncients[characterOffset] = count;
 
-                if (ArchipelagoClient.Settings.AncientRelicLocation == AncientRelicLocation.Anytime)
-                {
-                    receipts.Add(indexedItem);
-                }
+                receipts.Add(indexedItem);
             }
             else if (feature == MultiplayerFeature.RestSites
                 && ArchipelagoIdCodec.IsCharacterItemId(item.ItemId))
@@ -481,7 +478,7 @@ public static class MultiplayerSupport
         _deferredSessionIdentity = identity;
         _preparedReceivedItems = receivedItems.ToArray();
 
-        // Durable consumption and assignments are restored separately from the host-owned
+        // Durable consumption and assignments are restored separately from the player's saved
         // ApRunProgressState snapshot. This flag says only that the transient receipt catalog is
         // complete enough to reconcile against that progress.
         _apHistoryPrepared = true;
@@ -859,8 +856,8 @@ public static class MultiplayerSupport
             NumCharsGoal = source.NumCharsGoal,
             TotalCharacters = source.TotalCharacters,
             NeowSanity = source.NeowSanity,
-            AncientRelicLocation = source.AncientRelicLocation,
-            AncientRelicPool = source.AncientRelicPool,
+            AncientRelicLocation = AncientSettingsUtility.ForNewRun.Location,
+            AncientRelicPool = AncientSettingsUtility.ForNewRun.Pool,
             RelicRewardsAvailableAnytime = local.OverrideRelicRewardsAvailableAnytime
                 ? local.RelicRewardsAvailableAnytime
                 : source.RelicRewardsAvailableAnytime,
@@ -893,18 +890,6 @@ public static class MultiplayerSupport
         foreach ((string key, CharacterConfig config) in source.Characters)
             snapshot.Characters[key] = CloneCharacterConfig(config);
         return snapshot;
-    }
-
-    public static ArchipelagoSettings? GetHostSettingsForReceiptRelay()
-    {
-        if (IsRealMultiplayerRun
-            && RunManager.Instance.DebugOnlyGetState() is RunState runState
-            && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-            && shared.HostSettings != null)
-        {
-            return shared.HostSettings;
-        }
-        return CreateEffectiveHostSettingsSnapshot();
     }
 
     public static void RestoreFrozenHostSettingsForActiveRun()

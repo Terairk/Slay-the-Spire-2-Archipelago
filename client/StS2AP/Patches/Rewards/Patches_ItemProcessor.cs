@@ -92,10 +92,10 @@ namespace StS2AP.Patches
 
         /// <summary>
         /// Determines what to do with an Item that we've received from Archipelago.
-        /// This function is controlled by a Spinlock, and can only process one item at a time.
+        /// Called by the main-thread queue drain or while rebuilding item history.
         /// </summary>
-        /// <param name="item">Received Item</param>
-        /// <param name="index">The index of the item in the Archipelago Multiworld</param>
+        /// <param name="indexedInfo">The AP item and its receipt index.</param>
+        /// <param name="liveDelivery">Whether to dispatch live effects rather than only rebuild history.</param>
         private static void ProcessItem(IndexedItemInfo indexedInfo, bool liveDelivery = true)
         {
             // AP_MP: This is the receipt-level fail-closed gate for unconverted features.
@@ -171,8 +171,8 @@ namespace StS2AP.Patches
                 {
                     HandleThreshholdItem(item, Progress.ProgressiveAncients, "Progressive Ancients");
 
-                    if (Settings.AncientRelicLocation == AncientRelicLocation.Anytime)
-                        Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
+                    // Keep receipts across future run-mode changes; menu policy controls visibility.
+                    Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
 
                     if (liveDelivery
                         && MultiplayerSupport.IsRealMultiplayerRun
@@ -521,7 +521,7 @@ namespace StS2AP.Patches
         }
 
         /// <summary>
-        /// Applies items that were held by the multiplayer fail-closed profile when the user
+        /// Applies items deferred by the multiplayer feature gates when the user
         /// backs out and starts singleplayer in the same AP session.
         /// </summary>
         public static void ProcessDeferredItemsForSingleplayer()

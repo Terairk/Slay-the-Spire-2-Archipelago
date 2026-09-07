@@ -7,6 +7,8 @@ namespace StS2AP.Persistence;
 /// </summary>
 public sealed class ApRunProgressState
 {
+    [JsonPropertyName("ancient_settings_for_run")]
+    public AncientRewardSettings? AncientSettingsForRun { get; set; }
     [JsonPropertyName("initialized")]
     public bool Initialized { get; set; }
     [JsonPropertyName("card_rewards_attempted")]

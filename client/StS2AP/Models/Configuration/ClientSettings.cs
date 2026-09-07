@@ -64,6 +64,10 @@
 
         #endregion
 
+        /// <summary>Null uses the AP slot default. Only captured for new runs.</summary>
+        public AncientRelicLocation? AncientRelicLocationOverride { get; set; }
+        public AncientRelicPoolMode? AncientRelicPoolOverride { get; set; }
+
         #region Key/Button Bindings
 
         /// <summary>

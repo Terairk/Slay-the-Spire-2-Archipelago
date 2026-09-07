@@ -144,7 +144,7 @@
                     return true;
               case APItem.ProgressiveAncient:
                     // pickup is true if Anytime since Relics are in AP reward menu, false otherwise
-                    return (ArchipelagoClient.Settings?.AncientRelicLocation ?? AncientRelicLocation.Anytime) == AncientRelicLocation.Anytime;
+                    return StS2AP.Utils.AncientSettingsUtility.Current.Location == AncientRelicLocation.Anytime;
               case APItem.ProgressiveRest:
               case APItem.ProgressiveSmith:
               case APItem.ShopCardSlot:

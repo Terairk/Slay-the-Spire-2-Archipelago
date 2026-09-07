@@ -1020,13 +1020,9 @@ public static class ApMirroredRewardDispatcher
         bool UseAncientStyle { get; }
     }
 
-    private sealed class ApNativeGoldReward : GoldReward, IApNativeReward
+    private sealed class ApNativeGoldReward(ApGoldClaim claim, Player player)
+        : GoldReward(claim.GrantedAmount, player), IApNativeReward
     {
-        private readonly ApGoldClaim _claim;
-
-        public ApNativeGoldReward(ApGoldClaim claim, Player player)
-            : base(claim.GrantedAmount, player) => _claim = claim;
-
         public bool CanClaim(out string reason) => MultiplayerSupport.CanClaimGold(out reason);
         public bool HasOriginText => false;
         public bool UseAncientStyle => false;
@@ -1035,7 +1031,7 @@ public static class ApMirroredRewardDispatcher
         {
             bool applied = await base.OnSelect();
             if (applied && LocalContext.IsMe(Player))
-                ApGrantDispatcher.CommitGoldClaim(_claim);
+                ApGrantDispatcher.CommitGoldClaim(claim);
             return applied;
         }
     }

@@ -88,7 +88,7 @@ public static class ApGrantDispatcher
         throw new InvalidOperationException(message);
     }
 
-    /// <summary>Binds the host-owned per-player cursor to the launched local STS run.</summary>
+    /// <summary>Binds the local player's aggregate gold cursor to the launched STS run.</summary>
     public static bool BeginRun(RunState runState, long characterOffset, out string reason)
     {
         reason = string.Empty;

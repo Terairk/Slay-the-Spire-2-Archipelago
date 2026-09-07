@@ -93,6 +93,11 @@ public static class AncientMultiplayer
     /// Installs a progress revision only after the fixed host has accepted it. The caller is the
     /// unified progress transport, so no second Ancient-specific network protocol is required.
     /// </summary>
+    // called a lot, maybe this should be replaced elsewhere but for now its freezing what people's progressive ancients
+    // are when they enter the Ancients room so everyone's view of the room is consistent. Honestly probably should
+    // disable this in start_of_act mode because of checkpoints. You can easily miss it.
+    // Also this is quite a generic thing and it should probably be moved outside of Ancients
+    // once this is used for other things.
     public static void ConfirmProgress(
         RunState runState,
         ulong ownerNetId,

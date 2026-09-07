@@ -278,7 +278,7 @@ namespace StS2AP.Models
             // With Neow Sanity, ordinals 0/1/2 map to Act indices 0/1/2.
             // Otherwise ordinals 0/1 map to Act indices 1/2.
             var ancientActIndex = rewardOrdinal + (includesNeowReward ? 0 : 1);
-            var poolMode = ArchipelagoClient.Settings?.AncientRelicPool ?? AncientRelicPoolMode.Balanced;
+            var poolMode = AncientSettingsUtility.Current.Pool;
             // True Chaos combines only Act 2/3; Neow's reward remains Neow-only.
             int? poolActIndex = ancientActIndex == 0
                 ? 0
@@ -387,8 +387,14 @@ namespace StS2AP.Models
             );
         }
 
+        public AncientRewardSettings? AncientSettingsForRun { get; set; }
+
         public void ResetTrackers()
         {
+            AncientSettingsForRun = MultiplayerSupport.IsRealMultiplayerRun
+                ? AncientSettingsUtility.Current
+                : AncientSettingsUtility.ForNewRun;
+            LogUtility.Info($"Ancient rewards for new run: mode={AncientSettingsForRun.Location}, pool={AncientSettingsForRun.Pool}");
             Items.StartNewRun();
             CardRewardsAttempted = 0;
             RareCardRewardsAttempted = 0;
@@ -714,6 +720,7 @@ namespace StS2AP.Models
             return new ApRunProgressState
             {
                 Initialized = true,
+                AncientSettingsForRun = AncientSettingsForRun,
                 CardRewardsAttempted = CardRewardsAttempted,
                 RareCardRewardsAttempted = RareCardRewardsAttempted,
                 RelicRewardsAttempted = RelicRewardsAttempted,
@@ -828,6 +835,7 @@ namespace StS2AP.Models
             LogUtility.Info($"Card Assignments {string.Join(",", saveData.CardAssignments)}");
             var progress = new ArchipelagoProgress()
             {
+                AncientSettingsForRun = saveData.AncientSettingsForRun,
                 CardRewardsAttempted = saveData.CardRewardsAttempted,
                 RareCardRewardsAttempted = saveData.RareCardRewardsAttempted,
                 RelicRewardsAttempted = saveData.RelicRewardsAttempted,

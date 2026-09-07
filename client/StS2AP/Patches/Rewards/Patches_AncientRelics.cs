@@ -300,8 +300,10 @@ namespace StS2AP.Patches
                 );
             }
             
-            var location = settings.AncientRelicLocation;
-            var poolMode = settings.AncientRelicPool;
+            var location = MultiplayerSupport.IsRealMultiplayerRun
+                ? settings.AncientRelicLocation : AncientSettingsUtility.Current.Location;
+            var poolMode = MultiplayerSupport.IsRealMultiplayerRun
+                ? settings.AncientRelicPool : AncientSettingsUtility.Current.Pool;
             var anytimeUsesRewardMenu = location == AncientRelicLocation.Anytime &&
                                         (currentAct is 2 or 3 ||
                                          (currentAct == 1 && settings.NeowSanity));

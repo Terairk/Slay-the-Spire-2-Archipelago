@@ -100,11 +100,6 @@ public static class ApRunData
         ApParticipationKind participation = MultiplayerSupport.PendingParticipation;
         _players.Lobby.TryGet(lobby, localNetId, out ApPlayerRunState? existing);
         ApSlotIdentity? preparedSlot = MultiplayerSupport.PreparedSlotIdentity;
-        bool sameSlot = existing?.Participation == ApParticipationKind.OwnApSlot
-            && existing.SchemaVersion == RunSchemaVersion
-            && ApSlotIdentity.TryCreate(existing.ApRoomSeed, existing.ApTeamId, existing.ApSlotId,
-                out var existingSlot)
-            && existingSlot == preparedSlot;
         ArchipelagoProgress progress = ArchipelagoClient.Progress;
         var state = new ApPlayerRunState
         {
@@ -119,7 +114,7 @@ public static class ApRunData
                 ? preparedSlot?.ApSlotId
                 : null,
             SlotSettings = participation == ApParticipationKind.OwnApSlot
-                ? (sameSlot ? existing?.SlotSettings : null) ?? MultiplayerSupport.CreateEffectiveHostSettingsSnapshot()
+                ? MultiplayerSupport.CreateEffectiveHostSettingsSnapshot()
                 : null,
             InitialRelicReceiptIndexesByCharacter = participation ==
                     ApParticipationKind.VanillaGuest
@@ -592,6 +587,9 @@ public static class ApRunData
                 }
                 return;
             }
+            
+            // only can do 1 base revision difference, maybe we could repair a missing baseline 
+            // i.e. support differences of more than 1 revision in the future?
             if (!state.Progress.Initialized
                 || !context.Message.Delta.HasChanges
                 || context.Message.BaseRevision != state.ProgressRevision
@@ -678,6 +676,7 @@ public static class ApRunData
             out ulong hostNetId
         ) && senderNetId == hostNetId;
 
+    // maybe these can be in a shared union (if only unions existed in C#)
     private static bool BroadcastHostConfirmedProgress(
         ApProgressSnapshotMessage? snapshotMessage,
         ApProgressDeltaMessage? deltaMessage)
@@ -754,15 +753,16 @@ public static class ApRunData
         }
 
         // Lobby writes emit RunSavedDataLobbyStagingEvent. That event asks the host UI to
-        // refresh, and the refresh stages this same contract again. Archipelago slot settings
-        // are immutable after login, so an already-staged value is authoritative and must not
-        // be rewritten; otherwise the host creates an endless write -> refresh -> write loop
+        // refresh, and the refresh stages this same contract again. Only changed construction
+        // settings should be written; otherwise the host creates an endless write -> refresh -> write loop
         // that starves the native lobby network update.
         if (_sharedRun.Lobby.TryGet(lobby, out ApRunSharedState existing)
             && existing.SchemaVersion == RunSchemaVersion
             && (shouldStageHostSettings
                 ? existing.HostSettings != null
                 : existing.HostSettings == null)
+            && existing.HostSettings?.AncientRelicLocation == hostSettings?.AncientRelicLocation
+            && existing.HostSettings?.AncientRelicPool == hostSettings?.AncientRelicPool
             && existing.AscensionStateInitialized == ascensionStateInitialized
             && existing.HostCharacterOffset == (ascensionStateInitialized
                 ? hostCharacterOffset
@@ -798,6 +798,8 @@ public static class ApRunData
         && left.ApTeamId == right.ApTeamId
         && left.ApSlotId == right.ApSlotId
         && (left.SlotSettings == null) == (right.SlotSettings == null)
+        && left.SlotSettings?.AncientRelicLocation == right.SlotSettings?.AncientRelicLocation
+        && left.SlotSettings?.AncientRelicPool == right.SlotSettings?.AncientRelicPool
         && RelicReceiptMapsEqual(
             left.InitialRelicReceiptIndexesByCharacter,
             right.InitialRelicReceiptIndexesByCharacter)

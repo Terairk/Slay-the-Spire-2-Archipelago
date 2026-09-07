@@ -3,23 +3,6 @@
 namespace StS2AP.Models
 {
     
-    // Where you can receive Ancient Relics
-    public enum AncientRelicLocation
-    {
-        StartOfAct = 0,
-        Anytime = 1,
-    }
-
-    // Balanced = Relics from the run's Ancient for each Progressive Ancient reward.
-    // Chaos = Any Ancient relic from the reward's act.
-    // TrueChaos = Any Act 2 or Act 3 Ancient relic; Neow's reward remains Neow-only.
-    public enum AncientRelicPoolMode
-    {
-        Balanced = 0,
-        Chaos = 1,
-        TrueChaos = 2,
-    }
-
     /// <summary>
     /// The settings that a player has configured for their Archipelago Slot.
     /// 

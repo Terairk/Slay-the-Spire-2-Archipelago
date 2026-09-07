@@ -122,7 +122,7 @@ namespace StS2AP.Patches
                         preFinishedRoom?.RoomType == RoomType.Event
                         && currentMapPointType == MapPointType.Ancient
                     );
-                AncientRelicLocation ancientRelicLocation = settings.AncientRelicLocation;
+                AncientRelicLocation ancientRelicLocation = AncientSettingsUtility.Current.Location;
                 bool usesProgressiveAncients =
                     settings.APWorldVersion > Constants.VERSION_0_5_3;
                 bool ancientIsLocked =

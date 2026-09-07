@@ -451,6 +451,7 @@ public static class AscensionMultiplayer
         try
         {
             AscensionLevel level = (AscensionLevel)message.AscensionLevel;
+            // update the canonical state and record the receipt
             if (!ApRunData.TryApplyAscensionDown(
                     runState,
                     message.ReceivedItemIndex,
@@ -479,6 +480,8 @@ public static class AscensionMultiplayer
                 return;
             }
 
+            // the state is synced and it wasn't already handled and the ascension wasn't already removed
+            // so apply its effects to everyone, every player does this individually
             await ApplyRetrospectiveEffect(runState, level);
             LogUtility.Success(
                 $"Managed Ascension Down applied {level} from receipt "
@@ -532,6 +535,8 @@ public static class AscensionMultiplayer
         RunState runState,
         AscensionLevel level)
     {
+        // Probably some duplication here compared to single-player but this applies to all players
+        // maybe a future refactoring here could be nice
         switch (level)
         {
             case AscensionLevel.AscendersBane:

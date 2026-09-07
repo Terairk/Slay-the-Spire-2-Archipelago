@@ -118,6 +118,7 @@ public static class ModSettingsRegistration
                     .AddSection("keybinds", ConfigureKeybindsSection)
                     .AddSection("notifications", ConfigureNotificationsSection)
                     .AddSection("relic_rewards", ConfigureRelicRewardsSection)
+                    .AddSection("ancient_rewards", ConfigureAncientRewardsSection)
                     .AddSection("deathlink", ConfigureDeathLinkSection)
                     .AddSection("bug_reports", ConfigureBugReportsSection)
         );
@@ -331,6 +332,43 @@ public static class ModSettingsRegistration
             )
             .ConfigureEntryMenu(DeathLink_DamageId, ModSettingsMenuCapabilities.None)
             .WithEntryEnabledWhen(DeathLink_DamageId, IsDeathLinkOverriden);
+    }
+
+    private static void ConfigureAncientRewardsSection(ModSettingsSectionBuilder section)
+    {
+        section.WithTitle(ModSettingsText.Literal("Ancient Rewards"))
+            .WithDescription(ModSettingsText.Literal(
+                "Applies only to new runs, including multiplayer. Continuing a run keeps its saved mode and pool."))
+            .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
+            .AddChoice(
+                "ancient_mode", ModSettingsText.Literal("Ancient Mode"),
+                CreateBinding(
+                    static settings => settings.AncientRelicLocationOverride is { } mode ? (int)mode : -1,
+                    static (settings, value) => settings.AncientRelicLocationOverride =
+                        value == -1 ? null : (AncientRelicLocation)value),
+                options: new[]
+                {
+                    new ModSettingsChoiceOption<int>(-1, ModSettingsText.Literal("Use AP Slot Setting")),
+                    new ModSettingsChoiceOption<int>(0, ModSettingsText.Literal("Start of Act")),
+                    new ModSettingsChoiceOption<int>(1, ModSettingsText.Literal("Anytime")),
+                },
+                description: ModSettingsText.Literal(
+                    "Anytime is recommended for multiplayer. Start of Act rewards missed before a checkpoint cannot be claimed later in that run."))
+            .AddChoice(
+                "ancient_pool", ModSettingsText.Literal("Ancient Pool"),
+                CreateBinding(
+                    static settings => settings.AncientRelicPoolOverride is { } pool ? (int)pool : -1,
+                    static (settings, value) => settings.AncientRelicPoolOverride =
+                        value == -1 ? null : (AncientRelicPoolMode)value),
+                options: new[]
+                {
+                    new ModSettingsChoiceOption<int>(-1, ModSettingsText.Literal("Use AP Slot Setting")),
+                    new ModSettingsChoiceOption<int>(0, ModSettingsText.Literal("Balanced")),
+                    new ModSettingsChoiceOption<int>(1, ModSettingsText.Literal("Chaos")),
+                    new ModSettingsChoiceOption<int>(2, ModSettingsText.Literal("True Chaos")),
+                },
+                description: ModSettingsText.Literal(
+                    "Balanced uses the run's Ancient; Chaos uses the act's pool; True Chaos combines Acts 2 and 3. Neow remains Neow-only."));
     }
 
     private static void ConfigureRelicRewardsSection(ModSettingsSectionBuilder section)

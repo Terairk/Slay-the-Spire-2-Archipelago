@@ -9,6 +9,8 @@ namespace StS2AP.Persistence;
 public sealed class ApProgressDelta
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AncientRewardSettings? AncientSettingsForRun { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? CardRewardsAttempted { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? RareCardRewardsAttempted { get; set; }
@@ -61,7 +63,8 @@ public sealed class ApProgressDelta
 
     [JsonIgnore]
     public bool HasChanges =>
-        CardRewardsAttempted.HasValue
+        AncientSettingsForRun != null
+        || CardRewardsAttempted.HasValue
         || RareCardRewardsAttempted.HasValue
         || RelicRewardsAttempted.HasValue
         || BankedRelicRewards.HasValue
@@ -98,6 +101,8 @@ public sealed class ApProgressDelta
     {
         var delta = new ApProgressDelta
         {
+            AncientSettingsForRun = before.AncientSettingsForRun == after.AncientSettingsForRun
+                ? null : after.AncientSettingsForRun,
             CardRewardsAttempted = Changed(before.CardRewardsAttempted, after.CardRewardsAttempted),
             RareCardRewardsAttempted = Changed(before.RareCardRewardsAttempted, after.RareCardRewardsAttempted),
             RelicRewardsAttempted = Changed(before.RelicRewardsAttempted, after.RelicRewardsAttempted),
@@ -201,6 +206,8 @@ public sealed class ApProgressDelta
     public ApRunProgressState ApplyToCopy(ApRunProgressState source)
     {
         ApRunProgressState result = Clone(source);
+        if (AncientSettingsForRun != null)
+            result.AncientSettingsForRun = AncientSettingsForRun;
         Apply(CardRewardsAttempted, value => result.CardRewardsAttempted = value);
         Apply(RareCardRewardsAttempted, value => result.RareCardRewardsAttempted = value);
         Apply(RelicRewardsAttempted, value => result.RelicRewardsAttempted = value);
@@ -261,6 +268,7 @@ public sealed class ApProgressDelta
         RareCardRewardsAttempted = source.RareCardRewardsAttempted,
         RelicRewardsAttempted = source.RelicRewardsAttempted,
         BankedRelicRewards = source.BankedRelicRewards,
+        AncientSettingsForRun = source.AncientSettingsForRun,
         RelicRewardsAvailableAnytimeForRun = source.RelicRewardsAvailableAnytimeForRun,
         RelicReceiptIndexesByCharacter = CloneRelicReceiptMap(source.RelicReceiptIndexesByCharacter),
         GoldRewardsAttempted = source.GoldRewardsAttempted,

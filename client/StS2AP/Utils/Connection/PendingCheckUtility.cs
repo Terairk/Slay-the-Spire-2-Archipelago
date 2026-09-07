@@ -227,7 +227,7 @@ namespace StS2AP.Utils
             if (unrecognizedCount > 0)
             {
                 LogUtility.Warn(
-                    $"Kept {unrecognizedCount} host-owned multiplayer check(s) that are not "
+                    $"Kept {unrecognizedCount} pending multiplayer check(s) that are not "
                         + $"present in AP session {bound.Identity}"
                 );
             }
@@ -239,7 +239,7 @@ namespace StS2AP.Utils
                 if (!ArchipelagoClient.CheckedLocations.Contains(locationId))
                     ArchipelagoClient.CheckedLocations.Add(locationId);
             }
-            LogUtility.Info($"Replaying {recognized.Count} host-owned multiplayer check(s)");
+            LogUtility.Info($"Replaying {recognized.Count} pending multiplayer check(s)");
             _ = SendAsync(bound, recognized.ToArray(), replaying: true);
         }
 

@@ -52,6 +52,11 @@
     <Compile Include="..\StS2AP\Utils\RestSitePolicy.cs" Link="Utils\RestSitePolicy.cs" />
     <Compile Include="..\StS2AP\Persistence\CampaignSaveFiles.cs" Link="Persistence\CampaignSaveFiles.cs" />
     <Compile Include="..\StS2AP\Persistence\ApRelicReceiptState.cs" Link="Persistence\ApRelicReceiptState.cs" />
+    <Using Include="StS2AP.Models" />
+    <Compile Include="..\StS2AP\Persistence\ApProgressDelta.cs" Link="Persistence\ApProgressDelta.cs" />
+    <Compile Include="..\StS2AP\Persistence\ApProgressiveStarterState.cs" Link="Persistence\ApProgressiveStarterState.cs" />
+    <Compile Include="..\StS2AP\Models\Configuration\AncientRewardSettings.cs" Link="Models\AncientRewardSettings.cs" />
+    <Compile Include="..\StS2AP\Models\Configuration\ClientSettings.cs" Link="Models\ClientSettings.cs" />
     <Compile Include="..\StS2AP\Persistence\ApRunProgressState.cs" Link="Persistence\ApRunProgressState.cs" />
     <Compile Include="..\StS2AP\Persistence\ApCardAssignmentState.cs" Link="Persistence\ApCardAssignmentState.cs" />
     <Compile Include="..\StS2AP\Models\ProgressiveStarterTier.cs" Link="Models\ProgressiveStarterTier.cs" />
