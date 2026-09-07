@@ -39,7 +39,7 @@ class SlayTheSpire2World(World):
     web = SlayTheSpire2Web()
     options_dataclass = Spire2Options
     options: Spire2Options
-    mod_compat_version = "1.0.1"
+    mod_compat_version = "1.1.0"
     compat_flag = 1
     origin_region_name = "Neow's Room"
 
