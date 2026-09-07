@@ -124,9 +124,6 @@ namespace StS2AP.Patches
 
                 // Send "Press Start" check
                 GameUtility.TrySendPressStartCheck();
-
-                // Clear buffers
-                ArchipelagoClient.Progress.UsedItems.Clear();
             }
         }
 

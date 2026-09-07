@@ -84,7 +84,7 @@ namespace StS2AP.Utils
             return GetRelicReceipts(player)
                 .Skip(GetAvailableAnytimeForRun())
                 .Count(receipt =>
-                    !progress.UsedItems.Contains(receipt.Index)
+                    !progress.Items.IsUsed(receipt.Index)
                     && !progress.RelicChoiceAssignments.ContainsKey(receipt.Index)
                     && !RelicReceiptMultiplayer.IsReserved(player, receipt.Index)
                 );
@@ -137,9 +137,10 @@ namespace StS2AP.Utils
             if (!receiptIndex.HasValue)
                 return false;
 
-            var used = localOwner || !MultiplayerSupport.IsRealMultiplayerRun
-                ? ArchipelagoClient.Progress.UsedItems : replicated!.UsedItems;
-            if (used.Contains(receiptIndex.Value))
+            bool used = localOwner || !MultiplayerSupport.IsRealMultiplayerRun
+                ? ArchipelagoClient.Progress.Items.IsUsed(receiptIndex.Value)
+                : replicated!.UsedItems.Contains(receiptIndex.Value);
+            if (used)
                 return frozenReceiptIndex.HasValue;
 
             int bankedRewards = localOwner || !MultiplayerSupport.IsRealMultiplayerRun
@@ -157,7 +158,7 @@ namespace StS2AP.Utils
 
             if (localOwner || !MultiplayerSupport.IsRealMultiplayerRun)
             {
-                ArchipelagoClient.Progress.UsedItems.Add(receiptIndex.Value);
+                ArchipelagoClient.Progress.Items.MarkUsed(receiptIndex.Value);
                 ArchipelagoClient.Progress.BankedRelicRewards--;
             }
             else
@@ -216,7 +217,7 @@ namespace StS2AP.Utils
             {
                 var receipt = MultiplayerSupport.IsRealMultiplayerRun
                     ? GetRelicReceipts(player).Skip(GetAvailableAnytimeForRun()).FirstOrDefault(r =>
-                        !progress.UsedItems.Contains(r.Index)
+                        !progress.Items.IsUsed(r.Index)
                         && !progress.RelicChoiceAssignments.ContainsKey(r.Index)
                         && approvedMenu!.Contains(r.Index)
                         && RelicReceiptMultiplayer.CanUseMenu(player, r.Index))
@@ -261,7 +262,7 @@ namespace StS2AP.Utils
         public static bool IsAvailableInRewardMenu(IndexedItemInfo receipt, Player player)
         {
             var progress = ArchipelagoClient.Progress;
-            if (progress.UsedItems.Contains(receipt.Index)
+            if (progress.Items.IsUsed(receipt.Index)
                 || receipt.Item.GetCharacterItemType() != APItem.Relic
                 || receipt.Item.GetAPCharacterNumber() != player.GetAPCharacterNumber())
             {
@@ -284,8 +285,7 @@ namespace StS2AP.Utils
         public static void CompleteMenuClaim(Player player, int itemIndex)
         {
             var progress = ArchipelagoClient.Progress;
-            if (!progress.UsedItems.Contains(itemIndex))
-                progress.UsedItems.Add(itemIndex);
+            progress.Items.MarkUsed(itemIndex);
 
             progress.RelicChoiceAssignments.Remove(itemIndex);
             ApRunData.PublishLocalProgress(player);
@@ -297,7 +297,7 @@ namespace StS2AP.Utils
             return GetRelicReceipts(player)
                 .Skip(GetAvailableAnytimeForRun())
                 .FirstOrDefault(receipt =>
-                    !progress.UsedItems.Contains(receipt.Index)
+                    !progress.Items.IsUsed(receipt.Index)
                     && !progress.RelicChoiceAssignments.ContainsKey(receipt.Index)
                     && !RelicReceiptMultiplayer.IsReserved(player, receipt.Index)
                 );
@@ -337,12 +337,12 @@ namespace StS2AP.Utils
             var available = receipts.Take(GetAvailableAnytimeForRun())
                 .Concat(receipts.Where(r => progress.RelicChoiceAssignments.ContainsKey(r.Index)));
             var waiting = receipts.Skip(GetAvailableAnytimeForRun()).Where(r =>
-                !progress.UsedItems.Contains(r.Index)
+                !progress.Items.IsUsed(r.Index)
                 && !progress.RelicChoiceAssignments.ContainsKey(r.Index)
                 && (!RelicReceiptMultiplayer.IsReserved(player, r.Index)
                     || RelicReceiptMultiplayer.CanUseMenu(player, r.Index)))
                 .Take(progress.BankedRelicRewards);
-            return available.Concat(waiting).Where(r => !progress.UsedItems.Contains(r.Index))
+            return available.Concat(waiting).Where(r => !progress.Items.IsUsed(r.Index))
                 .Select(r => r.Index).Distinct().ToList();
         }
 

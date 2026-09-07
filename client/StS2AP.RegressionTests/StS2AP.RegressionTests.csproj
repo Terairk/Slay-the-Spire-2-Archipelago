@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1">
@@ -16,6 +17,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <ProjectReference Include="..\StS2AP.Domain\StS2AP.Domain.fsproj" />
+    <Compile Include="..\StS2AP\Models\ApReceivedItemLedger.cs" Link="Models\ApReceivedItemLedger.cs" />
+    <Compile Include="..\StS2AP\Models\IndexedItemInfo.cs" Link="Models\IndexedItemInfo.cs" />
     <Compile Include="..\StS2AP\DomainAdapters\MirroredRewardAdapter.cs"
              Link="DomainAdapters\MirroredRewardAdapter.cs" />
     <Compile Include="..\StS2AP\DomainAdapters\ProgressiveStarterAdapter.cs"

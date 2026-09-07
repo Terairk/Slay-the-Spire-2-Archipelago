@@ -172,7 +172,7 @@ namespace StS2AP.Patches
                     HandleThreshholdItem(item, Progress.ProgressiveAncients, "Progressive Ancients");
 
                     if (Settings.AncientRelicLocation == AncientRelicLocation.Anytime)
-                        Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
+                        Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
 
                     if (liveDelivery
                         && MultiplayerSupport.IsRealMultiplayerRun
@@ -223,13 +223,13 @@ namespace StS2AP.Patches
                     // Save loading replays the whole item list, then reconciles once at the end.
                     if (!liveDelivery)
                     {
-                        Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
+                        Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
                         return;
                     }
 
                     // Keep every receipt. Other characters and out-of-run deliveries may
                     // matter when their run starts or a checkpoint is loaded.
-                    Progress.AllReceivedItems.Add(new IndexedItemInfo(item, index));
+                    Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
 
                     var player = GameUtility.CurrentPlayer;
                     var characterOffset = player?.Character.GetAPCharacterNumber();
@@ -341,7 +341,7 @@ namespace StS2AP.Patches
                 case APItem.DoubleBoss:
                     if (MultiplayerSupport.IsMultiplayerScope)
                     {
-                        Progress.AllReceivedItems.Add(indexedInfo);
+                        Progress.Items.RegisterReceived(indexedInfo);
                         if (liveDelivery && MultiplayerSupport.IsRealMultiplayerRun)
                             AscensionMultiplayer.ReceiveLiveReceipt(indexedInfo);
                         else if (liveDelivery)
@@ -354,14 +354,13 @@ namespace StS2AP.Patches
                         item,
                         false
                     );
-                    Progress.UsedItems.Add(index);
-                    Progress.AllReceivedItems.Add(indexedInfo);
+                    Progress.Items.RegisterConsumed(indexedInfo);
                     break;
 
                 // Everything else ends up in the "reward pool"
                 default:
                 {
-                        Progress.AllReceivedItems.Add(indexedInfo);
+                        Progress.Items.RegisterReceived(indexedInfo);
                     break;
                 }
             }

@@ -12,6 +12,7 @@ or files from the locally excluded admission harness. Each case is discoverable 
 
 | Suite | Coverage |
 | --- | --- |
+| Received item ledger | Duplicate registration, independent receipt indexes, restore before history, partial/failed catalogue replacement, new-run reset, immutable read views, and per-player consumption |
 | Relic receipts | Receipt ownership, chest/menu conflicts, late receipts, stale progress, exact assignments, consumption, JSON round trips |
 | Campaign saves | Checksums, immutable checkpoint/recovery payloads, corrupt/missing files, path validation; isolated temporary directories |
 | DeathLink | Per-recipient deduplication, self-echo tracking, lethal suppression, expiry, reset; explicit timestamps without sleeping |
@@ -72,6 +73,8 @@ variant. Unit tests establish the behavior of our policies, not native callbacks
 | Campfire sanity off, vanilla guest, or unresolved AP progress | Native options remain unchanged |
 | `!collect`, then enter another rest site with two AP slots | Collected checks stay hidden on all replicas; another slot's checks remain available |
 | Claim a relic, reopen rewards, reconnect, save/continue | One grant at the established boundary; stable assignment and no repeated bank spending |
+| Skip an AP card or try a potion with no space, then reopen rewards | Receipt remains claimable with its existing assignment |
+| Consume AP rewards, continue the save, then start a fresh run | Continue preserves consumption while history is rebuilt; the fresh run resets consumption and retains known receipts |
 | DeathLink with same-slot peers, lethal damage, and death prevention | Intended recipients are affected once; no echo loop; later legitimate deaths still send |
 | Open rewards while starting travel, then return or start a new run | Stale pending menu work cannot open in the next room/run |
 | Save at a checkpoint, advance, then continue/recover | Correct checkpoint/recovery selected and native run data restored |

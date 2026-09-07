@@ -361,7 +361,7 @@ public static class MultiplayerSupport
         string sessionKey = identity.ToString();
 
         DeferredItems.Clear();
-        ArchipelagoClient.Progress.AllReceivedItems.Clear();
+        var receipts = new List<IndexedItemInfo>();
         ArchipelagoClient.Progress.ProgressiveAncients.Clear();
         ArchipelagoClient.Progress.ProgressiveRests.Clear();
         ArchipelagoClient.Progress.ProgressiveSmiths.Clear();
@@ -409,7 +409,7 @@ public static class MultiplayerSupport
 
                 if (ArchipelagoClient.Settings.AncientRelicLocation == AncientRelicLocation.Anytime)
                 {
-                    ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
+                    receipts.Add(indexedItem);
                 }
             }
             else if (feature == MultiplayerFeature.RestSites
@@ -466,14 +466,15 @@ public static class MultiplayerSupport
                     counts.TryGetValue(characterOffset, out int count);
                     counts[characterOffset] = count + 1;
                 }
-                ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
+                receipts.Add(indexedItem);
             }
             else
             {
-                ArchipelagoClient.Progress.AllReceivedItems.Add(indexedItem);
+                receipts.Add(indexedItem);
             }
         }
 
+        ArchipelagoClient.Progress.Items.ReplaceReceivedItems(receipts);
         ApGrantDispatcher.RebuildGoldBank(receivedItems);
         _preparedSessionIdentity = identity;
         _deferredSessionKey = sessionKey;

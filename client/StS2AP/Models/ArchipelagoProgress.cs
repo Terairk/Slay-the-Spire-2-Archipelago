@@ -389,6 +389,7 @@ namespace StS2AP.Models
 
         public void ResetTrackers()
         {
+            Items.StartNewRun();
             CardRewardsAttempted = 0;
             RareCardRewardsAttempted = 0;
             BossRewardsDistributed = 0;
@@ -421,15 +422,22 @@ namespace StS2AP.Models
         #region My Items (From the Multiworld)
 
         /// <summary>
-        /// All items we've received from the multiworld. Gets dumped into `AvailableItems` at the start of each run.
+        /// Owns selected receipts and their per-run consumption. Slot changes replace this progress;
+        /// history refreshes preserve consumption, while ResetTrackers starts fresh consumption.
         /// </summary>
-        public List<IndexedItemInfo> AllReceivedItems = new List<IndexedItemInfo>();
+        public ApReceivedItemLedger Items { get; private init; } = new();
 
         /// <summary>
-        /// Any items that have been used up in the current run live here. The difference between this and `AllReceivedItems` 
-        /// represents the items still available for use.
+        /// Selected receipts used by rewards and progression. Aggregate gold and some unlocks
+        /// are tracked separately; this is not the complete AP server history.
         /// </summary>
-        public List<int> UsedItems = new List<int>();
+        public IReadOnlyList<IndexedItemInfo> AllReceivedItems => Items.Received;
+
+        /// <summary>
+        /// Consumed receipt indexes for this run, including restored indexes awaiting AP history.
+        /// Menu availability also depends on item kind, character, and reward access rules.
+        /// </summary>
+        public IReadOnlyList<int> UsedItems => Items.UsedIndexes;
 
         /// <summary>
         /// Checks earned during this run that have not yet been confirmed by the AP server.
@@ -461,7 +469,7 @@ namespace StS2AP.Models
         {
             var itemId = item.Item.GetCharacterItemType();
             return item.Item.GetAPCharacterNumber() == GameUtility.CurrentAPCharacterNumber
-                && !UsedItems.Contains(item.Index)
+                && !Items.IsUsed(item.Index)
                 && itemId.CanBePickedUp()
                 && (
                     itemId != APItem.Relic
@@ -831,7 +839,7 @@ namespace StS2AP.Models
                 MultiplayerBossCompensatedActs = new HashSet<int>(
                     saveData.MultiplayerBossCompensatedActs
                 ),
-                UsedItems = new List<int>(saveData.UsedItems),
+                Items = ApReceivedItemLedger.FromUsedIndexes(saveData.UsedItems),
                 GoldRedeemed = saveData.GoldRedeemed,
                 RelicChoiceAssignments = saveData.RelicChoiceAssignments.Select(kv =>
                     new KeyValuePair<int, List<RelicModel>>(

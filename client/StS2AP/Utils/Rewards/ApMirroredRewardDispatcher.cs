@@ -314,7 +314,7 @@ public static class ApMirroredRewardDispatcher
                 || receipt.Item.GetAPCharacterNumber() == player.GetAPCharacterNumber();
             if (!MultiplayerSupport.IsMultiplayerScope
                 || !belongsToCharacter
-                || ArchipelagoClient.Progress.UsedItems.Contains(receipt.Index))
+                || ArchipelagoClient.Progress.Items.IsUsed(receipt.Index))
             {
                 continue;
             }
@@ -923,8 +923,7 @@ public static class ApMirroredRewardDispatcher
 
     internal static bool CommitDiscreteReward(int itemIndex, ApMirroredRewardKind kind)
     {
-        if (!ArchipelagoClient.Progress.UsedItems.Contains(itemIndex))
-            ArchipelagoClient.Progress.UsedItems.Add(itemIndex);
+        ArchipelagoClient.Progress.Items.MarkUsed(itemIndex);
 
         switch (kind)
         {
@@ -959,7 +958,7 @@ public static class ApMirroredRewardDispatcher
             .Select(receipt =>
             {
                 TryGetMirroredKind(receipt, out ApMirroredRewardKind kind);
-                bool applied = ArchipelagoClient.Progress.UsedItems.Contains(receipt.Index);
+                bool applied = ArchipelagoClient.Progress.Items.IsUsed(receipt.Index);
                 string? blocked = null;
                 ApGrantState state = applied
                     ? ApGrantState.Applied

@@ -235,8 +235,7 @@ namespace StS2AP
         // re-enumerate item history when one of its inexpensive inputs changes.
         private static ArchipelagoProgress? _rewardCountProgress;
         private static long? _rewardCountCharacterOffset;
-        private static int _rewardCountReceivedItems = -1;
-        private static int _rewardCountUsedItems = -1;
+        private static long _rewardCountItemRevision = -1;
         private static int _rewardCountGoldRemaining = int.MinValue;
         private static int _rewardCountRelicChoiceAssignments = -1;
         private static int _rewardCountRelicsAvailableAnytime = -1;
@@ -273,8 +272,7 @@ namespace StS2AP
             lock (_itemLock)
             {
                 long? characterOffset = GameUtility.CurrentConfig?.CharOffset;
-                int receivedItems = Progress.AllReceivedItems.Count;
-                int usedItems = Progress.UsedItems.Count;
+                long itemRevision = Progress.Items.Revision;
                 int goldRemaining = Progress.GoldRemaining;
                 int relicChoiceAssignments = Progress.RelicChoiceAssignments.Count;
                 int relicsAvailableAnytime = Progress.RelicRewardsAvailableAnytimeForRun;
@@ -286,8 +284,7 @@ namespace StS2AP
 
                 if (ReferenceEquals(_rewardCountProgress, Progress) &&
                     _rewardCountCharacterOffset == characterOffset &&
-                    _rewardCountReceivedItems == receivedItems &&
-                    _rewardCountUsedItems == usedItems &&
+                    _rewardCountItemRevision == itemRevision &&
                     _rewardCountGoldRemaining == goldRemaining &&
                     _rewardCountRelicChoiceAssignments == relicChoiceAssignments &&
                     _rewardCountRelicsAvailableAnytime == relicsAvailableAnytime &&
@@ -303,8 +300,7 @@ namespace StS2AP
 
                 _rewardCountProgress = Progress;
                 _rewardCountCharacterOffset = characterOffset;
-                _rewardCountReceivedItems = receivedItems;
-                _rewardCountUsedItems = usedItems;
+                _rewardCountItemRevision = itemRevision;
                 _rewardCountGoldRemaining = goldRemaining;
                 _rewardCountRelicChoiceAssignments = relicChoiceAssignments;
                 _rewardCountRelicsAvailableAnytime = relicsAvailableAnytime;
