@@ -328,6 +328,7 @@ namespace StS2AP.Patches
             {
                 ArchipelagoRewardUI.RemoveUI();
                 MultiplayerSupport.EndRun();
+                MultiplayerSupport.ClearPendingPlaySelection();
                 GameUtility.CurrentPlayer = null;
                 GameUtility.CurrentConfig = null;
                 LogUtility.Info("CurrentPlayer cleared (returned to main menu)");

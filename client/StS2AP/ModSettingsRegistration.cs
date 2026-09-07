@@ -379,24 +379,36 @@ public static class ModSettingsRegistration
             .WithDescription(ModSettingsText.Literal(
                 "Select the player whose items and checks you own in a shared AP slot. "
                 + "Choose a number within the YAML's player_count. People choosing the same number share its AP items and checks. "
-                + "Leave the AP slot and the run/lobby to change it."))
+                + "Set this before connecting to Archipelago."))
             .AddIntSlider(key, ModSettingsText.Literal("Player Number"),
                 CreateBinding(static settings => settings.MultiplayerPlayerNumber,
                     static (settings, value) =>
                     {
                         if (CanChangePlayerNumber())
+                        {
                             settings.MultiplayerPlayerNumber = value;
+                            LogUtility.Info($"[AP Settings] Player Number set to {value}");
+                        }
                     }),
                 minValue: 1, maxValue: 4, step: 1,
-                valueFormatter: static value => $"Player {value}")
+                valueFormatter: static value => $"Player {value}",
+                description: ModSettingsText.Dynamic(() => GetPlayerNumberLockReason()
+                    ?? "Choose your player number, then connect to Archipelago."))
             .ConfigureEntryMenu(key, ModSettingsMenuCapabilities.None)
             .WithEntryEnabledWhen(key, CanChangePlayerNumber);
     }
 
-    private static bool CanChangePlayerNumber() =>
-        !ArchipelagoClient.HasSlotConnection
-        && !GameUtility.IsInRun && !MultiplayerSupport.IsMultiplayerScope
-        && !ApReconnectController.IsActive;
+    private static bool CanChangePlayerNumber() => GetPlayerNumberLockReason() == null;
+
+    private static string? GetPlayerNumberLockReason()
+    {
+        if (GameUtility.IsInRun || MultiplayerSupport.IsMultiplayerScope)
+            return "Locked while in a run or multiplayer menu/lobby. Return to the main menu first.";
+        if (ArchipelagoClient.HasSlotConnection)
+            return "Locked to the selected AP slot. Use Disconnect from Archipelago (or Cancel Connection/Reconnect) "
+                + "on the main menu, then reopen these settings.";
+        return null;
+    }
 
     private static void ConfigureRelicRewardsSection(ModSettingsSectionBuilder section)
     {
