@@ -11,6 +11,8 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using AscensionManager = StS2AP.Utils.AscensionManager;
 using static StS2AP.Data.ItemTable;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 
@@ -100,6 +102,9 @@ namespace StS2AP.Models
         /// </summary>
         public int RelicRewardsAttempted { get; set; } = 0;
 
+        // This cadence must survive a checkpoint so a reload cannot grant extra combats.
+        public int CombatsSinceLastWaxMelt { get; set; } = 0;
+
         /// <summary>
         /// Earned relic rewards not yet paired with a received Relic item. A bank is spent when
         /// the receipt is committed to either a native reward or a saved AP-menu assignment.
@@ -158,7 +163,77 @@ namespace StS2AP.Models
         /// </summary>
         public Dictionary<int, PotionModel> PotionAssignments { get; set; } = new Dictionary<int, PotionModel>();
 
+        /// <summary>
+        /// Maps a bonus item's "{category}:{ordinal}" key to the relic it grants this run. Assignments
+        /// are made once at run start and persisted, so a save/reload shows the same relic instead of
+        /// re-rolling. Cleared on each new run via <see cref="ResetTrackers"/>.
+        /// </summary>
+        public Dictionary<string, RelicModel> BonusRelicAssignments { get; set; } = new Dictionary<string, RelicModel>(StringComparer.OrdinalIgnoreCase);
+
         public AscensionManager Ascensions = new AscensionManager();
+
+        /// <summary>
+        /// Returns the relic granted by one configured bonus entry this run, assigning it on first
+        /// use. A specific Value resolves immediately; a Pools entry picks one candidate
+        /// deterministically from the run seed so the choice is stable across a save/reload but can
+        /// differ between runs. Null means the entry could not be resolved.
+        /// </summary>
+        public RelicModel? GetOrAssignBonusRelic(string category, int ordinal, Player player)
+        {
+            string key = $"{category}:{ordinal}";
+            if (BonusRelicAssignments.TryGetValue(key, out RelicModel? existing))
+                return existing;
+
+            IReadOnlyList<BonusItemDefinition> definitions =
+                ArchipelagoClient.Settings?.BonusItemsFor(category)
+                ?? Array.Empty<BonusItemDefinition>();
+            if (ordinal < 0 || ordinal >= definitions.Count || player == null)
+                return null;
+
+            BonusItemDefinition definition = definitions[ordinal];
+            bool rejectPickupEffectRelics = string.Equals(
+                category,
+                BonusItemDefinition.WaxRelicCategory,
+                StringComparison.OrdinalIgnoreCase
+            );
+            RelicModel? assigned = definition.HasExplicitValue
+                ? BonusRelicResolver.ResolveValue(definition.Value!, rejectPickupEffectRelics)
+                : PickFromPool(definition.Pools, key, player, rejectPickupEffectRelics);
+
+            if (assigned == null)
+                return null;
+
+            BonusRelicAssignments[key] = assigned;
+            LogUtility.Info($"Assigned bonus relic '{assigned.Id}' for {key}");
+            return assigned;
+        }
+
+        /// <summary>Picks one pool candidate deterministically from the run seed, without touching the relic pool.</summary>
+        private static RelicModel? PickFromPool(
+            IReadOnlyList<string> pools,
+            string key,
+            Player player,
+            bool rejectPickupEffectRelics)
+        {
+            IReadOnlyList<RelicModel> candidates = BonusRelicResolver.BuildPoolCandidates(
+                pools,
+                rejectPickupEffectRelics
+            );
+            if (candidates.Count == 0)
+                return null;
+
+            string runSeed = player.RunState.Rng.StringSeed;
+            return candidates
+                .OrderBy(relic => StableBonusKey(runSeed, key, relic.Id))
+                .First();
+        }
+
+        /// <summary>Hashes run seed, bonus key, and relic identity into a stable sort key.</summary>
+        private static string StableBonusKey(string runSeed, string key, ModelId modelId)
+        {
+            var material = $"sts2ap-bonus-relic-v1|{runSeed}|{key}|{modelId}";
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
+        }
 
         /// <summary>
         /// Returns the relic choices assigned to the given AP item, pulling them from the RelicFactory
@@ -348,6 +423,7 @@ namespace StS2AP.Models
             RareCardRewardsAttempted = 0;
             BossRewardsDistributed = 0;
             RelicRewardsAttempted = 0;
+            CombatsSinceLastWaxMelt = 0;
             BankedRelicRewards = 0;
             RelicRewardsAvailableAnytimeForRun = RelicRewardUtility.EffectiveAvailableAnytime;
             GoldRewardsAttempted = 0;
@@ -358,6 +434,7 @@ namespace StS2AP.Models
             AncientRelicChoiceAssignments.Clear();
             CardAssignments.Clear();
             PotionAssignments.Clear();
+            BonusRelicAssignments.Clear();
             Ascensions.Reset();
             GoldRedeemed = 0;
             ProgressiveStarterCardBaseId = null;
@@ -401,6 +478,28 @@ namespace StS2AP.Models
         }
 
         /// <summary>
+        /// Resolves a bonus receipt to its category and zero-based position among the bonus receipts
+        /// of that category. The ordinal counts strictly earlier receipts, so it is identical whether
+        /// or not this receipt has been added yet, and replaying the item history cannot skew it.
+        /// </summary>
+        public bool TryGetBonusOrdinal(IndexedItemInfo receipt, out string category, out int ordinal)
+        {
+            ordinal = -1;
+            category = BonusItemDefinition.CategoryFor(receipt.Item.GetCharacterSpecificItemID())
+                ?? string.Empty;
+            if (category.Length == 0)
+                return false;
+
+            string bonusCategory = category;
+            ordinal = AllReceivedItems.Count(other =>
+                other.Index < receipt.Index
+                && BonusItemDefinition.CategoryFor(other.Item.GetCharacterSpecificItemID())
+                    == bonusCategory
+            );
+            return true;
+        }
+
+        /// <summary>
         /// Returns whether a received item should currently appear as a row in the AP reward menu.
         /// The top-bar count and the menu itself must use this same predicate so the badge cannot
         /// advertise rewards that the menu filters out.
@@ -408,6 +507,17 @@ namespace StS2AP.Models
         public bool IsAvailableInRewardMenu(IndexedItemInfo item, Player player)
         {
             var itemId = item.Item.GetCharacterSpecificItemID();
+
+            // Bonus items are shared by every character, so they deliberately skip the offset check.
+            if (TryGetBonusOrdinal(item, out string bonusCategory, out int bonusOrdinal))
+            {
+                int configuredCount =
+                    ArchipelagoClient.Settings?.BonusItemsFor(bonusCategory).Count ?? 0;
+                return !UsedItems.Contains(item.Index)
+                    && itemId.CanBePickedUp()
+                    && bonusOrdinal < configuredCount;
+            }
+
             return item.Item.GetCharacterOffset() == GameUtility.CurrentCharacterID
                 && !UsedItems.Contains(item.Index)
                 && itemId.CanBePickedUp()
@@ -644,6 +754,7 @@ namespace StS2AP.Models
                 CardRewardsAttempted = CardRewardsAttempted,
                 RareCardRewardsAttempted = RareCardRewardsAttempted,
                 RelicRewardsAttempted = RelicRewardsAttempted,
+                CombatsSinceLastWaxMelt = CombatsSinceLastWaxMelt,
                 BankedRelicRewards = BankedRelicRewards,
                 RelicRewardsAvailableAnytimeForRun = RelicRewardsAvailableAnytimeForRun,
                 GoldRewardsAttempted = GoldRewardsAttempted,
@@ -661,6 +772,12 @@ namespace StS2AP.Models
                     new KeyValuePair<int, List<SerializableRelic>>(
                         kv.Key,
                         kv.Value.Select(relic => (relic.IsMutable ? relic : relic.ToMutable()).ToSerializable()).ToList()
+                    )
+                ).ToDictionary(),
+                BonusRelicAssignments = BonusRelicAssignments.Select(kv =>
+                    new KeyValuePair<string, SerializableRelic>(
+                        kv.Key,
+                        (kv.Value.IsMutable ? kv.Value : kv.Value.ToMutable()).ToSerializable()
                     )
                 ).ToDictionary(),
                 ProgressiveStarterCardBaseId = ProgressiveStarterCardBaseId,
@@ -685,6 +802,7 @@ namespace StS2AP.Models
                 CardRewardsAttempted = saveData.CardRewardsAttempted,
                 RareCardRewardsAttempted = saveData.RareCardRewardsAttempted,
                 RelicRewardsAttempted = saveData.RelicRewardsAttempted,
+                CombatsSinceLastWaxMelt = saveData.CombatsSinceLastWaxMelt,
                 BankedRelicRewards = saveData.BankedRelicRewards,
                 RelicRewardsAvailableAnytimeForRun = saveData.RelicRewardsAvailableAnytimeForRun,
                 GoldRewardsAttempted = saveData.GoldRewardsAttempted,
@@ -704,6 +822,12 @@ namespace StS2AP.Models
                         kv.Value.Select(RelicModel.FromSerializable).ToList()
                     )
                 ).ToDictionary(),
+                BonusRelicAssignments = (saveData.BonusRelicAssignments ?? new Dictionary<string, SerializableRelic>()).Select(kv =>
+                    new KeyValuePair<string, RelicModel>(
+                        kv.Key,
+                        RelicModel.FromSerializable(kv.Value)
+                    )
+                ).ToDictionary(StringComparer.OrdinalIgnoreCase),
                 ProgressiveStarterCardBaseId = saveData.ProgressiveStarterCardBaseId,
                 ProgressiveStarterCardUpgradedId = saveData.ProgressiveStarterCardUpgradedId,
                 ProgressiveStarterCardTier = saveData.ProgressiveStarterCardTier,

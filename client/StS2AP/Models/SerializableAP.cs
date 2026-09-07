@@ -23,6 +23,8 @@ namespace StS2AP.Models
         public int RareCardRewardsAttempted { get; set; }
         [JsonPropertyName("relic_rewards_attempted")]
         public int RelicRewardsAttempted { get; set; }
+        [JsonPropertyName("combats_since_last_wax_melt")]
+        public int CombatsSinceLastWaxMelt { get; set; }
         /// <summary>Earned relic rewards not yet paired with an AP Relic receipt.</summary>
         [JsonPropertyName("banked_relic_rewards")]
         public int BankedRelicRewards { get; set; }
@@ -39,6 +41,8 @@ namespace StS2AP.Models
         public Dictionary<int, List<SerializableRelic>> RelicChoiceAssignments { get; set; } = new Dictionary<int, List<SerializableRelic>>();
         [JsonPropertyName("ancient_relic_choice_assignments")]
         public Dictionary<int, List<SerializableRelic>> AncientRelicChoiceAssignments { get; set; } = new Dictionary<int, List<SerializableRelic>>();
+        [JsonPropertyName("bonus_relic_assignments")]
+        public Dictionary<string, SerializableRelic> BonusRelicAssignments { get; set; } = new Dictionary<string, SerializableRelic>();
         [JsonPropertyName("card_assignments")]
         public Dictionary<int, SerializableReward> CardAssignments { get; set; } = new Dictionary<int, SerializableReward>();
         [JsonPropertyName("card_models")]
