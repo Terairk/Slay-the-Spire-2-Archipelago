@@ -58,16 +58,12 @@ public static class ApMirroredRewardDispatcher
             LogLevel: LogLevel.Debug,
             ShouldBroadcast: true
         );
-    private static readonly Dictionary<(ApGrantId GrantId, ApMirroredRewardKind Kind), string>
-        LastAttempts = new();
     private static readonly HashSet<(ulong OwnerNetId, Guid MenuId)> ActiveRemoteMenus = new();
     private static readonly Dictionary<(ulong OwnerNetId, int ItemIndex), ApNativeCardReward>
         ReplicaCardAssignments = new();
     private static readonly Dictionary<(ulong OwnerNetId, int ItemIndex), PotionModel>
         ReplicaPotionAssignments = new();
     private static string? _activeRunIdentity;
-
-    public static string? ActiveRunIdentity => _activeRunIdentity;
 
     public static void Initialize()
     {
@@ -153,7 +149,6 @@ public static class ApMirroredRewardDispatcher
     {
         _activeRunIdentity = null;
         ActiveRemoteMenus.Clear();
-        LastAttempts.Clear();
         ReplicaCardAssignments.Clear();
         ReplicaPotionAssignments.Clear();
     }
@@ -935,8 +930,6 @@ public static class ApMirroredRewardDispatcher
                 break;
         }
 
-        int apSlotId = MultiplayerSupport.PreparedApSlotId ?? 0;
-        LastAttempts[(new ApGrantId(apSlotId, itemIndex), kind)] = "applied";
         Player? player = GameUtility.CurrentPlayer;
         if (player != null && ApRunData.PublishLocalProgress(player))
             return true;
@@ -945,38 +938,6 @@ public static class ApMirroredRewardDispatcher
             $"AP {kind} receipt {itemIndex} applied but its progress could not reach the host"
         );
         return false;
-    }
-
-    public static IReadOnlyList<ApGrantSnapshot> CaptureGrantSnapshots()
-    {
-        Player? player = GameUtility.CurrentPlayer;
-        ulong ownerNetId = player?.NetId ?? 0;
-        int apSlotId = MultiplayerSupport.PreparedApSlotId ?? 0;
-        return ArchipelagoClient.Progress.AllReceivedItems
-            .Where(receipt => TryGetMirroredKind(receipt, out _))
-            .OrderBy(receipt => receipt.Index)
-            .Select(receipt =>
-            {
-                TryGetMirroredKind(receipt, out ApMirroredRewardKind kind);
-                bool applied = ArchipelagoClient.Progress.Items.IsUsed(receipt.Index);
-                string? blocked = null;
-                ApGrantState state = applied
-                    ? ApGrantState.Applied
-                    : player != null && MultiplayerSupport.CanClaimReceivedReward(kind, out blocked)
-                        ? ApGrantState.Claimable
-                        : ApGrantState.Blocked;
-                return new ApGrantSnapshot(
-                    new ApGrantId(apSlotId, receipt.Index),
-                    receipt.Item.ItemDisplayName,
-                    ownerNetId,
-                    kind,
-                    state,
-                    DescribeAssignment(kind, receipt.Index),
-                    blocked,
-                    LastAttempts.GetValueOrDefault((new ApGrantId(apSlotId, receipt.Index), kind))
-                );
-            })
-            .ToArray();
     }
 
     private static int GetNativeOrder(ApMirroredRewardKind kind) => kind switch
@@ -1011,41 +972,6 @@ public static class ApMirroredRewardDispatcher
                 return true;
             default:
                 return false;
-        }
-    }
-
-    private static string DescribeAssignment(ApMirroredRewardKind kind, int itemIndex)
-    {
-        try
-        {
-            return kind switch
-            {
-                ApMirroredRewardKind.Card
-                    when ArchipelagoClient.Progress.CardAssignments.TryGetValue(
-                        itemIndex,
-                        out CardReward? card) => string.Join(", ", card.Cards.Select(model =>
-                            $"{model.Title} [{model.Id.Entry}]")),
-                ApMirroredRewardKind.Relic
-                    when ArchipelagoClient.Progress.RelicChoiceAssignments.TryGetValue(
-                        itemIndex,
-                        out List<RelicModel>? relics) => string.Join(", ", relics.Select(model =>
-                            $"{model.Title.GetRawText()} [{model.Id.Entry}]")),
-                ApMirroredRewardKind.Ancient
-                    when ArchipelagoClient.Progress.AncientRelicChoiceAssignments.TryGetValue(
-                        itemIndex,
-                        out List<RelicModel>? ancients) => string.Join(", ", ancients.Select(model =>
-                            $"{model.Title.GetRawText()} [{model.Id.Entry}]")),
-                ApMirroredRewardKind.Potion
-                    when ArchipelagoClient.Progress.PotionAssignments.TryGetValue(
-                        itemIndex,
-                        out PotionModel? potion) =>
-                    $"{potion.Title.GetRawText()} [{potion.Id.Entry}]",
-                _ => "<unassigned>",
-            };
-        }
-        catch (Exception ex)
-        {
-            return $"<invalid assignment: {ex.GetBaseException().Message}>";
         }
     }
 

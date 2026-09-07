@@ -12,7 +12,7 @@ validated F# domain values and decisions live in `../StS2AP.Domain`.
 | `Utils/Progression` | Ascension, progressive starters, and Ancient progression |
 | `Utils/Actions` | Noncombat action admission and request scheduling |
 | `Utils/Connection` | Session identity, reconnect/launch coordination, and pending location-check delivery |
-| `Utils/Diagnostics` | Developer commands, state inspection, and bug-report export |
+| `Utils/Diagnostics` | Developer commands and bug-report export |
 
 General helpers remain directly under `Utils`. The existing shop and rest-site
 helpers also remain there; create further groups when several related files need
@@ -27,7 +27,7 @@ Shared multiplayer coordination and messages remain under `Multiplayer`.
 | `Patches/Progression` | Unlocks, ascension, floor/victory progression, and epoch restrictions |
 | `Patches/Rooms` | Shops, rest sites, treasure rooms, and their diagnostics/compatibility fixes |
 | `Patches/Lifecycle` | Run startup, saves, main/pause menus, death hooks, tutorial, and version presentation |
-| `Models/Rewards/Grants` | Receipt identity, grant status, gold claims/offers, and diagnostic grant snapshots |
+| `Models/Rewards/Grants` | Receipt identity and gold claims/offers |
 | `Models/Rewards/Specs` | Serialized reward/menu specifications, reward kinds, and persistent effect data |
 | `Models/Rewards/Presentation` | Game-facing AP reward objects and card/relic/potion item models |
 | `Models/Custom` | Custom game content: Relic Coupons and the DeathLink curse card |

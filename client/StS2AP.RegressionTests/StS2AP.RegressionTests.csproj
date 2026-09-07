@@ -29,12 +29,10 @@
     <Compile Include="..\StS2AP\Models\ApProgressiveStarterActionMessage.cs"
              Link="Models\ApProgressiveStarterActionMessage.cs" />
     <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGrantId.cs" Link="Models\Rewards\Grants\ApGrantId.cs" />
-    <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGrantState.cs" Link="Models\Rewards\Grants\ApGrantState.cs" />
     <Compile Include="..\StS2AP\Models\Rewards\Specs\ApMirroredRewardKind.cs" Link="Models\Rewards\Specs\ApMirroredRewardKind.cs" />
     <Compile Include="..\StS2AP\Models\Rewards\Specs\ApMirroredRewardSpec.cs" Link="Models\Rewards\Specs\ApMirroredRewardSpec.cs" />
     <Compile Include="..\StS2AP\Models\Rewards\Specs\ApMenuGoldSpec.cs" Link="Models\Rewards\Specs\ApMenuGoldSpec.cs" />
     <Compile Include="..\StS2AP\Models\Rewards\Specs\ApRewardMenuSpec.cs" Link="Models\Rewards\Specs\ApRewardMenuSpec.cs" />
-    <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGrantSnapshot.cs" Link="Models\Rewards\Grants\ApGrantSnapshot.cs" />
     <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGoldClaim.cs" Link="Models\Rewards\Grants\ApGoldClaim.cs" />
     <Compile Include="..\StS2AP\Persistence\ApReplicaConstructionState.cs"
              Link="Persistence\ApReplicaConstructionState.cs" />

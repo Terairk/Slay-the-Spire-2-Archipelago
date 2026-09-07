@@ -12,19 +12,17 @@ namespace StS2AP.Utils
         public override string CmdName => "ap";
 
         public override string Args =>
-            "report | !command | state [summary|lobby|run|ledger|grants|assignments|multiplayer|grant <slot:index>]";
+            "report | !command";
 
         public override string Description =>
-            "ap report exports the newest divergence ZIP and game logs; also supports AP server commands and state inspection";
+            "ap report exports the newest divergence ZIP and game logs; also supports AP server commands";
 
         public override bool IsNetworked => false;
 
         public override CompletionResult GetArgumentCompletions(Player? player, string[] args)
         {
             if (args.Length <= 1)
-                return CompleteArgument(["report", "state"], [], args.FirstOrDefault() ?? "", CompletionType.Subcommand);
-            if (args.Length == 2 && args[0].Equals("state", StringComparison.OrdinalIgnoreCase))
-                return CompleteArgument(ApDevStateProviders.Names, [args[0]], args[1]);
+                return CompleteArgument(["report"], [], args.FirstOrDefault() ?? "", CompletionType.Subcommand);
             return base.GetArgumentCompletions(player, args);
         }
 
@@ -32,7 +30,7 @@ namespace StS2AP.Utils
         {
             if (args.Length == 0)
             {
-                return new CmdResult(false, "Usage: ap report | ap !command | ap state [section]");
+                return new CmdResult(false, "Usage: ap report | ap !command");
             }
 
             if (args[0].Equals("report", StringComparison.OrdinalIgnoreCase))
@@ -53,25 +51,7 @@ namespace StS2AP.Utils
                 return new CmdResult(true);
             }
 
-            if (!args[0].Equals("state", StringComparison.OrdinalIgnoreCase))
-            {
-                return new CmdResult(
-                    false,
-                    "Unknown AP command. Use ap report, ap !command or ap state [section]."
-                );
-            }
-
-            string section = args.Length >= 2 ? args[1] : "summary";
-            string[] sectionArgs = args.Skip(2).ToArray();
-            if (!ApDevStateProviders.TryCapture(
-                section,
-                sectionArgs,
-                out string output,
-                out string error))
-            {
-                return new CmdResult(false, error);
-            }
-            return new CmdResult(true, output);
+            return new CmdResult(false, "Unknown AP command. Use ap report or ap !command.");
         }
     }
 

@@ -1,7 +1,6 @@
 # Mirrored reward domain migration
 
-Implemented 2026-09-06 on `multiplayer-squashed`, following the
-[domain typing audit](domain-typing-audit.md). The initial strategy-only F# guard has
+Implemented 2026-09-06 on `multiplayer-squashed`. The initial strategy-only F# guard has
 been replaced by a completed reward snapshot that the dispatcher actually consumes.
 The unused new-native generation path was subsequently removed at the user's request.
 This is a domain and integration refactor, not a replacement of the reward ledger.

@@ -329,9 +329,6 @@ public static class ApRunData
         return true;
     }
 
-    public static string? GetLobbyContributionBlocker(ApPlayerRunState state) =>
-        ParticipantAdapter.Blocker(ParticipantAdapter.Evaluate(state));
-
     /// <summary>
     /// Replaces the process-local AP view with the fixed host's checkpoint for this player. The
     /// restored snapshot is also the baseline for later deltas; when no initialized progress
