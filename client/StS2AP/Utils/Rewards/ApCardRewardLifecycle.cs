@@ -2,7 +2,9 @@ using System.Reflection;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Rewards;
+using MegaCrit.Sts2.Core.Runs;
 
 namespace StS2AP.Utils;
 
@@ -16,6 +18,23 @@ internal static class ApCardRewardLifecycle
         ?? throw new MissingFieldException(typeof(CardReward).FullName, "_cards");
     private static readonly MethodInfo RelicObtainedMethod = AccessTools.Method(typeof(CardReward), "OnRelicObtained")
         ?? throw new MissingMethodException(typeof(CardReward).FullName, "OnRelicObtained");
+    private static readonly PropertyInfo OptionsProperty = AccessTools.Property(typeof(CardReward), "Options")
+        ?? throw new MissingMemberException(typeof(CardReward).FullName, "Options");
+
+    internal static void RefreshEggUpgrades(CardReward reward)
+    {
+        // Refresh only Eggs when revisiting an assignment; do not rerun generation or
+        // limited-use effects such as Silken Tress and Silver Crucible.
+        var cards = (List<CardCreationResult>)CardsField.GetValue(reward)!;
+        var options = (CardCreationOptions)OptionsProperty.GetValue(reward)!;
+        // Reopening must not repeatedly upgrade modded cards with multiple upgrade levels.
+        var unupgraded = cards.Where(result => !result.Card.IsUpgraded).ToList();
+        foreach (RelicModel relic in reward.Player.Relics)
+        {
+            if (relic is MoltenEgg or ToxicEgg or FrozenEgg)
+                relic.TryModifyCardRewardOptionsLate(reward.Player, unupgraded, options);
+        }
+    }
 
     internal static void Freeze(CardReward reward)
     {

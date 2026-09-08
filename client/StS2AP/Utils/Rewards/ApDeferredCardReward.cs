@@ -37,6 +37,7 @@ internal abstract class ApDeferredCardReward : CardReward
             return false;
 
         ApCardRewardLifecycle.Freeze(assignment);
+        ApCardRewardLifecycle.RefreshEggUpgrades(assignment);
         _assignment = assignment;
         ApCardRewardLifecycle.CopyOptions(assignment, this);
         bool applied = await base.OnSelect();
