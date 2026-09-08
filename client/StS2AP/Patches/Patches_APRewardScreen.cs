@@ -214,7 +214,8 @@ namespace StS2AP.Patches
                          child.GetSignalConnectionList(NRewardButton.SignalName.RewardClaimed))
                 {
                     Callable callback = connection["callable"].AsCallable();
-                    child.Disconnect(NRewardButton.SignalName.RewardClaimed, callback);
+                    if (child.IsConnected(NRewardButton.SignalName.RewardClaimed, callback))
+                        child.Disconnect(NRewardButton.SignalName.RewardClaimed, callback);
                 }
 
                 child.Connect(
