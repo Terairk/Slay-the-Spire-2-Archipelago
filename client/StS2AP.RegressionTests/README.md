@@ -24,6 +24,7 @@ or files from the locally excluded admission harness. Each case is discoverable 
 | Participant interop | Existing wire kinds, missing/null inputs, and validated identities across C# mutation and fresh readiness checks; F# tests cover readiness and resume decisions |
 | Replica construction | Initialization, local counters, compensation, restore |
 | C# interop | Complete mirrored-reward decoding, actual wire/save DTO fixtures, immutable snapshots, save/reveal/effect preservation, and exception conversion |
+| Card offers | Deferred recipe validation, first-reveal metadata, refreshed model payloads through save/progress deltas, preservation of generation effects and reroll state, rejection of refreshes that alter that state, and rejection of older menu protocols |
 | Progressive starters | Shared singleplayer/multiplayer tier transitions, initialization-only removal, recipe identity, strict state/payload decoding, applied-state ordering, and save round trips |
 
 The rest-site hook calls the same `RestSitePolicy` compiled into these tests. Tests supply
@@ -31,6 +32,10 @@ option availability and arbitrary location IDs; they do not reimplement native S
 AP ID encoding, character resolution, or the Godot scene tree. The real hook still owns AP/guest
 eligibility, reads per-player progress, and calls `LocationData` to construct real check IDs.
 The persisted `ApRewardEffectSpec` is also linked from production, not replaced by a stub.
+
+Card-offer tests use opaque serialized card fixtures. They exercise the actual codec, domain
+validation, and persistence helpers; they do not execute MegaCrit's card factory, Egg hooks,
+native picker, or live choice transport. Those require a game-backed integration harness.
 
 The excluded `StS2AP.AdmissionTests` console harness is not a dependency and remains local.
 Its scheduler tests and Godot/game stubs are intentionally not migrated. F# domain rules and
@@ -75,6 +80,11 @@ variant. Unit tests establish the behavior of our policies, not native callbacks
 | `!collect`, then enter another rest site with two AP slots | Collected checks stay hidden on all replicas; another slot's checks remain available |
 | Claim a relic, reopen rewards, reconnect, save/continue | One grant at the established boundary; stable assignment and no repeated bank spending |
 | Skip an AP card or try a potion with no space, then reopen rewards | Receipt remains claimable with its existing assignment |
+| Open a backlog with Crucible/Tress, then reveal rewards in a different order | Opening the list spends no uses; each first reveal applies available effects once in reveal order |
+| Reveal, skip, obtain Toxic/Molten/Frozen Egg, then reopen (also after save/continue) | Eligible unupgraded skills/attacks/powers appear upgraded on both replicas; identities, ordering, enchantments, generation counters, and reroll availability survive |
+| Reopen the upgraded offer repeatedly, then claim it | No additional generation effects; the deck receives the displayed upgrade and the receipt is consumed once |
+| Obtain Prismatic Gem/Dingy Rug before first revealing a pending reward | The first roll uses the currently modified card pool |
+| Open/reopen card rewards using keyboard/controller with a delayed peer | Both replicas install the final offer before interpreting the native picker's choice; input/focus and skip work normally |
 | Consume AP rewards, continue the save, then start a fresh run | Continue preserves consumption while history is rebuilt; the fresh run resets consumption and retains known receipts |
 | Reconnect to the same AP destination; try a different room/team/slot when continuing | The same destination retains deferred receipts/outbox ownership; mismatched saved participation is rejected |
 | Own-slot lobby with delayed preparation, then prepared empty history | Ready/launch remains blocked with `ap-history-incomplete` until preparation; zero receipts do not block a prepared participant |
@@ -88,3 +98,5 @@ Useful existing logs include `Applied AP rest-site options for player`,
 `Leaving native rest-site options unchanged`, and `Published ... campfire check(s) from an AP
 location update`. Check both replicas and actual grants/saves; logs alone are not runtime proof.
 Keep generated saves, diagnostic logs, installed binaries, and decompiled references local.
+For card offers, `Revealed AP card reward` should occur only on initial generation;
+`Refreshed AP card reward ... with Egg upgrades` should occur only when an existing offer changes.

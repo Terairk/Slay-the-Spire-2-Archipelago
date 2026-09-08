@@ -6,7 +6,8 @@ namespace StS2AP.Models;
 /// </summary>
 public sealed class ApRewardMenuSpec
 {
-    public const int CurrentSchemaVersion = 6;
+    // Every picker opening now transfers its final offer, including Egg refreshes on reopen.
+    public const int CurrentSchemaVersion = 7;
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public Guid RunId { get; set; }
     public Guid MenuId { get; set; } = Guid.NewGuid();

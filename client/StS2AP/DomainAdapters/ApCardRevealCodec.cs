@@ -3,7 +3,7 @@ using StS2AP.Domain;
 namespace StS2AP.DomainAdapters;
 
 /// <summary>
-/// Small, versioned metadata accompanying native PlayerChoiceResult mutable-card transport.
+/// Small, versioned metadata accompanying each native PlayerChoiceResult mutable-card offer.
 /// Bind the payload to the expected receipt/recipe before applying any persistent relic effects.
 /// </summary>
 internal static class ApCardRevealCodec
@@ -59,6 +59,20 @@ internal static class ApCardRevealCodec
         }
         if (effects.Select(effect => effect.EffectId).Distinct().Count() != effects.Count)
             throw new InvalidOperationException("AP card reveal repeated a persistent effect.");
+
+        // An existing offer may gain Egg upgrades, but refreshing it cannot spend a generation
+        // effect again, forget an earlier effect, or restore a spent native reroll.
+        if (expected.SerializedModels.Count > 0)
+        {
+            var previous = expected.AppliedEffects
+                .Select(effect => (effect.EffectId, effect.BeforeValue, effect.AfterValue))
+                .OrderBy(effect => effect.EffectId, StringComparer.Ordinal);
+            var incoming = effects
+                .Select(effect => (effect.EffectId, effect.BeforeValue, effect.AfterValue))
+                .OrderBy(effect => effect.EffectId, StringComparer.Ordinal);
+            if (!previous.SequenceEqual(incoming) || expected.CardCanReroll != (values[5] == 1))
+                throw new InvalidOperationException($"AP card refresh changed generation state for receipt {expected.GrantId}.");
+        }
 
         expected.CardHasBeenRevealed = true;
         expected.CardCanReroll = values[5] == 1;

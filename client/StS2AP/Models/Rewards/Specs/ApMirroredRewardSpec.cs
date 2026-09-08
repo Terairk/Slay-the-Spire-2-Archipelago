@@ -39,8 +39,8 @@ public sealed class ApMirroredRewardSpec
     public bool CardCanReroll { get; set; }
 
     /// <summary>
-    /// True once the owning player has opened this card picker and learned its choices. Relics
-    /// obtained afterward must not retroactively modify those already-known cards.
+    /// True once the owning player has opened this card picker and learned its choices.
+    /// Generation effects are fixed; later Egg upgrades may refresh the same offered cards.
     /// </summary>
     public bool CardHasBeenRevealed { get; set; }
 
