@@ -82,6 +82,10 @@
     </None>
   </ItemGroup>
 
+  <!-- Compile-only checks must embed the manifests too, since a later incremental
+       build can reuse their assembly for deployment. -->
+  <Target Name="PrepareManifestResourcesForCompile" BeforeTargets="_GenerateCompileInputs" DependsOnTargets="PrepareResources" />
+
   <!-- Create steam_appid.txt for Windows debugging outside Steam. -->
   <Target Name="CreateSteamAppId" BeforeTargets="Build">
     <PropertyGroup>
