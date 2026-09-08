@@ -148,6 +148,8 @@ type RewardOrigin(apSlotId: int, receivedItemIndex: int, ownerNetId: uint64,
 type CardRewardData internal (configuration: CardRewardConfiguration, models: IReadOnlyList<string>) =
     member _.Configuration = configuration
     member _.Models = models
+    /// Only menu entries may defer generation. Saved assignments always contain final cards.
+    member _.IsDeferred = models.Count = 0
 
 type PotionRewardData internal (policy: RewardMaterialization, model: string) =
     member _.Policy = policy
@@ -206,9 +208,12 @@ type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
             RewardDecode.invalid "had missing persistent effects."
         else Ok ()
 
-    static member private DecodeCardData(input: MirroredRewardInput) =
+    static member private DecodeCardData(input: MirroredRewardInput, allowDeferred: bool) =
         // Native hooks can change option count; do not hardcode three cards.
-        if input.Models.Length = 0 then RewardDecode.invalid "had no card choices."
+        let deferred = input.Models.Length = 0
+        if deferred && not (allowDeferred && not input.Revealed && not input.CanReroll
+                            && input.Effects.Length = 0 && input.Strategy = "ap_rng_owner_final_v1") then
+            RewardDecode.invalid "had invalid deferred card choices."
         else
             CardRewardConfiguration.Decode(input.IsRare, input.ActIndex, input.Revealed, input.CanReroll,
                                            input.Strategy, input.Effects)
@@ -219,7 +224,7 @@ type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
         MirroredReward.ValidateInput(input)
         |> Result.bind (fun () ->
             match input.Kind with
-            | RewardInputKind.Card -> MirroredReward.DecodeCardData(input)
+            | RewardInputKind.Card -> MirroredReward.DecodeCardData(input, false)
             | RewardInputKind.Potion | RewardInputKind.Relic | RewardInputKind.Ancient | RewardInputKind.Unavailable ->
                 RewardDecode.invalid "expected a saved card assignment.")
 
@@ -232,7 +237,7 @@ type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
                 else decode ()
             let shape =
                 match input.Kind with
-                | RewardInputKind.Card -> MirroredReward.DecodeCardData(input) |> Result.map Card
+                | RewardInputKind.Card -> MirroredReward.DecodeCardData(input, true) |> Result.map Card
                 | RewardInputKind.Potion ->
                     if input.Models.Length <> 1 || input.Effects.Length > 0 then RewardDecode.invalid "had an invalid potion assignment."
                     else

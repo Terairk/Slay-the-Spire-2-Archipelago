@@ -7,7 +7,7 @@ namespace StS2AP.Models;
 /// </summary>
 public sealed class ApMirroredRewardSpec
 {
-    public int SchemaVersion { get; set; } = 5;
+    public int SchemaVersion { get; set; } = ApRewardMenuSpec.CurrentSchemaVersion;
 
     public int ApSlotId { get; set; }
     public int ReceivedItemIndex { get; set; }
@@ -53,7 +53,7 @@ public sealed class ApMirroredRewardSpec
 
     /// <summary>
     /// Legacy wire guard only. True is rejected: replica-native generation has been removed.
-    /// Current menus always carry final models and leave this false.
+    /// Menus carry final models or an empty, unrevealed card recipe and leave this false.
     /// </summary>
     public bool RequiresNativeMaterialization { get; set; }
 

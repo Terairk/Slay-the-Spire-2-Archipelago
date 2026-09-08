@@ -46,7 +46,7 @@ internal static class MirroredRewardAdapter
 
     private static MirroredRewardInput ToInput(ApMirroredRewardSpec spec)
     {
-        if (spec == null || spec.SchemaVersion != 5)
+        if (spec == null || spec.SchemaVersion != ApRewardMenuSpec.CurrentSchemaVersion)
             throw new InvalidOperationException("Invalid AP reward-menu entry schema.");
         RejectReplicaGeneration(spec);
 
@@ -102,6 +102,14 @@ internal static class MirroredRewardAdapter
 
     public static bool NeedsApplication(RewardEffect effect, int current, string receiptIdentity) =>
         Require(effect.NeedsApplication(current), receiptIdentity);
+
+    // Receipt order no longer determines generation order: users can reveal any row first.
+    // Apply each relic's recorded transitions in counter order when restoring a whole menu.
+    public static IEnumerable<(RewardOrigin Origin, RewardEffect Effect)> OrderedEffects(
+        IEnumerable<MirroredReward> rewards) => rewards
+        .SelectMany(reward => reward.Effects.Select(effect => (reward.Origin, Effect: effect)))
+        .OrderBy(entry => entry.Effect.EffectId, StringComparer.Ordinal)
+        .ThenBy(entry => entry.Effect.BeforeValue);
 
     public static RewardEffect ObserveSilkenTress(int before, int after, string receiptIdentity) =>
         Require(RewardEffect.ObserveSilkenTress(before, after), receiptIdentity);

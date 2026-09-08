@@ -22,6 +22,8 @@
     <Compile Include="..\StS2AP\Multiplayer\ApParticipationKind.cs" Link="Multiplayer\ApParticipationKind.cs" />
     <Compile Include="..\StS2AP\DomainAdapters\MirroredRewardAdapter.cs"
              Link="DomainAdapters\MirroredRewardAdapter.cs" />
+    <Compile Include="..\StS2AP\DomainAdapters\ApCardRevealCodec.cs"
+             Link="DomainAdapters\ApCardRevealCodec.cs" />
     <Compile Include="..\StS2AP\DomainAdapters\ProgressiveStarterAdapter.cs"
              Link="DomainAdapters\ProgressiveStarterAdapter.cs" />
     <Compile Include="..\StS2AP\Persistence\ApProgressiveStarterKindState.cs"

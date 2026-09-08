@@ -36,7 +36,7 @@ module MirroredRewardTests =
         Assert.Equal(kind, selected)
 
     let invalidRewardShapes =
-        [| RewardInputKind.Card, 0; RewardInputKind.Potion, 0; RewardInputKind.Potion, 2
+        [| RewardInputKind.Potion, 0; RewardInputKind.Potion, 2
            RewardInputKind.Relic, 0; RewardInputKind.Relic, 2; RewardInputKind.Ancient, 2
            RewardInputKind.Ancient, 4; RewardInputKind.Unavailable, 1 |]
         |> Array.map (fun (kind, count) -> [| box kind; box count |])
@@ -127,6 +127,32 @@ module MirroredRewardTests =
         for kind in [ RewardInputKind.Potion; RewardInputKind.Relic; RewardInputKind.Ancient; RewardInputKind.Unavailable ] do
             Assert.True(MirroredReward.DecodeCard(input kind) |> Result.isError)
         Assert.True(MirroredReward.DecodeCard({ input RewardInputKind.Card with Models = [||] }) |> Result.isError)
+
+    [<Fact>]
+    let ``unopened menu cards carry only a recipe and cannot be saved as assignments`` () =
+        let pending = { input RewardInputKind.Card with Models = [||] }
+        let decoded = decode pending |> card
+        Assert.True(decoded.IsDeferred)
+        Assert.False(decoded.Configuration.HasBeenRevealed)
+        Assert.Empty(decoded.Configuration.Effects)
+        Assert.True(MirroredReward.DecodeCard(pending) |> Result.isError)
+
+    [<Fact>]
+    let ``deferred cards cannot claim effects rerolls revealed state or legacy generation`` () =
+        let pending = { input RewardInputKind.Card with Models = [||] }
+        for invalid in [ { pending with Revealed = true }
+                         { pending with CanReroll = true }
+                         { pending with Effects = [| effect "silken_tress_used_v1" 0 1 |] }
+                         { pending with Strategy = "replica_native_v1" } ] do
+            Assert.True(MirroredReward.Decode(invalid, 3) |> Result.isError)
+
+    [<Fact>]
+    let ``previously materialized hidden assignments remain completed cards`` () =
+        let old = input RewardInputKind.Card
+        let decoded = MirroredReward.DecodeCard(old) |> require
+        Assert.False(decoded.IsDeferred)
+        Assert.False(decoded.Configuration.HasBeenRevealed)
+        Assert.Equal<string>(old.Models, decoded.Models)
 
     [<Fact>]
     let ``effect overflow and unknown effect identities are rejected`` () =

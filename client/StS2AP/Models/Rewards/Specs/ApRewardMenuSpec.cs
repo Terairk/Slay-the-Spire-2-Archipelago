@@ -6,7 +6,8 @@ namespace StS2AP.Models;
 /// </summary>
 public sealed class ApRewardMenuSpec
 {
-    public int SchemaVersion { get; set; } = 5;
+    public const int CurrentSchemaVersion = 6;
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public Guid RunId { get; set; }
     public Guid MenuId { get; set; } = Guid.NewGuid();
     public int ApSlotId { get; set; }

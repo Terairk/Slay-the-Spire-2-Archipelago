@@ -8,6 +8,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Factories;
+using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Localization;
@@ -190,7 +191,7 @@ public static class ApMirroredRewardDispatcher
                     && !ArchipelagoRewardUI.CanBuildMenuAfterAwait(apLifecycleVersion)))
                 return false;
             ownerMaterializationStarted = true;
-            spec = await BuildOwnerMenuSpec(player, runState, approvedRelics);
+            spec = BuildOwnerMenuSpec(player, runState, approvedRelics);
             rewards = DecodeRewards(spec);
         }
         catch (Exception ex)
@@ -242,7 +243,7 @@ public static class ApMirroredRewardDispatcher
         return true;
     }
 
-    private static async Task<ApRewardMenuSpec> BuildOwnerMenuSpec(
+    private static ApRewardMenuSpec BuildOwnerMenuSpec(
         Player player,
         RunState runState,
         IReadOnlySet<int>? approvedRelics)
@@ -301,7 +302,7 @@ public static class ApMirroredRewardDispatcher
                 if (kind == ApMirroredRewardKind.Relic && approvedRelics != null
                     && !approvedRelics.Contains(receipt.Index)) continue;
 
-                menu.Rewards.Add(await BuildAssignedSpec(receipt, player, apSlotId, kind));
+                menu.Rewards.Add(BuildAssignedSpec(receipt, player, apSlotId, kind));
                 continue;
             }
 
@@ -339,7 +340,7 @@ public static class ApMirroredRewardDispatcher
         return menu;
     }
 
-    private static async Task<ApMirroredRewardSpec> BuildAssignedSpec(
+    private static ApMirroredRewardSpec BuildAssignedSpec(
         IndexedItemInfo receipt,
         Player player,
         int apSlotId,
@@ -369,33 +370,22 @@ public static class ApMirroredRewardDispatcher
                     out CardReward? existing
                 );
 
-                ApNativeCardReward reward;
                 spec.MaterializationStrategyId = OwnerFinalApRngStrategyId;
+                // The menu publishes only a recipe for a new card receipt. No cards or relic
+                // effects exist until the owning player opens this particular picker.
                 if (isNew)
-                {
-                    reward = await MaterializeOwnerFinalApRngCardReward(spec, player);
-                    ArchipelagoClient.Progress.CardAssignments[itemIndex] = reward;
-                    LogUtility.Info(
-                        $"Materialized AP card reward {spec.GrantId} with {OwnerFinalApRngStrategyId} "
-                            + $"for player {player.NetId}"
-                    );
-                }
-                else
-                {
-                    spec.CardCanReroll = existing!.CanReroll;
-                    reward = existing as ApNativeCardReward
-                        ?? RestoreCardReward(MirroredRewardAdapter.Origin(spec),
-                            MirroredRewardAdapter.CardConfiguration(spec), player, existing.Cards);
-                    spec.MaterializationStrategyId = string.IsNullOrEmpty(
-                        reward.MaterializationStrategyId
-                    )
-                        ? OwnerFinalApRngStrategyId
-                        : reward.MaterializationStrategyId;
-                    spec.AppliedEffects = CloneEffects(reward.AppliedEffects);
-                    spec.CardHasBeenRevealed = reward.HasBeenRevealed;
-                    reward.Configure(MirroredRewardAdapter.Origin(spec), MirroredRewardAdapter.CardConfiguration(spec));
-                    ArchipelagoClient.Progress.CardAssignments[itemIndex] = reward;
-                }
+                    break;
+
+                spec.CardCanReroll = existing!.CanReroll;
+                ApNativeCardReward reward = existing as ApNativeCardReward
+                    ?? RestoreCardReward(MirroredRewardAdapter.Origin(spec),
+                        MirroredRewardAdapter.CardConfiguration(spec), player, existing.Cards);
+                spec.MaterializationStrategyId = string.IsNullOrEmpty(reward.MaterializationStrategyId)
+                    ? OwnerFinalApRngStrategyId : reward.MaterializationStrategyId;
+                spec.AppliedEffects = CloneEffects(reward.AppliedEffects);
+                spec.CardHasBeenRevealed = reward.HasBeenRevealed;
+                reward.Configure(MirroredRewardAdapter.Origin(spec), MirroredRewardAdapter.CardConfiguration(spec));
+                ArchipelagoClient.Progress.CardAssignments[itemIndex] = reward;
 
                 ReplicaCardAssignments[(player.NetId, itemIndex)] = reward;
                 spec.CardCanReroll = reward.CanReroll;
@@ -468,7 +458,7 @@ public static class ApMirroredRewardDispatcher
 
     private static IReadOnlyList<MirroredReward> DecodeRewards(ApRewardMenuSpec menu)
     {
-        if (menu.SchemaVersion != 5 || menu.Rewards == null)
+        if (menu.SchemaVersion != ApRewardMenuSpec.CurrentSchemaVersion || menu.Rewards == null)
             throw new InvalidOperationException("Invalid AP reward-menu schema.");
         return Array.AsReadOnly(menu.Rewards.Select(spec =>
         {
@@ -773,8 +763,7 @@ public static class ApMirroredRewardDispatcher
     private static async Task ApplyOwnerFinalEffects(
         IReadOnlyList<MirroredReward> rewards, Player owner)
     {
-        foreach (MirroredReward reward in rewards.OrderBy(reward => reward.Origin.ReceivedItemIndex))
-        foreach (RewardEffect effect in reward.Effects)
+        foreach ((RewardOrigin origin, RewardEffect effect) in MirroredRewardAdapter.OrderedEffects(rewards))
         {
             await effect.Match(
                 async () =>
@@ -782,7 +771,7 @@ public static class ApMirroredRewardDispatcher
                     SilkenTress relic = owner.GetRelic<SilkenTress>()
                         ?? throw new InvalidOperationException(
                             "An AP reward expected Silken Tress, but the replica did not have it.");
-                    if (!MirroredRewardAdapter.NeedsApplication(effect, relic.IsUsedUp ? 1 : 0, reward.Origin.ReceiptIdentity))
+                    if (!MirroredRewardAdapter.NeedsApplication(effect, relic.IsUsedUp ? 1 : 0, origin.ReceiptIdentity))
                         return;
                     await relic.AfterModifyingCardRewardOptions();
                     relic.InvokeExecutionFinished();
@@ -796,7 +785,7 @@ public static class ApMirroredRewardDispatcher
                     SilverCrucible relic = owner.GetRelic<SilverCrucible>()
                         ?? throw new InvalidOperationException(
                             "An AP reward expected Silver Crucible, but the replica did not have it.");
-                    if (!MirroredRewardAdapter.NeedsApplication(effect, relic.TimesUsed, reward.Origin.ReceiptIdentity))
+                    if (!MirroredRewardAdapter.NeedsApplication(effect, relic.TimesUsed, origin.ReceiptIdentity))
                         return;
                     await relic.AfterModifyingCardRewardOptions();
                     relic.InvokeExecutionFinished();
@@ -811,7 +800,7 @@ public static class ApMirroredRewardDispatcher
         RitsuLibSidecarSyncMessageContext<ApRewardMenuSpec> context)
     {
         ApRewardMenuSpec menu = context.Message;
-        if (menu.SchemaVersion != 5 || context.SenderNetId != menu.OwnerNetId)
+        if (menu.SchemaVersion != ApRewardMenuSpec.CurrentSchemaVersion || context.SenderNetId != menu.OwnerNetId)
             throw new InvalidOperationException("Invalid AP reward-menu owner or schema.");
 
         var completion = new TaskCompletionSource(
@@ -1111,10 +1100,12 @@ public static class ApMirroredRewardDispatcher
         public override void OnSkipped() { }
     }
 
-    internal sealed class ApNativeCardReward : CardReward, IApNativeReward
+    internal sealed class ApNativeCardReward : ApDeferredCardReward, IApNativeReward
     {
         private readonly int _itemIndex;
         private CardRewardConfiguration _configuration;
+        private RewardOrigin _origin;
+        private uint? _firstPickerChoice;
         private LocString _description;
 
         internal bool IsRare => _configuration.Recipe.IsRareReward;
@@ -1135,11 +1126,12 @@ public static class ApMirroredRewardDispatcher
             CardCreationOptions options,
             RewardOrigin origin,
             CardRewardConfiguration configuration)
-            : base(options, cards.Count, player)
+            : base(options, player)
         {
             _cards.AddRange(cards);
             _itemIndex = origin.ReceivedItemIndex;
             _configuration = configuration;
+            _origin = origin;
             _description = new LocString("gameplay_ui", "COMBAT_REWARD_ADD_CARD");
             Configure(origin, configuration);
         }
@@ -1147,6 +1139,7 @@ public static class ApMirroredRewardDispatcher
         internal void Configure(RewardOrigin origin, CardRewardConfiguration configuration)
         {
             _configuration = configuration;
+            _origin = origin;
             CanReroll = configuration.CanReroll;
             _description = CreateApDescription(
                 new LocString("gameplay_ui", "COMBAT_REWARD_ADD_CARD"),
@@ -1159,17 +1152,120 @@ public static class ApMirroredRewardDispatcher
         public bool HasOriginText => true;
         public bool UseAncientStyle => false;
 
+        protected override async Task<CardReward?> ResolveAssignment()
+        {
+            if (_cards.Count > 0)
+            {
+                _configuration = _configuration.WithRevealed();
+                PublishRevealedAssignment();
+                return this;
+            }
+
+            var run = Player.RunState;
+            var spec = new ApMirroredRewardSpec
+            {
+                ApSlotId = _origin.ApSlotId,
+                ReceivedItemIndex = _itemIndex,
+                OwnerNetId = Player.NetId,
+                Kind = ApMirroredRewardKind.Card,
+                ItemName = _origin.ItemName,
+                SenderName = _origin.SenderName,
+                FoundLocation = _origin.FoundLocation,
+                IsRareCardReward = IsRare,
+                CardRewardActIndex = RewardActIndex,
+                CardHasBeenRevealed = true,
+                MaterializationStrategyId = OwnerFinalApRngStrategyId,
+            };
+            try
+            {
+                var synchronizer = RunManager.Instance.PlayerChoiceSynchronizer;
+                // Both sides reserve the transfer and first picker choices before any await. Final
+                // cards use MegaCrit's mutable-card codec; metadata carries only receipt identity
+                // and validated persistent effects. No replica runs card-generation hooks.
+                bool multiplayer = MultiplayerSupport.IsRealMultiplayerRun;
+                uint metadataChoice = multiplayer ? synchronizer.ReserveChoiceId(Player) : 0;
+                uint cardsChoice = multiplayer ? synchronizer.ReserveChoiceId(Player) : 0;
+                _firstPickerChoice = multiplayer ? synchronizer.ReserveChoiceId(Player) : null;
+                if (LocalContext.IsMe(Player))
+                {
+                    ApNativeCardReward generated = await MaterializeOwnerFinalApRngCardReward(spec, Player);
+                    if (RunManager.Instance.DebugOnlyGetState() != run)
+                        throw new OperationCanceledException("Run changed during AP card reveal.");
+                    if (multiplayer)
+                    {
+                        synchronizer.SyncLocalChoice(Player, metadataChoice,
+                            PlayerChoiceResult.FromIndexes(ApCardRevealCodec.Encode(spec)));
+                        synchronizer.SyncLocalChoice(Player, cardsChoice,
+                            PlayerChoiceResult.FromMutableCards(generated.Cards));
+                    }
+                    ApCardRewardLifecycle.CopyOptions(generated, this);
+                }
+                else
+                {
+                    PlayerChoiceResult metadata = await synchronizer.WaitForRemoteChoice(Player, metadataChoice)
+                        .WaitAsync(TimeSpan.FromSeconds(15));
+                    ApCardRevealCodec.DecodeInto(spec, metadata.AsIndexes());
+                    PlayerChoiceResult cards = await synchronizer.WaitForRemoteChoice(Player, cardsChoice)
+                        .WaitAsync(TimeSpan.FromSeconds(15));
+                    if (RunManager.Instance.DebugOnlyGetState() != run)
+                        throw new OperationCanceledException("Run changed during AP card reveal.");
+                    List<CardModel> received = cards.AsMutableCards().ToList();
+                    if (received.Any(card => card.Owner != Player))
+                        throw new InvalidOperationException("AP card reveal had a different card owner.");
+                    spec.SerializedModels = received.Select(SerializeCard).ToList();
+                    MirroredReward decoded = MirroredRewardAdapter.Decode(spec, AncientRelicPool.ChoiceCount);
+                    // These native callbacks reproduce the owner's counters exactly once.
+                    await ApplyOwnerFinalEffects([decoded], Player);
+                    _cards.AddRange(spec.SerializedModels.Select(json => new CardCreationResult(
+                        Player.RunState.LoadCard(Deserialize<SerializableCard>(json), Player))));
+                }
+
+                Configure(_origin, MirroredRewardAdapter.CardConfiguration(spec));
+                PublishRevealedAssignment();
+                LogUtility.Info($"Revealed AP card reward {_origin.ReceiptIdentity} for player {Player.NetId}");
+                return this;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.Error($"AP card reveal {_origin.ReceiptIdentity} for player {Player.NetId} failed: {ex}");
+                if (MultiplayerSupport.IsRealMultiplayerRun)
+                    MultiplayerSupport.InvalidateRunClaims("AP card reveal failed; reload the campaign.");
+                throw;
+            }
+        }
+
+        private void PublishRevealedAssignment()
+        {
+            ReplicaCardAssignments[(Player.NetId, _itemIndex)] = this;
+            if (!LocalContext.IsMe(Player))
+                return;
+            ArchipelagoClient.Progress.CardAssignments[_itemIndex] = this;
+            if (!ApRunData.PublishLocalProgress(Player))
+            {
+                MultiplayerSupport.InvalidateRunClaims("AP card reveal could not be published; reload the campaign.");
+                throw new InvalidOperationException($"Could not publish revealed AP card receipt {_itemIndex}.");
+            }
+        }
+
+        protected override Task<bool> SelectCards()
+        {
+            uint? firstChoice = _firstPickerChoice;
+            _firstPickerChoice = null;
+            return firstChoice.HasValue
+                ? Patches_APCardRevealChoice.Select(RunManager.Instance.PlayerChoiceSynchronizer,
+                    Player, firstChoice.Value, base.SelectCards)
+                : base.SelectCards();
+        }
+
         protected override async Task<bool> OnSelect()
         {
-            bool newlyRevealed = !HasBeenRevealed;
-            _configuration = _configuration.WithRevealed();
             HashSet<CardModel>? deckBefore = LocalContext.IsMe(Player)
                 ? Player.Deck.Cards.ToHashSet()
                 : null;
             bool applied = await base.OnSelect();
             if (!applied)
             {
-                if (newlyRevealed && LocalContext.IsMe(Player)
+                if (LocalContext.IsMe(Player)
                     && !ApRunData.PublishLocalProgress(Player))
                 {
                     MultiplayerSupport.InvalidateRunClaims(

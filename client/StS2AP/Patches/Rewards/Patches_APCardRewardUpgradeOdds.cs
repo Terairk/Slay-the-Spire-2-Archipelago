@@ -374,20 +374,6 @@ public static class Patches_APCardRewardUpgradeOdds
         }
     }
 
-    /// <summary>
-    /// Native CardReward retroactively applies newly obtained relics to its current options. AP
-    /// rewards keep that behavior only while their choices are hidden; opening the picker freezes
-    /// the known assignment even when the player skips it and claims it later.
-    /// </summary>
-    [HarmonyPatch(typeof(CardReward), "OnRelicObtained")]
-    private static class FreezeRevealedApCardReward
-    {
-        [HarmonyPrefix]
-        private static bool Prefix(CardReward __instance) =>
-            __instance is not ApMirroredRewardDispatcher.ApNativeCardReward reward
-            || !reward.HasBeenRevealed;
-    }
-
     /// <summary>Pael's Wing remains the only reviewed AP card-reward alternative.</summary>
     [HarmonyPatch(typeof(Hook), nameof(Hook.ModifyCardRewardAlternatives))]
     private static class FilterApCardRewardAlternatives
