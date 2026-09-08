@@ -1,0 +1,75 @@
+# Things to specifically handle in multiplayer
+
+1) Rest Site Options - their options need to be synced up explicitly - one of the easy one's
+  - like if you sync the progress properly then this is just a matter of book keeping - still need to look into this properly
+2) Ancient Options in start of Act mode - just need to sync up their options: 
+  just needs to freeze a specific AP progress from each player once you reach the room - not too difficult
+3) Gold - not too hard - if poverty didn't exist then you could go through the base game synchronizer 
+    - with poverty you must sync the gold redeemed progress asw to get the refund correct
+4) Potions - same as gold - in fact this one might be easier as you just sync the final result through base game synchronizer
+  - honestly idk how potion checks just work but they do despite them being random
+5) Shopsanity - base game shops just synchronize what they bought and the gold lost. For checks, it's just the gold lost
+    - there's theoretically some handling around not sending duplicate checks if 2 people connect to same slot but who cares
+6) Floor checks - just gotta send an extra one at the end of each boss and what not (same with some other checks)
+7) Ascensions and Ascension Downs - put it in a Queue until its not a combat then everyone applies its effects 
+      - not too hard: there maybe some duplicate code n all but its just a lot of messaging boilerplate
+8) Progressive Starter stuff - same deal as ascension downs, not too hard but run start is a bit confusing
+9) Ancient Relics in anytime mode - I believe its just as simple as saying i'm this player with this netId and other stuff, most
+    important is the itemIndex i think? which is given out so everyone can deterministically generate the same ancient options
+    then option index stuff is done in the same way across all machines, pretty simple
+
+*insert vietnam war picture meme*
+## Relics
+Now you would think this one is easy right, well it would be if there wasn't a thing called 'Relic Coupons' or
+'Rewarding Elites'. The main problem with these is the race conditions and the chests. The problem with chests is that
+due to race conditions and timings: one person may see 1 relic in the chest while another may see 0, 1 or 2 relics in the chest
+and this breaks the game. So you need to manually freeze the progress when you reach the chest: the host is authoritative here and says
+ok here: P1 has X counter in their coupons, P2 has Y counter in their coupons etc hence why a 
+non-host player has big lag when opening the chest.
+They're asking the host for what they did. There's also a feature whereby players can't open the reward menu until everyone else opened
+the chest. Now it's been like 1-2 weeks since I implemented it: but I think it was due to choice 23: akabeko choice 24: anchor but the other
+players saw choice 23: anchor choice 24: abakeko. So the effects were the same but the ordering was broken so state divergence.
+Simple fix was to just disable opening the menu in chests period, 2nd harder fix was to allow opening the menu 
+after everyone opened the menu. But yes a lot of syncing is required to handle the 'rewarding' elites.
+Who knows if it was worth it. 
+There's a few alternate options: kill off the rewarding elites and the coupons and put everything in the ap menu.
+Like a suggestion was to just pre-generate the relics (not all 10 of them of course) and disable the button if you didn't get enough
+natural relics. Not a bad suggestion: probably would still need some syncing at the chest (confirm this but probably less syncing)
+however backshot, you can't steal your friends relics at the chest which is infinitely less funny.
+Also yeah had to do some fixes when there are less relics than there are players.
+Oh i forgot to mention but relics need our own rng handling: believe me i've tried many other methods but there's always some funky
+weird race condition or tutorial relics that just break everything because one player said they don't allow this relic but the other person
+didn't know and the AP menu somehow bypassed that check when generating.
+Simplest fix was our own rng: now i don't exactly remember why the other methods didn't work
+but they didn't work. So yeah extra reason why relics didn't work and why they were bad.
+
+*insert double ptsd chihuaha meme
+## Card Rewards
+If you thought Relics weer tough: then I don't blame you.
+Let's start simple with Card Reward Checks: 
+Well for starters you NEED to know your other player's AP settings. And you need a counter for them specifically
+You need to know whether or not your peers have a Card Reward or a check and this matters because one advances rng and the other doesn't.
+Believe me i'd know. state divergences will pop up out of nowhere.
+If we ever reworked say card rewards from events, prayer wheel, card rewards from relics to give checks then this stuff goes from 
+baby playground sleeping to like triple threat world war level things.
+
+Well Card Reward Checks weren't so bad, what could go wrong...
+EVERYTHING. Well for one you can't just copy what you did with potions or gold or relics in the AP menu:
+because card rewards have a little interesting thing called relics affecting them. You can't just say hey I picked this card, give that to
+me. Nope, because that bypasses the relic hooks n stuff (maybe there's a way to do so now that i've refactored enough).
+Did I also mention that our card rewards also break the laws of the base game a lot: skipping doesn't actually skip, the card rewards
+are saved and persisted: they aren't discarded. We allow gaining more than one card at one time and claimed at the same time as other 
+relics. The base game really doesn't like this: in fact it generates your card rewards before you even view them. So what people think
+of as oh relic X should just work: nope it requires more handling on our part.
+I guess most of the gripe with card rewards isn't the multiplayer aspect but also partly the base game handling of it
+In that sense relics might be complicated in multiplayer handling.
+
+Anyway, the current method tries to follow the base game a lot:
+It uses our own rng thing for multiplayer handling. Oh wait now im remembering. We had a lot of hassle 
+because of relics that interact with card rewards: things like pael's wing which advances megacrit RNG (LIKE WHY):
+and it advances it in such a way that it breaks everything. I don't exactly remember why it wasn't a small fix but our 
+rewards are different enough that it just wasn't. Oh it was also because just rolling the pity roll also advances rng.
+So i had to do a huge compromise and re-implement parts of the card reward system and I intentionally left parts out.
+This was really annoying to do. 
+But it doesn't stop there: there's the egg relics, silken tress, silver crucible and glitter which are also really painful..
+In this case silken tress and silver crucible are the bigger nightmares.
