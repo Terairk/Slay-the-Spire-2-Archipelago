@@ -298,6 +298,9 @@ namespace StS2AP
         private static readonly object _connectionStateLock = new();
         private static bool _currentAttemptIsAutomaticReconnect;
         private static ApSessionIdentity? _authenticatedIdentity;
+        // Consent lasts only while this slot is retained, including recoverable disconnects.
+        private static (ApSessionIdentity Identity, System.Version Version, int CompatFlag)?
+            _acceptedOlderApWorld;
         private static ReceivedItemsHelper.ItemReceivedHandler? _itemReceivedHandler;
 
         internal static bool HasSlotConnection =>
@@ -364,6 +367,7 @@ namespace StS2AP
             ScoutedLocations = new();
             Seed = string.Empty;
             _authenticatedIdentity = null;
+            _acceptedOlderApWorld = null;
             DeathLinkController = null!;
             LastDeathLinkMessage = null;
             LastDeathLinkReceivedAt = null;
@@ -630,6 +634,17 @@ namespace StS2AP
                             + "but updating the APWorld is recommended."
                     );
 
+                    if (wasAutomaticReconnect
+                        && _acceptedOlderApWorld is { } accepted
+                        && accepted.Identity == connectedIdentity
+                        && accepted.Version == apWorldVersion
+                        && accepted.CompatFlag == apWorldCompatFlag)
+                    {
+                        LogUtility.Info($"Reusing accepted APWorld v{apWorldVersion} for {connectedIdentity}");
+                        OnConnected();
+                        return;
+                    }
+
                     if (wasAutomaticReconnect)
                     {
                         ApReconnectController.Stop("the older APWorld requires manual confirmation");
@@ -649,8 +664,15 @@ namespace StS2AP
                         Body = warningBody,
                         ButtonPressed = continueConnecting =>
                         {
+                            // The warning may outlive its socket or a deliberate slot change.
+                            // Neither accepting nor cancelling it may affect a replacement session.
+                            if (!ReferenceEquals(Session, connectionSession) || !IsConnected)
+                                return;
                             if (continueConnecting)
+                            {
+                                _acceptedOlderApWorld = (connectedIdentity, apWorldVersion, apWorldCompatFlag);
                                 OnConnected();
+                            }
                             else
                                 RejectIncompatibleConnection(
                                     "Connection cancelled. Update the APWorld before trying again."
