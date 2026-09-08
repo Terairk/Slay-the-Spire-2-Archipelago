@@ -22,9 +22,9 @@
     <!-- Fallback defaults for the Windows build machine if local.props is missing. -->
     <STS2GamePath Condition="'$(STS2GamePath)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2</STS2GamePath>
     <GodotExePath Condition="'$(GodotExePath)' == ''">godot</GodotExePath>
-    <ModName Condition="'$(ModName)' == ''">ExampleMod</ModName>
-    <ModDisplayName Condition="'$(ModDisplayName)' == ''">Example Mod</ModDisplayName>
-    <ModAuthor Condition="'$(ModAuthor)' == ''">Unknown</ModAuthor>
+    <ModName Condition="'$(ModName)' == ''">Archipelago</ModName>
+    <ModDisplayName Condition="'$(ModDisplayName)' == ''">Archipelago Client</ModDisplayName>
+    <ModAuthor Condition="'$(ModAuthor)' == ''">Kirbyfanner, Platano Bailando, Lyxn, MartyredG, Terairk</ModAuthor>
 
     <AssemblyName>$(ModName)</AssemblyName>
     <Version>1.0.1</Version>

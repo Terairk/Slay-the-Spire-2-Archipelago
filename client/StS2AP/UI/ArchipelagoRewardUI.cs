@@ -177,8 +177,9 @@ public static class ArchipelagoRewardUI
     public static void RemoveUI()
     {
         UnregisterHotkeys();
-        if (_screen != null && GodotObject.IsInstanceValid(_screen))
-            _screen.QueueFreeSafely();
+        NRewardsScreen? screen = _screen;
+        // Clear AP's return destination before native close callbacks run. Teardown must
+        // not reopen the map/deck or notify listeners as if gameplay were continuing.
         if (_set != null)
             Sessions.Remove(_set);
         _screen = null;
@@ -186,6 +187,21 @@ public static class ArchipelagoRewardUI
         _opening = false;
         _closing = false;
         _returnDestination = ReturnDestination.Room;
+
+        if (screen == null || !GodotObject.IsInstanceValid(screen))
+            return;
+
+        // ReturnToMainMenu is async: its Harmony postfix runs before RunManager.CleanUp.
+        // Remove through the owning stack so Clear cannot later visit a freed screen.
+        if (screen.GetParent() is NOverlayStack stack)
+        {
+            stack.Remove(screen);
+            LogUtility.Debug("Removed native AP reward screen from overlay stack during teardown");
+        }
+        else if (!screen.IsQueuedForDeletion())
+        {
+            screen.QueueFreeSafely();
+        }
     }
 
     internal static bool IsApRewardSet(RewardsSet set) => Sessions.ContainsKey(set);

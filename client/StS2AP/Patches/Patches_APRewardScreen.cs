@@ -350,15 +350,17 @@ namespace StS2AP.Patches
         {
             if (!GodotObject.IsInstanceValid(linkedSet)
                 || linkedSet.IsQueuedForDeletion()
-                || FindRewardsScreen(linkedSet) is not { } screen)
+                || FindRewardsScreen(linkedSet) is not { } screen
+                || screen.IsQueuedForDeletion()
+                || !screen.IsInsideTree())
             {
                 return;
             }
 
-            screen.RewardCollectedFrom(linkedSet);
             linkedSet.LinkedRewardSet.OnSkipped();
+            // NRewardsScreen already handles this signal by removing the linked row.
+            // Calling RewardCollectedFrom directly as well removes the same row twice.
             linkedSet.EmitSignal(NLinkedRewardSet.SignalName.RewardClaimed, linkedSet);
-            linkedSet.QueueFreeSafely();
 
             Callable.From(() =>
             {
