@@ -52,14 +52,14 @@ public sealed class ApMirroredRewardSpec
     public string MaterializationStrategyId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Legacy wire guard only. True is rejected: replica-native generation has been removed.
+    /// Legacy wire guard only. True is rejected: the former menu-time generation is unsupported.
     /// Menus carry final models or an empty, unrevealed card recipe and leave this false.
     /// </summary>
     public bool RequiresNativeMaterialization { get; set; }
 
     /// <summary>
-    /// Idempotent native state transitions produced by reviewed owner-final card hooks. These are
-    /// persisted with the stable assignment and replayed on replicas which did not run the hooks.
+    /// Legacy owner-final effect records. Replicated card offers require this to be empty:
+    /// each machine runs native callbacks instead of replaying recorded transitions.
     /// </summary>
     public List<ApRewardEffectSpec> AppliedEffects { get; set; } = new();
 

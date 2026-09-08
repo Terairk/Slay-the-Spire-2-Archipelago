@@ -72,7 +72,7 @@ module MirroredRewardTests =
     let ``restored native assignment never replays generation`` kind =
         let reward = decode { input kind with Strategy = "replica_native_v1" }
         let identify (policy: RewardMaterialization) =
-            policy.Match(Func<_>(fun () -> "owner"), Func<_>(fun () -> "restored"))
+            policy.Match(Func<_>(fun () -> "owner"), Func<_>(fun () -> "restored"), Func<_>(fun () -> "replicated"))
         Assert.Equal("restored", reward.Match(Func<_, _>(fun card -> identify card.Configuration.Policy), Func<_, _>(fun potion -> identify potion.Policy),
                                              Func<_, _>(fun _ -> "relic"), Func<_, _>(fun _ -> "ancient"), Func<_, _>(fun _ -> "unavailable")))
 
@@ -130,7 +130,7 @@ module MirroredRewardTests =
 
     [<Fact>]
     let ``unopened menu cards carry only a recipe and cannot be saved as assignments`` () =
-        let pending = { input RewardInputKind.Card with Models = [||] }
+        let pending = { input RewardInputKind.Card with Models = [||]; Strategy = "ap_rng_replicated_card_v1" }
         let decoded = decode pending |> card
         Assert.True(decoded.IsDeferred)
         Assert.False(decoded.Configuration.HasBeenRevealed)
@@ -139,12 +139,20 @@ module MirroredRewardTests =
 
     [<Fact>]
     let ``deferred cards cannot claim effects rerolls revealed state or legacy generation`` () =
-        let pending = { input RewardInputKind.Card with Models = [||] }
+        let pending = { input RewardInputKind.Card with Models = [||]; Strategy = "ap_rng_replicated_card_v1" }
         for invalid in [ { pending with Revealed = true }
                          { pending with CanReroll = true }
                          { pending with Effects = [| effect "silken_tress_used_v1" 0 1 |] }
-                         { pending with Strategy = "replica_native_v1" } ] do
+                         { pending with Strategy = "replica_native_v1" }
+                         { pending with Strategy = "ap_rng_owner_final_v1" } ] do
             Assert.True(MirroredReward.Decode(invalid, 3) |> Result.isError)
+
+    [<Fact>]
+    let ``replicated strategy requires revealed final cards and cannot describe potions`` () =
+        let replicated = { input RewardInputKind.Card with Strategy = "ap_rng_replicated_card_v1" }
+        Assert.True(MirroredReward.Decode(replicated, 3) |> Result.isError)
+        Assert.True(MirroredReward.Decode({ replicated with Revealed = true }, 3) |> Result.isOk)
+        Assert.True(MirroredReward.Decode({ replicated with Kind = RewardInputKind.Potion }, 3) |> Result.isError)
 
     [<Fact>]
     let ``previously materialized hidden assignments remain completed cards`` () =

@@ -1,5 +1,12 @@
 # Mirrored reward domain migration
 
+> Historical account of the owner-final migration. The current
+> `experiment/replicated-card-reward-generation` branch generates card offers on every replica
+> at first reveal, runs native callbacks locally, and compares an offer/player-state digest.
+> It uses menu schema 8 and `ap_rng_replicated_card_v1`; it does not replay the effect records
+> described below. Current validation boundaries and the runtime matrix are in
+> [the regression-test README](../../client/StS2AP.RegressionTests/README.md).
+
 Implemented 2026-09-06 on `multiplayer-squashed`. The initial strategy-only F# guard has
 been replaced by a completed reward snapshot that the dispatcher actually consumes.
 The unused new-native generation path was subsequently removed at the user's request.

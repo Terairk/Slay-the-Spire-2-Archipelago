@@ -1,81 +1,75 @@
-using StS2AP.Domain;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace StS2AP.DomainAdapters;
 
 /// <summary>
-/// Small, versioned metadata accompanying each native PlayerChoiceResult mutable-card offer.
-/// Bind the payload to the expected receipt/recipe before applying any persistent relic effects.
+/// Verifies independently generated offers. This carries no card payload or instructions to
+/// mutate relics: each replica must already have the same cards and native player state.
 /// </summary>
 internal static class ApCardRevealCodec
 {
-    private const int Version = 1;
+    private const int Version = 2;
+    private const int DigestWords = 8;
 
-    internal static List<int> Encode(ApMirroredRewardSpec spec)
+    internal static List<int> Encode(ApMirroredRewardSpec spec, string before, string after, bool firstReveal = true)
     {
-        if (spec.Kind != ApMirroredRewardKind.Card || !spec.CardHasBeenRevealed || spec.SerializedModels.Count == 0)
-            throw new InvalidOperationException("Cannot publish an unfinished AP card reveal.");
+        if (spec.Kind != ApMirroredRewardKind.Card || !spec.CardHasBeenRevealed
+            || spec.SerializedModels.Count == 0 || spec.AppliedEffects.Count != 0
+            || spec.MaterializationStrategyId != "ap_rng_replicated_card_v1")
+            throw new InvalidOperationException("Cannot verify an unfinished or non-replicated AP card offer.");
         _ = MirroredRewardAdapter.Decode(spec, 3);
-        var values = new List<int>
+        // Parse model/state JSON so object property order is irrelevant; array order remains
+        // significant for card indexes, relic hook order, deck order, and RNG state.
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(new
         {
-            Version, spec.ApSlotId, spec.ReceivedItemIndex, spec.IsRareCardReward ? 1 : 0,
-            spec.CardRewardActIndex ?? -1, spec.CardCanReroll ? 1 : 0, spec.AppliedEffects.Count,
-        };
-        foreach (ApRewardEffectSpec effect in spec.AppliedEffects)
-        {
-            values.Add(effect.EffectId switch
-            {
-                "silken_tress_used_v1" => 0,
-                "silver_crucible_times_used_v1" => 1,
-                _ => throw new InvalidOperationException("Unknown AP card reveal effect."),
-            });
-            values.Add(effect.BeforeValue);
-            values.Add(effect.AfterValue);
-        }
-        return values;
+            spec.ApSlotId, spec.ReceivedItemIndex, spec.OwnerNetId,
+            spec.IsRareCardReward, spec.CardRewardActIndex, spec.CardCanReroll, FirstReveal = firstReveal,
+            Cards = spec.SerializedModels.Select(model => JsonSerializer.Deserialize<JsonElement>(model)),
+            Before = JsonSerializer.Deserialize<JsonElement>(before),
+            After = JsonSerializer.Deserialize<JsonElement>(after),
+        }));
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+            WriteCanonical(writer, document.RootElement);
+        byte[] digest = SHA256.HashData(stream.ToArray());
+        var result = new List<int> { Version };
+        for (int offset = 0; offset < digest.Length; offset += sizeof(int))
+            result.Add(BinaryPrimitives.ReadInt32LittleEndian(digest.AsSpan(offset, sizeof(int))));
+        return result;
     }
 
-    internal static void DecodeInto(ApMirroredRewardSpec expected, IReadOnlyList<int> values)
+    internal static void Verify(IReadOnlyList<int> local, IReadOnlyList<int> owner, string receipt)
     {
-        if (expected.Kind != ApMirroredRewardKind.Card || values.Count < 7
-            || values[0] != Version || values[1] != expected.ApSlotId
-            || values[2] != expected.ReceivedItemIndex
-            || values[3] != (expected.IsRareCardReward ? 1 : 0)
-            || values[4] != (expected.CardRewardActIndex ?? -1)
-            || values[5] is < 0 or > 1 || values[6] is < 0 or > 2
-            || values.Count != 7 + 3 * values[6])
-        {
-            throw new InvalidOperationException($"AP card reveal did not match receipt {expected.GrantId}.");
-        }
+        if (local.Count != DigestWords + 1 || owner.Count != DigestWords + 1
+            || local[0] != Version || owner[0] != Version || !local.SequenceEqual(owner))
+            throw new InvalidOperationException($"Replicated AP card offer {receipt} disagreed with the owner "
+                + "(receipt, cards, or native player state). No picker choice was applied.");
+    }
 
-        var effects = new List<RewardEffect>();
-        for (int offset = 7; offset < values.Count; offset += 3)
+    private static void WriteCanonical(Utf8JsonWriter writer, JsonElement value)
+    {
+        switch (value.ValueKind)
         {
-            effects.Add(values[offset] switch
-            {
-                0 => MirroredRewardAdapter.ObserveSilkenTress(values[offset + 1], values[offset + 2], expected.GrantId.ToString()),
-                1 => MirroredRewardAdapter.ObserveSilverCrucible(values[offset + 1], values[offset + 2], expected.GrantId.ToString()),
-                _ => throw new InvalidOperationException("Unknown AP card reveal effect."),
-            });
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (JsonProperty property in value.EnumerateObject().OrderBy(p => p.Name, StringComparer.Ordinal))
+                {
+                    writer.WritePropertyName(property.Name);
+                    WriteCanonical(writer, property.Value);
+                }
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (JsonElement element in value.EnumerateArray())
+                    WriteCanonical(writer, element);
+                writer.WriteEndArray();
+                break;
+            default:
+                value.WriteTo(writer);
+                break;
         }
-        if (effects.Select(effect => effect.EffectId).Distinct().Count() != effects.Count)
-            throw new InvalidOperationException("AP card reveal repeated a persistent effect.");
-
-        // An existing offer may gain Egg upgrades, but refreshing it cannot spend a generation
-        // effect again, forget an earlier effect, or restore a spent native reroll.
-        if (expected.SerializedModels.Count > 0)
-        {
-            var previous = expected.AppliedEffects
-                .Select(effect => (effect.EffectId, effect.BeforeValue, effect.AfterValue))
-                .OrderBy(effect => effect.EffectId, StringComparer.Ordinal);
-            var incoming = effects
-                .Select(effect => (effect.EffectId, effect.BeforeValue, effect.AfterValue))
-                .OrderBy(effect => effect.EffectId, StringComparer.Ordinal);
-            if (!previous.SequenceEqual(incoming) || expected.CardCanReroll != (values[5] == 1))
-                throw new InvalidOperationException($"AP card refresh changed generation state for receipt {expected.GrantId}.");
-        }
-
-        expected.CardHasBeenRevealed = true;
-        expected.CardCanReroll = values[5] == 1;
-        expected.AppliedEffects = MirroredRewardAdapter.EncodeEffects(effects);
     }
 }

@@ -40,6 +40,7 @@ namespace StS2AP.Utils;
 public static class ApMirroredRewardDispatcher
 {
     private const string SidecarMessageKey = "received_reward_menu_v1";
+    private const string ReplicatedCardStrategyId = "ap_rng_replicated_card_v1";
     private const string OwnerFinalApRngStrategyId = "ap_rng_owner_final_v1";
 
     private static readonly RitsuLibSidecarJsonSerializer<ApRewardMenuSpec> MenuSerializer = new();
@@ -149,6 +150,7 @@ public static class ApMirroredRewardDispatcher
     public static void EndRun()
     {
         _activeRunIdentity = null;
+        Patches_APRewardSelectionOrder.Reset();
         ActiveRemoteMenus.Clear();
         ReplicaCardAssignments.Clear();
         ReplicaPotionAssignments.Clear();
@@ -370,7 +372,7 @@ public static class ApMirroredRewardDispatcher
                     out CardReward? existing
                 );
 
-                spec.MaterializationStrategyId = OwnerFinalApRngStrategyId;
+                spec.MaterializationStrategyId = ReplicatedCardStrategyId;
                 // The menu publishes only a recipe for a new card receipt. No cards or relic
                 // effects exist until the owning player opens this particular picker.
                 if (isNew)
@@ -613,22 +615,18 @@ public static class ApMirroredRewardDispatcher
         return new Rng(BinaryPrimitives.ReadUInt32LittleEndian(digest));
     }
 
-    private static async Task<List<CardModel>> GenerateCardChoices(
+    private static async Task<List<CardCreationResult>> GenerateCardChoices(
         ApMirroredRewardSpec spec,
         Player player)
     {
         if (player.RunState is not RunState runState)
             throw new InvalidOperationException("AP reward generation requires a native run state.");
-        List<CardModel> allCards = runState._allCards;
-        var preexistingCards = allCards.ToHashSet();
         CardRewardConfiguration configuration = MirroredRewardAdapter.CardConfiguration(spec);
         Rng rng = CreateApRewardRng(spec, player, "card");
         CardCreationOptions options = CreateCardOptions(player, configuration.Recipe.IsRareReward)
             .WithFlags(CardCreationFlags.IsCardReward)
             .WithRngOverride(rng);
 
-        int silkenBefore = player.GetRelic<SilkenTress>()?.IsUsedUp == true ? 1 : 0;
-        int? crucibleBefore = player.GetRelic<SilverCrucible>()?.TimesUsed;
         List<CardCreationResult> cards;
         List<AbstractModel> modifiers;
         bool modified;
@@ -650,59 +648,29 @@ public static class ApMirroredRewardDispatcher
         if (modified)
             await Hook.AfterModifyingCardRewardOptions(player.RunState, modifiers);
 
-        int silkenAfter = player.GetRelic<SilkenTress>()?.IsUsedUp == true ? 1 : 0;
-        int? crucibleAfter = player.GetRelic<SilverCrucible>()?.TimesUsed;
-
-        List<CardModel> normalizedCards = NormalizeCardChoices(spec, player, cards, preexistingCards);
-
-        // Preserve the existing validation boundary after temporary-card cleanup. Validate the
-        // counters captured immediately after the hooks, not values read during restoration.
-        var effects = new List<RewardEffect>();
-        if (silkenBefore != silkenAfter)
-        {
-            effects.Add(MirroredRewardAdapter.ObserveSilkenTress(
-                silkenBefore, silkenAfter, spec.GrantId.ToString()));
-        }
-        if (crucibleBefore.HasValue && crucibleAfter.HasValue
-            && crucibleBefore.Value != crucibleAfter.Value)
-        {
-            effects.Add(MirroredRewardAdapter.ObserveSilverCrucible(
-                crucibleBefore.Value, crucibleAfter.Value, spec.GrantId.ToString()));
-        }
-        spec.AppliedEffects = MirroredRewardAdapter.EncodeEffects(effects);
-        return normalizedCards;
+        return cards;
     }
 
-    private static List<CardModel> RefreshCardChoices(
-        ApMirroredRewardSpec spec, CardReward reward)
+    private static string CaptureGenerationState(Player player)
     {
-        Player player = reward.Player;
-        var preexistingCards = ((RunState)player.RunState)._allCards.ToHashSet();
-        List<CardModel> existing = reward.Cards.ToList();
-        List<CardCreationResult> cards = existing.Select(card => new CardCreationResult(card)).ToList();
-        ApCardRewardLifecycle.RefreshEggUpgrades(player, cards, reward.Options);
-        if (cards.Select(result => result.Card).SequenceEqual(existing))
-            return existing;
-
-        List<CardModel> refreshed = NormalizeCardChoices(spec, player, cards, preexistingCards);
-        LogUtility.Info($"Refreshed AP card reward {spec.GrantId} with Egg upgrades for player {player.NetId}");
-        return refreshed;
+        SerializablePlayer state = player.ToSerializable();
+        // Discovery lists are presentation/progression bookkeeping updated by local UI. Compare
+        // native gameplay state instead, including every relic's saved properties and player RNG.
+        return Serialize(new
+        {
+            state.CharacterId, state.NetId, state.CurrentHp, state.MaxHp, state.MaxEnergy,
+            state.MaxPotionSlotCount, state.BaseOrbSlotCount, state.Gold, state.Deck,
+            state.Relics, state.Potions, state.Rng, state.Odds, state.RelicGrabBag,
+            state.ExtraFields, state.UnlockState,
+        });
     }
 
-    private static List<CardModel> NormalizeCardChoices(
-        ApMirroredRewardSpec spec, Player player, List<CardCreationResult> cards,
-        HashSet<CardModel> preexistingCards)
+    private static List<CardCreationResult> RefreshCardChoices(CardReward reward)
     {
-        var runState = (RunState)player.RunState;
-        // Final cards are the wire contract. Remove temporary originals/clones created by hooks
-        // and reload only the finals, matching the representation used by other replicas.
-        spec.SerializedModels = cards.Select(result => SerializeCard(result.Card)).ToList();
-        foreach (CardModel temporary in runState._allCards
-                     .Where(card => !preexistingCards.Contains(card)).ToList())
-            runState.RemoveCard(temporary);
-        return spec.SerializedModels
-            .Select(serialized => runState.LoadCard(Deserialize<SerializableCard>(serialized), player))
-            .ToList();
+        // Preserve native modifier provenance; each replica already owns its generated cards.
+        List<CardCreationResult> cards = reward._cards.ToList();
+        ApCardRewardLifecycle.RefreshEggUpgrades(reward.Player, cards, reward.Options);
+        return cards;
     }
 
     private static ApNativeCardReward RestoreCardReward(
@@ -772,42 +740,6 @@ public static class ApMirroredRewardDispatcher
             AfterValue = effect.AfterValue,
         })
         .ToList();
-
-    private static async Task ApplyOwnerFinalEffects(
-        IReadOnlyList<MirroredReward> rewards, Player owner)
-    {
-        foreach ((RewardOrigin origin, RewardEffect effect) in MirroredRewardAdapter.OrderedEffects(rewards))
-        {
-            await effect.Match(
-                async () =>
-                {
-                    SilkenTress relic = owner.GetRelic<SilkenTress>()
-                        ?? throw new InvalidOperationException(
-                            "An AP reward expected Silken Tress, but the replica did not have it.");
-                    if (!MirroredRewardAdapter.NeedsApplication(effect, relic.IsUsedUp ? 1 : 0, origin.ReceiptIdentity))
-                        return;
-                    await relic.AfterModifyingCardRewardOptions();
-                    relic.InvokeExecutionFinished();
-                    int after = relic.IsUsedUp ? 1 : 0;
-                    if (after != effect.AfterValue)
-                        throw new InvalidOperationException(
-                            $"Silken Tress AP effect produced {after}, expected {effect.AfterValue}.");
-                },
-                async (_, after) =>
-                {
-                    SilverCrucible relic = owner.GetRelic<SilverCrucible>()
-                        ?? throw new InvalidOperationException(
-                            "An AP reward expected Silver Crucible, but the replica did not have it.");
-                    if (!MirroredRewardAdapter.NeedsApplication(effect, relic.TimesUsed, origin.ReceiptIdentity))
-                        return;
-                    await relic.AfterModifyingCardRewardOptions();
-                    relic.InvokeExecutionFinished();
-                    if (relic.TimesUsed != after)
-                        throw new InvalidOperationException(
-                            $"Silver Crucible AP effect produced {relic.TimesUsed}, expected {after}.");
-                });
-        }
-    }
 
     private static Task HandleMenuSpec(
         RitsuLibSidecarSyncMessageContext<ApRewardMenuSpec> context)
@@ -882,12 +814,16 @@ public static class ApMirroredRewardDispatcher
                 throw new InvalidOperationException("No matching player exists for the AP reward menu.");
             Player owner = runState.GetPlayer(menu.OwnerNetId)
                 ?? throw new InvalidOperationException($"Player {menu.OwnerNetId} is not in the run.");
+            // A quick close/reopen can deliver the next menu while this replica still finishes
+            // the preceding selection. Install its final assignment before validating the new menu.
+            await Patches_APRewardSelectionOrder.WhenIdle(owner);
+            if (RunManager.Instance.DebugOnlyGetState() != runState)
+                throw new OperationCanceledException("Run changed while waiting for the preceding AP reward.");
             IReadOnlyList<MirroredReward> rewards = DecodeRewards(menu);
             if (RunManager.Instance.NetService.Type == NetGameType.Host)
                 ValidateMenuOnHost(menu, rewards);
             await RelicReceiptMultiplayer.WaitForMenuReservations(owner,
                 rewards.Where(r => r.IsRelic).Select(r => r.Origin.ReceivedItemIndex));
-            await ApplyOwnerFinalEffects(rewards, owner);
             RewardsSet set = BuildRewardsSet(menu.Gold, rewards, owner);
             await RunManager.Instance.RewardsSetSynchronizer.BeginRewardsSet(set);
             sidecarCompletion.SetResult();
@@ -1167,6 +1103,8 @@ public static class ApMirroredRewardDispatcher
 
         protected override async Task PrepareCards()
         {
+            if (MaterializationStrategyId != ReplicatedCardStrategyId || AppliedEffects.Count != 0)
+                throw new InvalidOperationException("AP card offer uses a previous generation contract; start a new run.");
             bool hasAssignment = _cards.Count > 0;
             var run = Player.RunState;
             var spec = new ApMirroredRewardSpec
@@ -1189,63 +1127,44 @@ public static class ApMirroredRewardDispatcher
             try
             {
                 var synchronizer = RunManager.Instance.PlayerChoiceSynchronizer;
-                // Every opening (including reopen) transfers the final offer. Both sides reserve
-                // the transfer and first picker choices before any await. Final
-                // cards use MegaCrit's mutable-card codec; metadata carries only receipt identity
-                // and validated persistent effects. No replica runs card-generation hooks.
+                // Reserve verification and picker IDs before generation can await native callbacks.
                 bool multiplayer = MultiplayerSupport.IsRealMultiplayerRun;
-                uint metadataChoice = multiplayer ? synchronizer.ReserveChoiceId(Player) : 0;
-                uint cardsChoice = multiplayer ? synchronizer.ReserveChoiceId(Player) : 0;
+                uint verificationChoice = multiplayer ? synchronizer.ReserveChoiceId(Player) : 0;
                 _firstPickerChoice = multiplayer ? synchronizer.ReserveChoiceId(Player) : null;
-                if (LocalContext.IsMe(Player))
+                string before = CaptureGenerationState(Player);
+                List<CardCreationResult> preparedCards = hasAssignment
+                    ? RefreshCardChoices(this)
+                    : await GenerateCardChoices(spec, Player);
+                if (RunManager.Instance.DebugOnlyGetState() != run)
+                    throw new OperationCanceledException("Run changed during AP card reveal.");
+                spec.CardHasBeenRevealed = true;
+                spec.SerializedModels = preparedCards.Select(result => SerializeCard(result.Card)).ToList();
+                List<int> verification = ApCardRevealCodec.Encode(
+                    spec, before, CaptureGenerationState(Player), firstReveal: !hasAssignment);
+                if (multiplayer)
                 {
-                    List<CardModel> preparedCards = hasAssignment
-                        ? RefreshCardChoices(spec, this)
-                        : await GenerateCardChoices(spec, Player);
-                    if (RunManager.Instance.DebugOnlyGetState() != run)
-                        throw new OperationCanceledException("Run changed during AP card reveal.");
-                    spec.CardHasBeenRevealed = true;
-                    spec.SerializedModels = preparedCards.Select(SerializeCard).ToList();
-                    if (multiplayer)
+                    if (LocalContext.IsMe(Player))
                     {
-                        synchronizer.SyncLocalChoice(Player, metadataChoice,
-                            PlayerChoiceResult.FromIndexes(ApCardRevealCodec.Encode(spec)));
-                        synchronizer.SyncLocalChoice(Player, cardsChoice,
-                            PlayerChoiceResult.FromMutableCards(preparedCards));
+                        synchronizer.SyncLocalChoice(Player, verificationChoice,
+                            PlayerChoiceResult.FromIndexes(verification));
                     }
-                    _cards.Clear();
-                    _cards.AddRange(preparedCards.Select(card => new CardCreationResult(card)));
-                }
-                else
-                {
-                    PlayerChoiceResult metadata = await synchronizer.WaitForRemoteChoice(Player, metadataChoice)
-                        .WaitAsync(TimeSpan.FromSeconds(15));
-                    ApCardRevealCodec.DecodeInto(spec, metadata.AsIndexes());
-                    PlayerChoiceResult cards = await synchronizer.WaitForRemoteChoice(Player, cardsChoice)
-                        .WaitAsync(TimeSpan.FromSeconds(15));
-                    if (RunManager.Instance.DebugOnlyGetState() != run)
-                        throw new OperationCanceledException("Run changed during AP card reveal.");
-                    List<CardModel> received = cards.AsMutableCards().ToList();
-                    if (received.Any(card => card.Owner != Player))
-                        throw new InvalidOperationException("AP card reveal had a different card owner.");
-                    spec.SerializedModels = received.Select(SerializeCard).ToList();
-                    MirroredReward decoded = MirroredRewardAdapter.Decode(spec, AncientRelicPool.ChoiceCount);
-                    // Generation callbacks only run on first reveal. Refreshes carry the same
-                    // recorded effects for saves, but must not spend any relic uses again.
-                    if (!hasAssignment)
-                        await ApplyOwnerFinalEffects([decoded], Player);
-                    if (!spec.SerializedModels.SequenceEqual(Cards.Select(SerializeCard), StringComparer.Ordinal))
+                    else
                     {
-                        _cards.Clear();
-                        _cards.AddRange(spec.SerializedModels.Select(json => new CardCreationResult(
-                            Player.RunState.LoadCard(Deserialize<SerializableCard>(json), Player))));
+                        PlayerChoiceResult ownerVerification = await synchronizer
+                            .WaitForRemoteChoice(Player, verificationChoice)
+                            .WaitAsync(TimeSpan.FromSeconds(15));
+                        if (RunManager.Instance.DebugOnlyGetState() != run)
+                            throw new OperationCanceledException("Run changed during AP card verification.");
+                        ApCardRevealCodec.Verify(verification, ownerVerification.AsIndexes(), spec.GrantId.ToString());
                     }
                 }
+                _cards.Clear();
+                _cards.AddRange(preparedCards);
 
                 Configure(_origin, MirroredRewardAdapter.CardConfiguration(spec));
                 PublishRevealedAssignment();
-                if (!hasAssignment)
-                    LogUtility.Info($"Revealed AP card reward {_origin.ReceiptIdentity} for player {Player.NetId}");
+                LogUtility.Info($"Prepared replicated AP card offer {_origin.ReceiptIdentity} for player {Player.NetId} "
+                    + $"(firstReveal={!hasAssignment}, localOwner={LocalContext.IsMe(Player)})");
             }
             catch (Exception ex)
             {

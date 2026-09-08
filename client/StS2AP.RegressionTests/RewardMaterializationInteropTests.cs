@@ -18,7 +18,8 @@ public sealed class RewardMaterializationInteropTests
 
         string result = policy.Match(
             () => "owner",
-            () => throw new InvalidOperationException("Unexpected restore handler."));
+            () => throw new InvalidOperationException("Unexpected restore handler."),
+            () => throw new InvalidOperationException("Unexpected replicated handler."));
 
         Assert.Equal("owner", result);
     }

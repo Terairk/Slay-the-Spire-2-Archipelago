@@ -27,7 +27,7 @@ public sealed class MirroredRewardAdapterTests
     public void ExistingWireJsonRoundTripsWithoutDomainSerialization()
     {
         const string json = """
-            {"SchemaVersion":7,"ApSlotId":7,"ReceivedItemIndex":42,"OwnerNetId":123,
+            {"SchemaVersion":8,"ApSlotId":7,"ReceivedItemIndex":42,"OwnerNetId":123,
              "Kind":0,"ItemName":"cards","SenderName":"sender","FoundLocation":"location",
              "IsRareCardReward":false,"CardRewardActIndex":1,"CardCanReroll":true,
              "CardHasBeenRevealed":true,"MaterializationStrategyId":"ap_rng_owner_final_v1",
@@ -96,7 +96,7 @@ public sealed class MirroredRewardAdapterTests
         Assert.Equal(saved.SerializedCards, card.Models);
         Assert.Equal(strategy == "" ? "ap_rng_owner_final_v1" : strategy, card.Configuration.Policy.StrategyId);
         Assert.Equal(strategy == "replica_native_v1" ? "restore" : "owner", card.Configuration.Policy.Match(
-            () => "owner", () => "restore"));
+            () => "owner", () => "restore", () => "replicated"));
     }
 
     [Fact]
@@ -228,7 +228,7 @@ public sealed class MirroredRewardAdapterTests
     {
         // Old fingerprint fields may still arrive, but must never enable generation or silent restoration.
         var spec = JsonSerializer.Deserialize<ApMirroredRewardSpec>("""
-            {"SchemaVersion":7,"ApSlotId":7,"ReceivedItemIndex":42,
+            {"SchemaVersion":8,"ApSlotId":7,"ReceivedItemIndex":42,
              "MaterializationStrategyId":"replica_native_v1","RequiresNativeMaterialization":true,
              "StateBeforeMaterialization":"pre","StateAfterMaterialization":"post",
              "SerializedModels":["invalid JSON"]}

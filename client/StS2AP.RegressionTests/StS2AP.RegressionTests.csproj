@@ -50,6 +50,7 @@
     <Compile Include="..\StS2AP\Utils\Actions\NonCombatActionAdmissionState.cs" Link="Utils\Actions\NonCombatActionAdmissionState.cs" />
     <Compile Include="..\StS2AP\Utils\DeathLink\DeathLinkEventLedger.cs" Link="Utils\DeathLink\DeathLinkEventLedger.cs" />
     <Compile Include="..\StS2AP\Utils\Rewards\UniversalBuffGold.cs" Link="Utils\Rewards\UniversalBuffGold.cs" />
+    <Compile Include="..\StS2AP\Utils\Rewards\ApRewardSelectionQueue.cs" Link="Utils\Rewards\ApRewardSelectionQueue.cs" />
     <Compile Include="..\StS2AP\Utils\Rewards\ApRewardTravelGuard.cs" Link="Utils\Rewards\ApRewardTravelGuard.cs" />
     <Compile Include="..\StS2AP\Utils\RestSitePolicy.cs" Link="Utils\RestSitePolicy.cs" />
     <Compile Include="..\StS2AP\Persistence\CampaignSaveFiles.cs" Link="Persistence\CampaignSaveFiles.cs" />

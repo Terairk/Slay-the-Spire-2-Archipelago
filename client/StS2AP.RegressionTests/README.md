@@ -24,7 +24,8 @@ or files from the locally excluded admission harness. Each case is discoverable 
 | Participant interop | Existing wire kinds, missing/null inputs, and validated identities across C# mutation and fresh readiness checks; F# tests cover readiness and resume decisions |
 | Replica construction | Initialization, local counters, compensation, restore |
 | C# interop | Complete mirrored-reward decoding, actual wire/save DTO fixtures, immutable snapshots, save/reveal/effect preservation, and exception conversion |
-| Card offers | Deferred recipe validation, first-reveal metadata, refreshed model payloads through save/progress deltas, preservation of generation effects and reroll state, rejection of refreshes that alter that state, and rejection of older menu protocols |
+| Card offers | Deferred recipes, independent-offer digests, receipt/card/player-state mismatch rejection, canonical JSON object order versus significant array order, refreshed models through save/progress deltas, and rejection of older protocols |
+| AP selection order | Delayed relic completion before reveal, invocation order rather than receipt order, repeated skips, per-player independence, failure blocking, and reopen waiting |
 | Progressive starters | Shared singleplayer/multiplayer tier transitions, initialization-only removal, recipe identity, strict state/payload decoding, applied-state ordering, and save round trips |
 
 The rest-site hook calls the same `RestSitePolicy` compiled into these tests. Tests supply
@@ -35,7 +36,8 @@ The persisted `ApRewardEffectSpec` is also linked from production, not replaced 
 
 Card-offer tests use opaque serialized card fixtures. They exercise the actual codec, domain
 validation, and persistence helpers; they do not execute MegaCrit's card factory, Egg hooks,
-native picker, or live choice transport. Those require a game-backed integration harness.
+native picker, or live choice transport. Queue tests run the production async queue, but not its
+Harmony interception or the native message dispatcher. Those require a game-backed integration harness.
 
 The excluded `StS2AP.AdmissionTests` console harness is not a dependency and remains local.
 Its scheduler tests and Godot/game stubs are intentionally not migrated. F# domain rules and
@@ -80,11 +82,14 @@ variant. Unit tests establish the behavior of our policies, not native callbacks
 | `!collect`, then enter another rest site with two AP slots | Collected checks stay hidden on all replicas; another slot's checks remain available |
 | Claim a relic, reopen rewards, reconnect, save/continue | One grant at the established boundary; stable assignment and no repeated bank spending |
 | Skip an AP card or try a potion with no space, then reopen rewards | Receipt remains claimable with its existing assignment |
-| Open a backlog with Crucible/Tress, then reveal rewards in a different order | Opening the list spends no uses; each first reveal applies available effects once in reveal order |
+| Open a backlog with Tress, then reveal 81 before 80 | Opening the list spends no uses; both replicas generate in reveal order and Tress is consumed on the first offer |
 | Reveal, skip, obtain Toxic/Molten/Frozen Egg, then reopen (also after save/continue) | Eligible unupgraded skills/attacks/powers appear upgraded on both replicas; identities, ordering, enchantments, generation counters, and reroll availability survive |
 | Reopen the upgraded offer repeatedly, then claim it | No additional generation effects; the deck receives the displayed upgrade and the receipt is consumed once |
 | Obtain Prismatic Gem/Dingy Rug before first revealing a pending reward | The first roll uses the currently modified card pool |
-| Open/reopen card rewards using keyboard/controller with a delayed peer | Both replicas install the final offer before interpreting the native picker's choice; input/focus and skip work normally |
+| Obtain a relic, immediately reveal, skip and reopen with a delayed peer | Per-player AP selection order completes the grant before generation; the next menu waits for the preceding selection |
+| Open/reopen card rewards using keyboard/controller with a delayed peer | Each replica generates locally and verifies the owner digest before interpreting its picker choice; input/focus and skip work normally |
+| Intentionally introduce a card or saved relic-state mismatch on a replica | Digest disagreement rejects that replica's picker operation and invalidates AP claims; no correction or reroll is attempted |
+| Two AP players with different modded pools reveal concurrently | Offers use the correct player's settings; each replica agrees with its owner, with no cross-player queue blocking |
 | Consume AP rewards, continue the save, then start a fresh run | Continue preserves consumption while history is rebuilt; the fresh run resets consumption and retains known receipts |
 | Reconnect to the same AP destination; try a different room/team/slot when continuing | The same destination retains deferred receipts/outbox ownership; mismatched saved participation is rejected |
 | Own-slot lobby with delayed preparation, then prepared empty history | Ready/launch remains blocked with `ap-history-incomplete` until preparation; zero receipts do not block a prepared participant |
@@ -98,5 +103,12 @@ Useful existing logs include `Applied AP rest-site options for player`,
 `Leaving native rest-site options unchanged`, and `Published ... campfire check(s) from an AP
 location update`. Check both replicas and actual grants/saves; logs alone are not runtime proof.
 Keep generated saves, diagnostic logs, installed binaries, and decompiled references local.
-For card offers, `Revealed AP card reward` should occur only on initial generation;
-`Refreshed AP card reward ... with Egg upgrades` should occur only when an existing offer changes.
+For card offers, `Prepared replicated AP card offer` reports `firstReveal` and `localOwner`.
+`Replicated AP card offer ... disagreed with the owner` is a terminal mismatch, not a retry.
+The owner publishes a digest; it does not await an acknowledgment from every replica. Each
+replica verifies before its own native picker execution. The digest covers offered cards and
+serialized native player gameplay state before/after, excluding local discovery lists. It is
+not a proof of arbitrary mod state or shared run-wide effects. Test with matching game/mod builds.
+The replicated experiment uses menu schema 8 and requires a new run; old execution protocols
+are not migrated. Crucible remains excluded by MegaCrit in multiplayer; its native behavior can
+only be checked in single-player or an explicitly forced diagnostic scenario.

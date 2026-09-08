@@ -212,8 +212,10 @@ type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
         // Native hooks can change option count; do not hardcode three cards.
         let deferred = input.Models.Length = 0
         if deferred && not (allowDeferred && not input.Revealed && not input.CanReroll
-                            && input.Effects.Length = 0 && input.Strategy = "ap_rng_owner_final_v1") then
+                            && input.Effects.Length = 0 && input.Strategy = "ap_rng_replicated_card_v1") then
             RewardDecode.invalid "had invalid deferred card choices."
+        elif not deferred && input.Strategy = "ap_rng_replicated_card_v1" && not input.Revealed then
+            RewardDecode.invalid "had unrevealed replicated final cards."
         else
             CardRewardConfiguration.Decode(input.IsRare, input.ActIndex, input.Revealed, input.CanReroll,
                                            input.Strategy, input.Effects)
@@ -239,7 +241,9 @@ type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
                 match input.Kind with
                 | RewardInputKind.Card -> MirroredReward.DecodeCardData(input, true) |> Result.map Card
                 | RewardInputKind.Potion ->
-                    if input.Models.Length <> 1 || input.Effects.Length > 0 then RewardDecode.invalid "had an invalid potion assignment."
+                    if input.Models.Length <> 1 || input.Effects.Length > 0
+                       || input.Strategy = "ap_rng_replicated_card_v1" then
+                        RewardDecode.invalid "had an invalid potion assignment."
                     else
                         RewardMaterialization.Decode(input.Strategy)
                         |> Result.mapError RewardDecodeError.Materialization

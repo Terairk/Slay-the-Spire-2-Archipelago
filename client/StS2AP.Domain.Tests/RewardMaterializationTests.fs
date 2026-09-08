@@ -12,7 +12,7 @@ module RewardMaterializationTests =
         | Ok policy -> policy
         | Error error -> failwithf "Expected valid assignment provenance, got %A" error
 
-    let private validInputs = [| "ap_rng_owner_final_v1"; "replica_native_v1" |]
+    let private validInputs = [| "ap_rng_owner_final_v1"; "replica_native_v1"; "ap_rng_replicated_card_v1" |]
 
     [<Fact>]
     let ``owner final and restored native retain distinct provenance`` () =
@@ -37,6 +37,7 @@ module RewardMaterializationTests =
     [<Theory>]
     [<InlineData(0)>]
     [<InlineData(1)>]
+    [<InlineData(2)>]
     let ``provenance eliminator invokes only its selected delegate`` (selected: int) =
         let policy = decode validInputs[selected]
         let calls = ResizeArray<int>()
@@ -44,7 +45,7 @@ module RewardMaterializationTests =
             calls.Add(index)
             if index <> selected then failwith "An unselected branch was evaluated"
             index)
-        let actual = policy.Match(handler 0, handler 1)
+        let actual = policy.Match(handler 0, handler 1, handler 2)
         Assert.Equal(selected, actual)
         Assert.Equal<int list>([ selected ], List.ofSeq calls)
 
@@ -67,7 +68,7 @@ module RewardMaterializationTests =
         | _ -> false
 
     [<Property(MaxTest = 500)>]
-    let ``both provenances remain distinct after round trips`` (NonNegativeInt start) =
+    let ``all provenances remain distinct after round trips`` (NonNegativeInt start) =
         let policies =
             [ for offset in 0 .. validInputs.Length - 1 do
                   let policy = decode validInputs[(start % validInputs.Length + offset) % validInputs.Length]

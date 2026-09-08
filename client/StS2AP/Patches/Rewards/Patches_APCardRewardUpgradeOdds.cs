@@ -1,6 +1,5 @@
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.Entities.CardRewardAlternatives;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -8,7 +7,6 @@ using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Enchantments;
-using MegaCrit.Sts2.Core.Models.Modifiers;
 using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rewards;
@@ -18,8 +16,8 @@ using StS2AP.Utils;
 namespace StS2AP.Patches;
 
 /// <summary>
-/// Routes AP card rewards through receipt-local RNG while retaining the reviewed beta card-pool,
-/// upgrade, final-modifier, and alternative behavior.
+/// Routes replicated AP card generation through receipt-local RNG while keeping native
+/// card-pool, upgrade, modifier, and alternative hooks on every machine.
 /// </summary>
 public static class Patches_APCardRewardUpgradeOdds
 {
@@ -32,25 +30,6 @@ public static class Patches_APCardRewardUpgradeOdds
     [ThreadStatic]
     private static Rng? s_apRewardRng;
 
-    private static readonly HashSet<Type> SupportedApHookTypes =
-    [
-        typeof(BigGameHunter),
-        typeof(CharacterCards),
-        typeof(DingyRug),
-        typeof(FresnelLens),
-        typeof(FrozenEgg),
-        typeof(Glitter),
-        typeof(LastingCandy),
-        typeof(LavaLamp),
-        typeof(MoltenEgg),
-        typeof(PaelsWing),
-        typeof(PrismaticGem),
-        typeof(SilkenTress),
-        typeof(SilverCrucible),
-        typeof(ToxicEgg),
-        typeof(WingCharm),
-    ];
-
     private sealed class ApRewardRngScope(Rng? previous) : IDisposable
     {
         public void Dispose() => s_apRewardRng = previous;
@@ -62,7 +41,7 @@ public static class Patches_APCardRewardUpgradeOdds
     }
 
     /// <summary>
-    /// Routes all reviewed native card-reward randomness through one receipt-specific AP RNG.
+    /// Provides the receipt-specific RNG for native generation and the scoped RNG patches.
     /// The scope is thread-local because native card generation is synchronous on the Godot thread.
     /// </summary>
     internal static IDisposable EnterApRewardRng(Rng rng)
@@ -114,7 +93,7 @@ public static class Patches_APCardRewardUpgradeOdds
     /// <summary>
     /// CardFactory normally launches post-generation modifier callbacks without awaiting them.
     /// AP materialization suppresses that one final hook call and invokes it explicitly after the
-    /// native base roll, so persistent reviewed callbacks can be captured before publication.
+    /// native base roll, so native callbacks finish before the offer is verified and published.
     /// </summary>
     [HarmonyPatch(typeof(Hook), nameof(Hook.TryModifyCardRewardOptions))]
     private static class DeferReplicaMaterializationOptionHooks
@@ -135,77 +114,19 @@ public static class Patches_APCardRewardUpgradeOdds
                 return false;
             }
 
-            if (s_apRewardRng == null)
-                return true;
-
-            modifiers = new List<AbstractModel>();
-            bool modified = false;
-            foreach (AbstractModel model in runState.IterateHookListeners(null))
-            {
-                if (!ShouldRunHook(model))
-                {
-                    continue;
-                }
-                bool applied = model.TryModifyCardRewardOptions(
-                    player,
-                    cardRewardOptions,
-                    creationOptions
-                );
-                modified |= applied;
-                if (applied)
-                    modifiers.Add(model);
-            }
-            foreach (AbstractModel model in runState.IterateHookListeners(null))
-            {
-                if (!ShouldRunHook(model))
-                {
-                    continue;
-                }
-                bool applied = model.TryModifyCardRewardOptionsLate(
-                    player,
-                    cardRewardOptions,
-                    creationOptions
-                );
-                modified |= applied;
-                if (applied)
-                    modifiers.Add(model);
-            }
-            __result = modified;
-            return false;
+            return true;
         }
     }
 
-    /// <summary>Runs only reviewed beta card-pool hooks for owner-final AP generation.</summary>
+    // Keep the receipt RNG attached after native pool hooks, including nested generation.
     [HarmonyPatch(typeof(Hook), nameof(Hook.ModifyCardRewardCreationOptions))]
-    private static class FilterApCardCreationOptionHooks
+    private static class PreserveApRewardRng
     {
-        [HarmonyPrefix]
-        private static bool Prefix(
-            IRunState runState,
-            Player player,
-            CardCreationOptions options,
-            ref CardCreationOptions __result)
+        [HarmonyPostfix]
+        private static void Postfix(ref CardCreationOptions __result)
         {
-            if (s_apRewardRng == null)
-                return true;
-
-            CardCreationOptions result = options;
-            foreach (AbstractModel model in runState.IterateHookListeners(null))
-            {
-                if (ShouldRunHook(model))
-                {
-                    result = model.ModifyCardRewardCreationOptions(player, result);
-                }
-            }
-            foreach (AbstractModel model in runState.IterateHookListeners(null))
-            {
-                if (ShouldRunHook(model))
-                {
-                    result = model.ModifyCardRewardCreationOptionsLate(player, result);
-                }
-            }
-            __result = result.WithRngOverride(s_apRewardRng);
-            return false;
+            if (s_apRewardRng != null)
+                __result = __result.WithRngOverride(s_apRewardRng);
         }
     }
 
@@ -338,20 +259,11 @@ public static class Patches_APCardRewardUpgradeOdds
     {
         [HarmonyPrefix]
         private static bool Prefix(
-            Player player,
             CardModel card,
-            ref decimal originalOdds,
-            ref decimal __result)
+            ref decimal originalOdds)
         {
             if (!s_rewardActIndex.HasValue || card.Rarity == CardRarity.Rare)
-            {
-                if (s_apRewardRng != null)
-                {
-                    __result = originalOdds;
-                    return false;
-                }
                 return true;
-            }
 
             bool scarcity = AscensionMultiplayer.TryHasLevel(
                 AscensionLevel.Scarcity,
@@ -363,47 +275,8 @@ public static class Patches_APCardRewardUpgradeOdds
                 ? 0.125m
                 : 0.25m;
             originalOdds = s_rewardActIndex.Value * scaling;
-            if (s_apRewardRng != null)
-            {
-                // No reviewed beta model overrides this hook. Skipping the global dispatcher keeps
-                // unknown/modded upgrade-odds hooks outside the supported AP generation contract.
-                __result = originalOdds;
-                return false;
-            }
             return true;
         }
     }
 
-    /// <summary>Pael's Wing remains the only reviewed AP card-reward alternative.</summary>
-    [HarmonyPatch(typeof(Hook), nameof(Hook.ModifyCardRewardAlternatives))]
-    private static class FilterApCardRewardAlternatives
-    {
-        [HarmonyPrefix]
-        private static bool Prefix(
-            IRunState runState,
-            Player player,
-            CardReward cardReward,
-            List<CardRewardAlternative> alternatives,
-            ref IEnumerable<AbstractModel> __result)
-        {
-            if (cardReward is not ApMirroredRewardDispatcher.ApNativeCardReward)
-                return true;
-
-            var modifiers = new List<AbstractModel>();
-            foreach (AbstractModel model in runState.IterateHookListeners(null))
-            {
-                if (!ShouldRunHook(model))
-                {
-                    continue;
-                }
-                if (model.TryModifyCardRewardAlternatives(player, cardReward, alternatives))
-                    modifiers.Add(model);
-            }
-            __result = modifiers;
-            return false;
-        }
-    }
-
-    private static bool ShouldRunHook(AbstractModel model) =>
-        SupportedApHookTypes.Contains(model.GetType());
 }

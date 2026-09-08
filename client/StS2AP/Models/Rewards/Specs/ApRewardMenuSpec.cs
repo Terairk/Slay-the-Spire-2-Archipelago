@@ -6,8 +6,8 @@ namespace StS2AP.Models;
 /// </summary>
 public sealed class ApRewardMenuSpec
 {
-    // Every picker opening now transfers its final offer, including Egg refreshes on reopen.
-    public const int CurrentSchemaVersion = 7;
+    // Every replica generates card offers; reveal messages verify digests instead of transferring cards.
+    public const int CurrentSchemaVersion = 8;
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public Guid RunId { get; set; }
     public Guid MenuId { get; set; } = Guid.NewGuid();
