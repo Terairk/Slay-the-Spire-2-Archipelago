@@ -840,7 +840,7 @@ namespace StS2AP.Models
             var cardModels = new Dictionary<int, List<CardModel>>();
             foreach(var kv in saveData.CardAssignmentModels)
             {
-                var models = kv.Value.Select(cs => player.RunState.CreateCard(CardModel.FromSerializable(cs).CanonicalInstance, player)).ToList();
+                var models = kv.Value.Select(cs => player.RunState.LoadCard(cs, player)).ToList();
                 cardModels[kv.Key] = models;
             }
 
@@ -857,6 +857,7 @@ namespace StS2AP.Models
                 if(cardModels.TryGetValue(kv.Key, out var cards))
                 {
                     var reward = (CardReward) CardReward.FromSerializable(kv.Value, player);
+                    ApCardRewardLifecycle.Freeze(reward);
                     cardRewards[kv.Key] = reward;
                     List<CardCreationResult> cardCreations = (List<CardCreationResult>) cardsInfo.GetValue(reward);
                     foreach(var card in cards)

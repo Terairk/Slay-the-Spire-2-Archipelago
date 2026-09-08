@@ -156,6 +156,7 @@ namespace StS2AP.Utils
         {
             if (ArchipelagoClient.Progress.CardAssignments.TryGetValue(index, out var existing))
             {
+                ApCardRewardLifecycle.Freeze(existing);
                 LogUtility.Info($"Existing rewards: {string.Join(",", existing.Cards.Select(c => c.Title))}");
                 return existing;
             }
@@ -171,6 +172,7 @@ namespace StS2AP.Utils
                 );
 
                 var reward = new CardReward(options, 3, player);
+                ApCardRewardLifecycle.Freeze(reward);
                 var rewardActIndex = rare ? null : GetCardRewardActIndex(index, player);
                 if (rewardActIndex.HasValue)
                 {
