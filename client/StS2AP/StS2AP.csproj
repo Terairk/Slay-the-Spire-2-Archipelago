@@ -27,7 +27,7 @@
     <ModAuthor Condition="'$(ModAuthor)' == ''">Kirbyfanner, Platano Bailando, Lyxn, MartyredG, Terairk</ModAuthor>
 
     <AssemblyName>$(ModName)</AssemblyName>
-    <Version>1.0.1</Version>
+    <Version>1.1.1</Version>
 
     <!-- Build/deploy paths on the Windows build machine. -->
     <ModsOutputDir>$(STS2GamePath)\mods\$(ModName)</ModsOutputDir>
@@ -71,14 +71,13 @@
       LogicalName="StS2AP.Spire2Archipelago.json"
     />
 
-    <!-- Bonus relic pool data ships next to the mod DLL so it can be updated by editing
-         the shared JSON and rebuilding, without recompiling code. -->
+    <!-- Keep non-manifest JSON in data/ so the game does not scan it as a mod manifest. -->
     <None Include="..\..\shared\relic_custom_pools.json">
-      <Link>relic_custom_pools.json</Link>
+      <Link>data\relic_custom_pools.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\..\shared\bonus_relic_blacklist.json">
-      <Link>bonus_relic_blacklist.json</Link>
+      <Link>data\bonus_relic_blacklist.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
@@ -245,15 +244,19 @@ dotnet/embed_build_outputs=false
     <Copy SourceFiles="@(DependencyDlls)" DestinationFolder="$(ModsOutputDir)" />
     <Copy SourceFiles="Archipelago.json" DestinationFiles="$(ModsOutputDir)\Archipelago.json" />
 
-    <!-- Deploy the bonus relic pool data alongside the DLL so the running mod can read it. -->
+    <!-- Deploy the catalogs in the same data/ layout used by the build output and runtime. -->
+    <MakeDir Directories="$(ModsOutputDir)\data" />
     <Copy
-      SourceFiles="..\..\shared\relic_custom_pools.json"
-      DestinationFiles="$(ModsOutputDir)\relic_custom_pools.json"
+      SourceFiles="$(TargetDir)data\relic_custom_pools.json"
+      DestinationFiles="$(ModsOutputDir)\data\relic_custom_pools.json"
     />
     <Copy
-      SourceFiles="..\..\shared\bonus_relic_blacklist.json"
-      DestinationFiles="$(ModsOutputDir)\bonus_relic_blacklist.json"
+      SourceFiles="$(TargetDir)data\bonus_relic_blacklist.json"
+      DestinationFiles="$(ModsOutputDir)\data\bonus_relic_blacklist.json"
     />
+
+    <!-- Remove only the obsolete generated root copies after the new copies are deployed. -->
+    <Delete Files="$(TargetDir)relic_custom_pools.json;$(TargetDir)bonus_relic_blacklist.json;$(ModsOutputDir)\relic_custom_pools.json;$(ModsOutputDir)\bonus_relic_blacklist.json" />
 
     <!-- Copy the APWorld if it has already been built. -->
     <PropertyGroup>
