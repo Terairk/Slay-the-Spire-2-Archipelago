@@ -8,16 +8,17 @@ using StS2AP.Utils;
 namespace StS2AP.Data
 {
     /// <summary>
-    /// Loads the bonus relic pool data that ships as loose JSON in the mod's data subdirectory. These files
-    /// (custom pool whitelists and the blacklist) are read from that directory at first
-    /// use, so editing them and rebuilding updates the mod without recompiling code. "Pool" here
+    /// Loads developer-maintained bonus relic JSON shipped as .data files in the mod's data subdirectory
+    /// to avoid the game's recursive JSON manifest discovery. Builds copy the shared JSON sources
+    /// without requiring C# recompilation. Each catalog is cached on first use; installed-file edits
+    /// require a game restart once loaded. "Pool" here
     /// means a selectable bonus source (a rarity bucket or a custom whitelist), never the game's
     /// character/shared RelicPoolModel.
     /// </summary>
     public static class BonusRelicCatalog
     {
-        private const string CustomPoolsFileName = "relic_custom_pools.json";
-        private const string BlacklistFileName = "bonus_relic_blacklist.json";
+        private const string CustomPoolsFileName = "relic_custom_pools.data";
+        private const string BlacklistFileName = "bonus_relic_blacklist.data";
 
         private static readonly Lazy<IReadOnlyDictionary<string, IReadOnlyList<string>>> CustomPools =
             new(LoadCustomPools);

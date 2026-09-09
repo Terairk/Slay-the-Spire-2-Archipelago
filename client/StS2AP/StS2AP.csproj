@@ -71,16 +71,21 @@
       LogicalName="StS2AP.Spire2Archipelago.json"
     />
 
-    <!-- Keep non-manifest JSON in data/ so the game does not scan it as a mod manifest. -->
+    <!-- Keep shared sources as JSON; deploy .data files to avoid recursive mod manifest discovery. -->
     <None Include="..\..\shared\relic_custom_pools.json">
-      <Link>data\relic_custom_pools.json</Link>
+      <Link>data\relic_custom_pools.data</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\..\shared\bonus_relic_blacklist.json">
-      <Link>data\bonus_relic_blacklist.json</Link>
+      <Link>data\bonus_relic_blacklist.data</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <!-- Clean stale catalog JSON even when only building output for packaging. -->
+  <Target Name="RemoveObsoleteBonusCatalogOutput" AfterTargets="CopyFilesToOutputDirectory">
+    <Delete Files="$(TargetDir)relic_custom_pools.json;$(TargetDir)bonus_relic_blacklist.json;$(TargetDir)data\relic_custom_pools.json;$(TargetDir)data\bonus_relic_blacklist.json" />
+  </Target>
 
   <!-- Compile-only checks must embed the manifests too, since a later incremental
        build can reuse their assembly for deployment. -->
@@ -251,16 +256,16 @@ dotnet/embed_build_outputs=false
     <!-- Deploy the catalogs in the same data/ layout used by the build output and runtime. -->
     <MakeDir Directories="$(ModsOutputDir)\data" />
     <Copy
-      SourceFiles="$(TargetDir)data\relic_custom_pools.json"
-      DestinationFiles="$(ModsOutputDir)\data\relic_custom_pools.json"
+      SourceFiles="$(TargetDir)data\relic_custom_pools.data"
+      DestinationFiles="$(ModsOutputDir)\data\relic_custom_pools.data"
     />
     <Copy
-      SourceFiles="$(TargetDir)data\bonus_relic_blacklist.json"
-      DestinationFiles="$(ModsOutputDir)\data\bonus_relic_blacklist.json"
+      SourceFiles="$(TargetDir)data\bonus_relic_blacklist.data"
+      DestinationFiles="$(ModsOutputDir)\data\bonus_relic_blacklist.data"
     />
 
-    <!-- Remove only the obsolete generated root copies after the new copies are deployed. -->
-    <Delete Files="$(TargetDir)relic_custom_pools.json;$(TargetDir)bonus_relic_blacklist.json;$(ModsOutputDir)\relic_custom_pools.json;$(ModsOutputDir)\bonus_relic_blacklist.json" />
+    <!-- Remove only obsolete catalog copies, including the former data/ JSON layout. -->
+    <Delete Files="$(ModsOutputDir)\relic_custom_pools.json;$(ModsOutputDir)\bonus_relic_blacklist.json;$(ModsOutputDir)\data\relic_custom_pools.json;$(ModsOutputDir)\data\bonus_relic_blacklist.json" />
 
     <!-- Copy the APWorld if it has already been built. -->
     <PropertyGroup>
