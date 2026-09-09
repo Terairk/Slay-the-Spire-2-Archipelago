@@ -15,7 +15,7 @@ internal static class Patches_SingleplayerSaveIsolation
         [HarmonyPrefix]
         private static bool Prefix(bool isMultiplayer, ref Task __result)
         {
-            if (isMultiplayer || !ApSingleplayerSaves.OwnsRun) return true;
+            if (isMultiplayer || !ApSingleplayerSaves.IsHandlingSingleplayerRun) return true;
             __result = Task.CompletedTask;
             return false;
         }
@@ -25,7 +25,7 @@ internal static class Patches_SingleplayerSaveIsolation
     private static class NativeDelete
     {
         [HarmonyPrefix]
-        private static bool Prefix() => !ApSingleplayerSaves.OwnsRun;
+        private static bool Prefix() => !ApSingleplayerSaves.IsHandlingSingleplayerRun;
     }
 
     [HarmonyPatch(typeof(RunManager), nameof(RunManager.CleanUp))]

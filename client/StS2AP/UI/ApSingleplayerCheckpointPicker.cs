@@ -107,7 +107,7 @@ public sealed partial class ApSingleplayerCheckpointPicker : Control, IScreenCon
             NotificationUtility.ShowRawText($"Could not load checkpoint: {ex.Message}. Saved checkpoints were preserved.");
             // Setup may have partially initialized the native run. Return through its cleanup
             // with AP ownership still active, instead of allowing a second setup on stale state.
-            if (ApSingleplayerSaves.OwnsRun)
+            if (ApSingleplayerSaves.IsHandlingSingleplayerRun)
                 if (MegaCrit.Sts2.Core.Nodes.NGame.Instance is { } game)
                     await game.ReturnToMainMenuAfterRun();
         }

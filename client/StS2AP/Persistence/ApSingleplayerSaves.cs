@@ -11,7 +11,7 @@ internal static class ApSingleplayerSaves
     private static SingleplayerCheckpointBank.BankKey? _selected;
     private static SingleplayerCheckpointBank? _bank;
     // Set before native setup, whose reload counter writes through the native save manager.
-    internal static bool OwnsRun => _selected != null;
+    internal static bool IsHandlingSingleplayerRun => _selected != null;
 
     internal static SingleplayerCheckpointBank Bank => new(ProjectSettings.GlobalizePath(
         $"user://ArchipelagoSingleplayerCheckpoints/profile-{SaveManager.Instance.CurrentProfileId}"));

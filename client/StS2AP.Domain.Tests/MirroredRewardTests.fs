@@ -8,7 +8,7 @@ open StS2AP.Domain
 open global.Xunit
 
 module MirroredRewardTests =
-    let private input kind =
+    let private input (kind: RewardInputKind) : MirroredRewardInput =
         { Kind = kind
           Origin = RewardOrigin(4, 17, 42UL, "Reward", "Sender", "Location")
           IsRare = false; ActIndex = Nullable 1; Revealed = false; CanReroll = false
@@ -16,29 +16,40 @@ module MirroredRewardTests =
           Effects = [||]; Models = [| "model" |]; UnavailableReason = "" }
 
     let private require = function Ok value -> value | Error error -> failwithf "%A" error
-    let private decode value = MirroredReward.Decode(value, 3) |> require
-    let private card (reward: MirroredReward) =
-        reward.Match(Func<_, _>(id), Func<_, _>(fun _ -> failwith "potion"),
-                     Func<_, _>(fun _ -> failwith "relic"), Func<_, _>(fun _ -> failwith "ancient"), Func<_, _>(fun _ -> failwith "unavailable"))
+    let private decode (value: MirroredRewardInput) : MirroredReward = MirroredReward.Decode(value, 3) |> require
+    let private card (reward: MirroredReward) : CardRewardData =
+        reward.Match(
+            Func<CardRewardData, CardRewardData>(id),
+            Func<PotionRewardData, CardRewardData>(fun _ -> failwith "potion"),
+            Func<string, CardRewardData>(fun _ -> failwith "relic"),
+            Func<IReadOnlyList<string>, CardRewardData>(fun _ -> failwith "ancient"),
+            Func<string, CardRewardData>(fun _ -> failwith "unavailable"),
+            Func<string, CardRewardData>(fun _ -> failwith "bonus"))
     let private effect name before after = { EffectId = name; BeforeValue = before; AfterValue = after }
 
     let validRewardShapes =
         [| RewardInputKind.Card, 1; RewardInputKind.Potion, 1; RewardInputKind.Relic, 1
-           RewardInputKind.Ancient, 3; RewardInputKind.Unavailable, 0 |]
+           RewardInputKind.Ancient, 3; RewardInputKind.Unavailable, 0; RewardInputKind.Bonus, 1 |]
         |> Array.map (fun (kind, count) -> [| box kind; box count |])
 
     [<Theory>]
     [<MemberData(nameof validRewardShapes)>]
     let ``every reward dispatches exactly its own payload`` kind count =
         let reward = decode { input kind with Models = Array.create count "model"; UnavailableReason = "No choices" }
-        let selected = reward.Match(Func<_, _>(fun _ -> RewardInputKind.Card), Func<_, _>(fun _ -> RewardInputKind.Potion),
-                                    Func<_, _>(fun _ -> RewardInputKind.Relic), Func<_, _>(fun _ -> RewardInputKind.Ancient), Func<_, _>(fun _ -> RewardInputKind.Unavailable))
+        let selected = reward.Match(
+            Func<CardRewardData, RewardInputKind>(fun _ -> RewardInputKind.Card),
+            Func<PotionRewardData, RewardInputKind>(fun _ -> RewardInputKind.Potion),
+            Func<string, RewardInputKind>(fun _ -> RewardInputKind.Relic),
+            Func<IReadOnlyList<string>, RewardInputKind>(fun _ -> RewardInputKind.Ancient),
+            Func<string, RewardInputKind>(fun _ -> RewardInputKind.Unavailable),
+            Func<string, RewardInputKind>(fun _ -> RewardInputKind.Bonus))
         Assert.Equal(kind, selected)
 
     let invalidRewardShapes =
         [| RewardInputKind.Potion, 0; RewardInputKind.Potion, 2
            RewardInputKind.Relic, 0; RewardInputKind.Relic, 2; RewardInputKind.Ancient, 2
-           RewardInputKind.Ancient, 4; RewardInputKind.Unavailable, 1 |]
+           RewardInputKind.Ancient, 4; RewardInputKind.Unavailable, 1
+           RewardInputKind.Bonus, 0; RewardInputKind.Bonus, 2 |]
         |> Array.map (fun (kind, count) -> [| box kind; box count |])
 
     [<Theory>]
@@ -73,8 +84,14 @@ module MirroredRewardTests =
         let reward = decode { input kind with Strategy = "replica_native_v1" }
         let identify (policy: RewardMaterialization) =
             policy.Match(Func<_>(fun () -> "owner"), Func<_>(fun () -> "restored"), Func<_>(fun () -> "replicated"))
-        Assert.Equal("restored", reward.Match(Func<_, _>(fun card -> identify card.Configuration.Policy), Func<_, _>(fun potion -> identify potion.Policy),
-                                             Func<_, _>(fun _ -> "relic"), Func<_, _>(fun _ -> "ancient"), Func<_, _>(fun _ -> "unavailable")))
+        let actual = reward.Match(
+            Func<CardRewardData, string>(fun card -> identify card.Configuration.Policy),
+            Func<PotionRewardData, string>(fun potion -> identify potion.Policy),
+            Func<string, string>(fun _ -> "relic"),
+            Func<IReadOnlyList<string>, string>(fun _ -> "ancient"),
+            Func<string, string>(fun _ -> "unavailable"),
+            Func<string, string>(fun _ -> "bonus"))
+        Assert.Equal("restored", actual)
 
     [<Fact>]
     let ``snapshot copies models and effect inputs and exposes no mutable collections`` () =
@@ -106,7 +123,8 @@ module MirroredRewardTests =
         for value in [ { input RewardInputKind.Card with Effects = Array.append effects effects }
                        { input RewardInputKind.Card with Effects = effects; Strategy = "replica_native_v1" }
                        { input RewardInputKind.Potion with Effects = effects }
-                       { input RewardInputKind.Relic with Effects = effects } ] do
+                       { input RewardInputKind.Relic with Effects = effects }
+                       { input RewardInputKind.Bonus with Effects = effects } ] do
             Assert.True(MirroredReward.Decode(value, 3) |> Result.isError)
         Assert.Equal(1, (decode { input RewardInputKind.Card with Effects = effects }).Effects.Count)
 
@@ -124,7 +142,7 @@ module MirroredRewardTests =
 
     [<Fact>]
     let ``card decoder rejects other reward kinds and empty choices`` () =
-        for kind in [ RewardInputKind.Potion; RewardInputKind.Relic; RewardInputKind.Ancient; RewardInputKind.Unavailable ] do
+        for kind in [ RewardInputKind.Potion; RewardInputKind.Relic; RewardInputKind.Ancient; RewardInputKind.Unavailable; RewardInputKind.Bonus ] do
             Assert.True(MirroredReward.DecodeCard(input kind) |> Result.isError)
         Assert.True(MirroredReward.DecodeCard({ input RewardInputKind.Card with Models = [||] }) |> Result.isError)
 

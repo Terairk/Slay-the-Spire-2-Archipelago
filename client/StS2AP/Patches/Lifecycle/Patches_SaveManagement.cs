@@ -58,7 +58,7 @@ namespace StS2AP.Patches
                     return false;
                 }
 
-                if (!ApSingleplayerSaves.OwnsRun) return true;
+                if (!ApSingleplayerSaves.IsHandlingSingleplayerRun) return true;
 
                 LogUtility.Info($"Game attempted to save in room of type '{preFinishedRoom?.RoomType}'");
                 LogUtility.Info($"Current room type {RunManager.Instance.DebugOnlyGetState()?.CurrentRoom?.RoomType}");
@@ -118,6 +118,8 @@ namespace StS2AP.Patches
                     isBossAutosave
                     || isTreasureAutosave
                     || (
+                        // Keep multiplayer Ancient checkpoints unchanged. Singleplayer saves only
+                        // the initial Ancient; Acts 2 and 3 use the preceding boss checkpoints.
                         (MultiplayerSupport.IsRealMultiplayerRun || currentAct == 1)
                         && preFinishedRoom?.RoomType == RoomType.Event
                         && currentMapPointType == MapPointType.Ancient
