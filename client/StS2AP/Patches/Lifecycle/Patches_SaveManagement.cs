@@ -309,7 +309,7 @@ namespace StS2AP.Patches
                     return false;
                 }
 
-                ApSingleplayerCampaignPicker.Show(__instance, character.Id.Entry);
+                ApSingleplayerCheckpointPicker.Show(__instance, character.Id.Entry);
                 return false;
             }
         }

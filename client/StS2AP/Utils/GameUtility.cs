@@ -648,7 +648,7 @@ namespace StS2AP.Utils
         {
             if (!IsInRun) return;
             NotificationUtility.ShowRawText(
-                "Connection lost. Your local AP checkpoints are preserved. Reconnect and select a run to resume.");
+                "Connection lost. Your local AP checkpoints are preserved. Reconnect and select a checkpoint to resume.");
             _ = NGame.Instance?.ReturnToMainMenuAfterRun();
         }
 
