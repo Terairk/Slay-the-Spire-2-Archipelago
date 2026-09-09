@@ -22,7 +22,8 @@ internal static class ApSingleplayerSaves
             ?? throw new InvalidOperationException("Connect to the AP slot before selecting a checkpoint.");
         if (!ArchipelagoClient.IsConnected || string.IsNullOrWhiteSpace(session.RoomState.Seed))
             throw new InvalidOperationException("The AP slot is not connected.");
-        return new(session.RoomState.Seed, session.ConnectionInfo.Team, session.ConnectionInfo.Slot);
+        return new(session.RoomState.Seed, session.ConnectionInfo.Team, session.ConnectionInfo.Slot,
+            CoopSlot.PlayerNumber);
     }
 
     internal static void BeginNew(string character)

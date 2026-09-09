@@ -1,3 +1,4 @@
+using StS2AP.Data;
 using Archipelago.MultiClient.Net;
 using System.Text.Json;
 
@@ -34,7 +35,8 @@ namespace StS2AP.Utils
                 serverAddress,
                 roomSeed,
                 session.ConnectionInfo.Team,
-                session.ConnectionInfo.Slot
+                session.ConnectionInfo.Slot,
+                CoopSlot.PlayerNumber
             );
 
             lock (_stateLock)
@@ -85,6 +87,11 @@ namespace StS2AP.Utils
         /// <param name="locationId">The Archipelago location ID earned by the player.</param>
         public static void RecordAndSend(long locationId)
         {
+            if (!CoopSlot.Owns(locationId))
+            {
+                LogUtility.Error($"Refusing to send another co-op player's location {locationId}.");
+                return;
+            }
             if (MultiplayerSupport.IsMultiplayerScope)
             {
                 RecordAndSendMultiplayer(locationId);
@@ -158,6 +165,7 @@ namespace StS2AP.Utils
                 return;
 
             var recognized = pending
+                .Where(id => ArchipelagoIdCodec.GetPlayerNumber(id) == bound.Identity.PlayerNumber)
                 .Where(bound.Session.Locations.AllLocations.Contains)
                 .ToHashSet();
             int unrecognizedCount = pending.Count - recognized.Count;
@@ -221,6 +229,7 @@ namespace StS2AP.Utils
                 return;
 
             var recognized = pending
+                .Where(id => ArchipelagoIdCodec.GetPlayerNumber(id) == bound.Identity.PlayerNumber)
                 .Where(bound.Session.Locations.AllLocations.Contains)
                 .ToHashSet();
             int unrecognizedCount = pending.Count - recognized.Count;

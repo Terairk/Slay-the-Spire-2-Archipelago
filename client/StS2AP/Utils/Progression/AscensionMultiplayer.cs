@@ -97,6 +97,7 @@ public static class AscensionMultiplayer
         for (int index = 0; index < receivedItems.Count; index++)
         {
             ItemInfo item = receivedItems[index];
+            if (!CoopSlot.Owns(item.ItemId)) continue;
             if (ArchipelagoIdCodec.IsUniversalItemId(item.ItemId)
                 || item.GetAPCharacterNumber() != hostCharacterOffset
                 || !TryGetAscensionLevel(item, out AscensionLevel level))
@@ -232,6 +233,7 @@ public static class AscensionMultiplayer
         {
             int receivedItemIndex = index + 1;
             ItemInfo item = receivedItems[index];
+            if (!CoopSlot.Owns(item.ItemId)) continue;
             if (handled.Contains(receivedItemIndex)
                 || ArchipelagoIdCodec.IsUniversalItemId(item.ItemId)
                 || item.GetAPCharacterNumber() != shared.HostCharacterOffset

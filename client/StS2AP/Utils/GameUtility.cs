@@ -37,7 +37,7 @@ namespace StS2AP.Utils
         /// Populated from DataStorage on connect, updated locally on each goal.
         /// Avoids GetAsync deserialization issues by keeping the source of truth local.
         /// </summary>
-        private static HashSet<string> _goaledCharacters = new HashSet<string>();
+        private static HashSet<string> _goaledCharacters = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// The number of the characters that have reached their goal
@@ -375,80 +375,55 @@ namespace StS2AP.Utils
 
         #region Game State Event Listeners
 
+        private static HashSet<string> _allGoaledCharacters = new(StringComparer.OrdinalIgnoreCase);
+        private static bool _slotGoalSent;
+
         public static async Task RestoreGoaledCharsFromStorage()
         {
-            if (!ArchipelagoClient.IsConnected) return;
             var session = ArchipelagoClient.Session;
-            if (session == null)
-            {
-                LogUtility.Warn("Cannot restore goaled characters without an active AP session.");
-                return;
-            }
-
-            // Debug: Let's see the goal progress before we try to restore it
+            var settings = ArchipelagoClient.Settings;
+            if (session == null || settings == null) return;
             try
             {
-                // Debug: Dump all values in the DataStorage
-                var ds = await session.DataStorage[
-                    Archipelago.MultiClient.Net.Enums.Scope.Slot, "StS2AP_GoaledChars"].GetAsync<Dictionary<string, bool>>();
-                if(ds == null)
+                var storage = session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, "StS2AP_GoaledChars"];
+                storage.Initialize(new JObject());
+                storage.OnValueChanged += (oldData, newData, args) =>
                 {
-                    LogUtility.Debug("RestoreGoaledCharsFromStorage: No goaled chars found in DataStorage");
-                }
-                else
-                {
-                    foreach (var x in ds)
-                    {
-                        LogUtility.Debug($"RestoreGoaledCharsFromStorage: Goaled DataStorage (Before Restore Attempt) - Key: {x.Key} / Value: {x.Value.ToString()}");
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                LogUtility.Error($"RestoreGoaledCharsFromStorage: Failed to dump pre-restore debug - {e.Message}");
-            }
-
-            try
-            {
-                const string storageKey = "StS2AP_GoaledChars";
-
-                /// Initialize the key with an empty JObject (JSON object) if it doesn't exist yet.
-                /// Must use JObject, not Dictionary, to match the JSON structure stored on the server.
-                if (!ReferenceEquals(ArchipelagoClient.Session, session)) return;
-                session.DataStorage[
-                    Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
-                    .Initialize(new JObject());
-
-                // Read back whatever is stored and deserialize it as a Dictionary<string, bool>
-                var stored = await session.DataStorage[
-                    Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
-                    .GetAsync<Dictionary<string, bool>>();
-
-                // Debug: Dump all values in the DataStorage
-                foreach (var x in stored ?? new Dictionary<string, bool>())
-                {
-                    LogUtility.Debug($"RestoreGoaledCharsFromStorage: Goaled DataStorage (After Restore Attempt) - Key: {x.Key} / Value: {x.Value.ToString()}");
-                }
-
-                LogUtility.Debug($"RestoreGoaledCharsFromStorage: stored is null? {stored == null}");
-                ArchipelagoClient.RunForSession(session, () =>
-                {
-                    _goaledCharacters = stored != null
-                        ? new HashSet<string>(stored.Keys)
-                        : new HashSet<string>();
-                    LogUtility.Info($"Restored {_goaledCharacters.Count} goaled character(s) from DataStorage: {string.Join(", ", _goaledCharacters)}");
-                });
+                    var stored = newData?.ToObject<Dictionary<string, bool>>();
+                    ArchipelagoClient.RunForSession(session, () => ApplySharedGoalProgress(session, settings, stored));
+                };
+                var initial = await storage.GetAsync<Dictionary<string, bool>>();
+                ArchipelagoClient.RunForSession(session, () => ApplySharedGoalProgress(session, settings, initial));
             }
             catch (Exception ex)
             {
-                LogUtility.Warn($"Could not restore goaled characters from DataStorage: {ex.Message}. Starting with empty set.");
-                ArchipelagoClient.RunForSession(session, () => _goaledCharacters = new HashSet<string>());
+                LogUtility.Warn($"Could not restore shared goal progress: {ex.Message}");
+            }
+        }
+
+        private static void ApplySharedGoalProgress(ArchipelagoSession session, ArchipelagoSettings settings,
+            Dictionary<string, bool>? stored)
+        {
+            // Goal records only grow. A delayed initial read must not erase a newer notification.
+            if (stored != null)
+                _allGoaledCharacters.UnionWith(stored.Where(pair => pair.Value).Select(pair => pair.Key));
+            _goaledCharacters.UnionWith(settings.Characters.Keys.Where(character =>
+                _allGoaledCharacters.Contains(ArchipelagoIdCodec.PlayerName(character, settings.PlayerNumber))));
+            if (!_slotGoalSent && CoopGoalPolicy.IsComplete(_allGoaledCharacters, settings.Characters.Keys,
+                    settings.PlayerCount, settings.NumCharsGoal))
+            {
+                session.SetGoalAchieved();
+                _slotGoalSent = true;
+                LogUtility.Success($"All {settings.PlayerCount} co-op players completed their character goals. SetGoalAchieved sent.");
+                NotificationUtility.ShowRawText("Goal Complete! Every player has finished their goals.");
             }
         }
 
         internal static void ResetSlotState()
         {
-            _goaledCharacters = new();
+            _goaledCharacters = new(StringComparer.OrdinalIgnoreCase);
+            _allGoaledCharacters = new(StringComparer.OrdinalIgnoreCase);
+            _slotGoalSent = false;
             CurrentPlayer = null;
             CurrentConfig = null;
         }
@@ -507,7 +482,7 @@ namespace StS2AP.Utils
                         Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
                         .Initialize(new Newtonsoft.Json.Linq.JObject());
 
-                    var updateDict = new Dictionary<string, bool> { { charName, true } };
+                    var updateDict = new Dictionary<string, bool> { { CoopSlot.Name(charName), true } };
  
                     session.DataStorage[
                         Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
@@ -533,20 +508,11 @@ namespace StS2AP.Utils
                     LogUtility.Info($"TrySetGoalAchieved: '{charName}' already recorded as goaled. Total goaled: {_goaledCharacters.Count}");
                 }
 
-                // num_chars_goal == 0 means all characters in the slot must complete
-                int required = settings.NumCharsGoal == 0
-                    ? settings.TotalCharacters
-                    : settings.NumCharsGoal;
-                LogUtility.Debug($"TrySetGoalAchieved: required - {required.ToString()}");
-
-                LogUtility.Info($"Goal check: {_goaledCharacters.Count}/{required} characters have completed the run");
-
-                if (_goaledCharacters.Count >= required)
-                {
-                    session.SetGoalAchieved();
-                    LogUtility.Success("Goal achieved! SetGoalAchieved sent to Archipelago server.");
-                    NotificationUtility.ShowRawText("Goal Complete! You have won....?");
-                }
+                // Shared-slot completion is evaluated from merged server records, including updates
+                // from other connected clients. Never goal from this player's local count alone.
+                var merged = await session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
+                    .GetAsync<Dictionary<string, bool>>();
+                ArchipelagoClient.RunForSession(session, () => ApplySharedGoalProgress(session, settings, merged));
             }
             catch (Exception ex)
             {
@@ -561,6 +527,7 @@ namespace StS2AP.Utils
 
         public static async Task TryReleaseAllCharacterChecks(string charName)
         {
+            charName = CoopSlot.Name(charName);
             // Location names begin with the AP character name (for example, "Ironclad").
             var characterLocations = ArchipelagoClient.ScoutedLocations
                 .Where(kvp => kvp.Value.LocationName.StartsWith(
@@ -623,12 +590,14 @@ namespace StS2AP.Utils
                 LogUtility.Warn($"Cannot send location '{checkName}' without an active AP session.");
                 return;
             }
-            var locationId = session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
+            var locationId = session.Locations.GetLocationIdFromName("Slay the Spire II", CoopSlot.Name(checkName));
             QueueCheck(locationId);
         }
 
         public static void QueueCheck(long locationId)
         {
+            if (!CoopSlot.Owns(locationId))
+                return;
             if (MultiplayerSupport.IsMultiplayerScope
                 && !MultiplayerSupport.IsLocalOwnApSlot)
             {

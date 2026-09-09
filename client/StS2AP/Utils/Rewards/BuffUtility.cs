@@ -108,7 +108,7 @@ namespace StS2AP.Utils
         /// Stores a single <c>int</c> (the high-water mark). Scoped to the player's slot
         /// so it is shared across clients and sessions but not across multiworld slots.
         /// </summary>
-        private const string StorageKey = "StS2AP_LastConsumedBuffIdx";
+        private static string StorageKey => CoopSlot.StorageKey("StS2AP_LastConsumedBuffIdx");
 
         #endregion
 

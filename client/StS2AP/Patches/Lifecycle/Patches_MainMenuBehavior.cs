@@ -142,6 +142,24 @@ namespace StS2AP.Patches
 
         #region Main Menu Patches
 
+        // Backing out of Host/Join or a lobby must release the pending multiplayer intent.
+        // Otherwise settings still see a multiplayer scope after the player returns home.
+        [HarmonyPatch(typeof(NMainMenu), "OnSubmenuStackChanged")]
+        private static class ClearPendingPlaySelectionAtHome
+        {
+            [HarmonyPostfix]
+            private static void Postfix(NMainMenu __instance)
+            {
+                if (!__instance.SubmenuStack.SubmenusOpen
+                    && !RunManager.Instance.IsInProgress
+                    && !GameUtility.IsInRun && !MultiplayerSupport.IsRealMultiplayerRun
+                    && !MultiplayerSupport.TryGetObservedStartLobby(out _))
+                {
+                    MultiplayerSupport.ClearPendingPlaySelection();
+                }
+            }
+        }
+
         /// <summary>
         /// Delays beta StS2's developer fast-multiplayer action until this process's
         /// AP slot has connected and prepared. Ordinary fastmp invocations remain native.
@@ -781,7 +799,7 @@ namespace StS2AP.Patches
                     __instance,
                     out string blockedReason))
                 {
-                    return true;
+                    return ApCoopLobbyWarning.AllowLaunch(__instance);
                 }
                 // FLAG: i bet you if anything softlocks, it'll be here
 

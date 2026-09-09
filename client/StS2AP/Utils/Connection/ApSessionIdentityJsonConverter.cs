@@ -17,7 +17,7 @@ internal sealed class ApSessionIdentityJsonConverter : JsonConverter<ApSessionId
         try
         {
             return ApSessionIdentity.Create(
-                data.ServerAuthority, data.RoomSeed, data.ApTeamId, data.ApSlotId);
+                data.ServerAuthority, data.RoomSeed, data.ApTeamId, data.ApSlotId, data.PlayerNumber);
         }
         catch (ArgumentException exception)
         {
@@ -29,13 +29,14 @@ internal sealed class ApSessionIdentityJsonConverter : JsonConverter<ApSessionId
         JsonSerializerOptions options)
     {
         ArgumentNullException.ThrowIfNull(value);
-        JsonSerializer.Serialize(writer, new IdentityData
-        {
-            ServerAuthority = value.ServerAuthority,
-            RoomSeed = value.RoomSeed,
-            ApTeamId = value.ApTeamId,
-            ApSlotId = value.ApSlotId,
-        }, options);
+        writer.WriteStartObject();
+        writer.WriteString("server_authority", value.ServerAuthority);
+        writer.WriteString("room_seed", value.RoomSeed);
+        writer.WriteNumber("ap_team_id", value.ApTeamId);
+        writer.WriteNumber("ap_slot_id", value.ApSlotId);
+        if (value.PlayerNumber != 1)
+            writer.WriteNumber("player_number", value.PlayerNumber);
+        writer.WriteEndObject();
     }
 
     private sealed class IdentityData
@@ -51,5 +52,8 @@ internal sealed class ApSessionIdentityJsonConverter : JsonConverter<ApSessionId
 
         [JsonPropertyName("ap_slot_id")]
         public required int ApSlotId { get; init; }
+
+        [JsonPropertyName("player_number")]
+        public int PlayerNumber { get; init; } = 1;
     }
 }

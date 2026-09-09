@@ -12,7 +12,7 @@ namespace StS2AP.Utils;
 internal static class BonusRewardUtility
 {
     public static bool ConvertToGold(long itemId) =>
-        itemId == (long)ItemTable.APItem.BonusWaxRelic
+        ArchipelagoIdCodec.WithoutPlayer(itemId) == (long)ItemTable.APItem.BonusWaxRelic
         && MultiplayerSupport.IsMultiplayerScope
         && !MultiplayerSupport.ShouldRunReplicatedConstruction(MultiplayerFeature.BonusItems);
 

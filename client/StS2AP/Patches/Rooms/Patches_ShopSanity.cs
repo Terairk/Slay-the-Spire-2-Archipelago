@@ -130,6 +130,7 @@ namespace StS2AP.Patches
 
             private static long ResolveLocationId(string checkName)
             {
+                checkName = CoopSlot.Name(checkName);
                 if (ArchipelagoClient.Session != null)
                 {
                     return ArchipelagoClient.Session.Locations.GetLocationIdFromName(

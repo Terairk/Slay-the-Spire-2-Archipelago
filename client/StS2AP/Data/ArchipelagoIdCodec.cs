@@ -7,15 +7,27 @@ namespace StS2AP.Data
     public static class ArchipelagoIdCodec
     {
         public const long BlockSize = 10000L;
+        public const long PlayerBlockSize = 1000000L;
+
+        public static int GetPlayerNumber(long id) => id < 0 ? 0 : checked((int)(id / PlayerBlockSize) + 1);
+        public static long WithoutPlayer(long id) => id < 0 ? id : id % PlayerBlockSize;
+        public static long ForPlayer(long id, int playerNumber)
+        {
+            if (playerNumber is < 1 or > 4)
+                throw new ArgumentOutOfRangeException(nameof(playerNumber));
+            return id < 0 ? id : WithoutPlayer(id) + (playerNumber - 1) * PlayerBlockSize;
+        }
+        public static string PlayerName(string name, int playerNumber) =>
+            playerNumber == 1 ? name : $"P{playerNumber} {name}";
 
         public static bool IsUniversalItemId(long itemId)
         {
-            return itemId >= 0 && itemId < BlockSize;
+            return itemId >= 0 && WithoutPlayer(itemId) < BlockSize;
         }
 
         public static bool IsCharacterItemId(long itemId)
         {
-            return itemId >= BlockSize;
+            return WithoutPlayer(itemId) >= BlockSize;
         }
 
         public static long GetCharacterItemTypeId(long itemId)
@@ -25,7 +37,7 @@ namespace StS2AP.Data
 
         public static long GetAPCharacterNumberFromItemId(long itemId)
         {
-            return itemId / BlockSize;
+            return WithoutPlayer(itemId) / BlockSize;
         }
 
         public static long GetBaseLocationId(long locationId)
