@@ -1,5 +1,12 @@
 # Replicated AP card rewards: a guided walkthrough
 
+> Later fix: the current reveal protocol is 3. It verifies only the receipt and ordered card
+> offer, only in multiplayer. The before/after player snapshots described in this historical
+> walkthrough were removed after their anonymous type failed with the game's source-generated
+> serializer. General state divergence remains with native checksums; offer verification remains
+> necessary before a remote picker index is applied. See the
+> [current validation notes](../../client/StS2AP.RegressionTests/README.md#runtime-validation-kept-separate).
+
 This explains commit [`24bd923`](https://github.com/Terairk/Slay-the-Spire-2-Archipelago/commit/24bd9232eecb449d20d098ba8e6d97c0b76170e7), **Generate AP card rewards on every multiplayer replica**, on `experiment/replicated-card-reward-generation`. Its parent is `2e72c9f`. The explanation is a snapshot of that change, not a promise that later revisions behave identically.
 
 Read Part I for the overall flow. Part II walks through the implementation in small sections, including removed code. Part III explains every changed test and gives a runtime checklist. The file inventory at the end accounts for all 19 changed files. Source links open files in this branch; the commit link above preserves the exact original diff.

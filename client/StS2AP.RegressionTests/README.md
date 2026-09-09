@@ -24,7 +24,7 @@ or files from the locally excluded admission harness. Each case is discoverable 
 | Participant interop | Existing wire kinds, missing/null inputs, and validated identities across C# mutation and fresh readiness checks; F# tests cover readiness and resume decisions |
 | Replica construction | Initialization, local counters, compensation, restore |
 | C# interop | Complete mirrored-reward decoding, actual wire/save DTO fixtures, immutable snapshots, save/reveal/effect preservation, and exception conversion |
-| Card offers | Deferred recipes, independent-offer digests, receipt/card/player-state mismatch rejection, canonical JSON object order versus significant array order, refreshed models through save/progress deltas, and rejection of older protocols |
+| Card offers | Deferred recipes, independent-offer digests, receipt/card-offer mismatch rejection, canonical JSON object order versus significant array order, refreshed models through save/progress deltas, and rejection of older protocols |
 | AP selection order | Delayed relic completion before reveal, invocation order rather than receipt order, repeated skips, per-player independence, failure blocking, and reopen waiting |
 | Progressive starters | Shared singleplayer/multiplayer tier transitions, initialization-only removal, recipe identity, strict state/payload decoding, applied-state ordering, and save round trips |
 
@@ -81,6 +81,7 @@ variant. Unit tests establish the behavior of our policies, not native callbacks
 | Campfire sanity off, vanilla guest, or unresolved AP progress | Native options remain unchanged |
 | `!collect`, then enter another rest site with two AP slots | Collected checks stay hidden on all replicas; another slot's checks remain available |
 | Claim a relic, reopen rewards, reconnect, save/continue | One grant at the established boundary; stable assignment and no repeated bank spending |
+| Singleplayer: first reveal a regular/rare AP card reward, skip, reopen, and save/continue | Picker opens without a player-state snapshot; offer stays assigned, relic effects do not repeat, and claiming consumes the receipt once |
 | Skip an AP card or try a potion with no space, then reopen rewards | Receipt remains claimable with its existing assignment |
 | Open a backlog with Tress, then reveal 81 before 80 | Opening the list spends no uses; both replicas generate in reveal order and Tress is consumed on the first offer |
 | Reveal, skip, obtain Toxic/Molten/Frozen Egg, then reopen (also after save/continue) | Eligible unupgraded skills/attacks/powers appear upgraded on both replicas; identities, ordering, enchantments, generation counters, and reroll availability survive |
@@ -88,7 +89,7 @@ variant. Unit tests establish the behavior of our policies, not native callbacks
 | Obtain Prismatic Gem/Dingy Rug before first revealing a pending reward | The first roll uses the currently modified card pool |
 | Obtain a relic, immediately reveal, skip and reopen with a delayed peer | Per-player AP selection order completes the grant before generation; the next menu waits for the preceding selection |
 | Open/reopen card rewards using keyboard/controller with a delayed peer | Each replica generates locally and verifies the owner digest before interpreting its picker choice; input/focus and skip work normally |
-| Intentionally introduce a card or saved relic-state mismatch on a replica | Digest disagreement rejects that replica's picker operation and invalidates AP claims; no correction or reroll is attempted |
+| Intentionally introduce a card identity, order, upgrade, or enchantment mismatch on a replica | Digest disagreement rejects that replica's picker operation and invalidates AP claims; no correction or reroll is attempted |
 | Two AP players with different modded pools reveal concurrently | Offers use the correct player's settings; each replica agrees with its owner, with no cross-player queue blocking |
 | Consume AP rewards, continue the save, then start a fresh run | Continue preserves consumption while history is rebuilt; the fresh run resets consumption and retains known receipts |
 | Reconnect to the same AP destination; try a different room/team/slot when continuing | The same destination retains deferred receipts/outbox ownership; mismatched saved participation is rejected |
@@ -106,9 +107,18 @@ Keep generated saves, diagnostic logs, installed binaries, and decompiled refere
 For card offers, `Prepared replicated AP card offer` reports `firstReveal` and `localOwner`.
 `Replicated AP card offer ... disagreed with the owner` is a terminal mismatch, not a retry.
 The owner publishes a digest; it does not await an acknowledgment from every replica. Each
-replica verifies before its own native picker execution. The digest covers offered cards and
-serialized native player gameplay state before/after, excluding local discovery lists. It is
-not a proof of arbitrary mod state or shared run-wide effects. Test with matching game/mod builds.
-The replicated experiment uses menu schema 8 and requires a new run; old execution protocols
+replica verifies before its own native picker execution. Reveal protocol 3 covers receipt identity,
+offer configuration, first-reveal status, and ordered serialized cards. Singleplayer does not
+calculate a verification digest. General gameplay state (including before/after relic counters
+and RNG snapshots) is left to the game's native checksum system. In beta 0.111.0,
+RewardsSetSynchronizer.SelectRewardForPlayer does not request a checksum, and
+RunManager.SendPostActionChecksum runs during combat; this is not an immediate reward-side-effect
+check. NetFullCombatState includes saved relic properties but explicitly excludes the Rewards
+and Shops player RNG streams. Removing snapshots gives up their extra diagnostic coverage;
+native checksums are not equivalent to the removed snapshot. Keeping the offer digest prevents
+a remote picker index from selecting a different card.
+Test with matching game/mod builds: reveal protocols 1 and 2 are rejected. Persisted assignments
+and the current menu schema 9 are unchanged by the protocol 3 fix.
+The original replicated-generation migration requires a new run; old execution protocols
 are not migrated. Crucible remains excluded by MegaCrit in multiplayer; its native behavior can
 only be checked in single-player or an explicitly forced diagnostic scenario.

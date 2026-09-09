@@ -6,29 +6,27 @@ namespace StS2AP.DomainAdapters;
 
 /// <summary>
 /// Verifies independently generated offers. This carries no card payload or instructions to
-/// mutate relics: each replica must already have the same cards and native player state.
+/// mutate relics: each replica must already have the same ordered card offer.
 /// </summary>
 internal static class ApCardRevealCodec
 {
-    private const int Version = 2;
+    private const int Version = 3;
     private const int DigestWords = 8;
 
-    internal static List<int> Encode(ApMirroredRewardSpec spec, string before, string after, bool firstReveal = true)
+    internal static List<int> Encode(ApMirroredRewardSpec spec, bool firstReveal = true)
     {
         if (spec.Kind != ApMirroredRewardKind.Card || !spec.CardHasBeenRevealed
             || spec.SerializedModels.Count == 0 || spec.AppliedEffects.Count != 0
             || spec.MaterializationStrategyId != "ap_rng_replicated_card_v1")
             throw new InvalidOperationException("Cannot verify an unfinished or non-replicated AP card offer.");
         _ = MirroredRewardAdapter.Decode(spec, 3);
-        // Parse model/state JSON so object property order is irrelevant; array order remains
-        // significant for card indexes, relic hook order, deck order, and RNG state.
+        // Parse model JSON so object property order is irrelevant; array order remains
+        // significant for picker indexes and any ordered card data.
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(new
         {
             spec.ApSlotId, spec.ReceivedItemIndex, spec.OwnerNetId,
             spec.IsRareCardReward, spec.CardRewardActIndex, spec.CardCanReroll, FirstReveal = firstReveal,
             Cards = spec.SerializedModels.Select(model => JsonSerializer.Deserialize<JsonElement>(model)),
-            Before = JsonSerializer.Deserialize<JsonElement>(before),
-            After = JsonSerializer.Deserialize<JsonElement>(after),
         }));
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
@@ -45,7 +43,7 @@ internal static class ApCardRevealCodec
         if (local.Count != DigestWords + 1 || owner.Count != DigestWords + 1
             || local[0] != Version || owner[0] != Version || !local.SequenceEqual(owner))
             throw new InvalidOperationException($"Replicated AP card offer {receipt} disagreed with the owner "
-                + "(receipt, cards, or native player state). No picker choice was applied.");
+                + "(receipt or card offer). No picker choice was applied.");
     }
 
     private static void WriteCanonical(Utf8JsonWriter writer, JsonElement value)

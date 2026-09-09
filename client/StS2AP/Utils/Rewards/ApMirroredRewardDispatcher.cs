@@ -664,20 +664,6 @@ public static class ApMirroredRewardDispatcher
         return cards;
     }
 
-    private static string CaptureGenerationState(Player player)
-    {
-        SerializablePlayer state = player.ToSerializable();
-        // Discovery lists are presentation/progression bookkeeping updated by local UI. Compare
-        // native gameplay state instead, including every relic's saved properties and player RNG.
-        return Serialize(new
-        {
-            state.CharacterId, state.NetId, state.CurrentHp, state.MaxHp, state.MaxEnergy,
-            state.MaxPotionSlotCount, state.BaseOrbSlotCount, state.Gold, state.Deck,
-            state.Relics, state.Potions, state.Rng, state.Odds, state.RelicGrabBag,
-            state.ExtraFields, state.UnlockState,
-        });
-    }
-
     private static List<CardCreationResult> RefreshCardChoices(CardReward reward)
     {
         // Preserve native modifier provenance; each replica already owns its generated cards.
@@ -1147,7 +1133,6 @@ public static class ApMirroredRewardDispatcher
                 bool multiplayer = MultiplayerSupport.IsRealMultiplayerRun;
                 uint verificationChoice = multiplayer ? synchronizer.ReserveChoiceId(Player) : 0;
                 _firstPickerChoice = multiplayer ? synchronizer.ReserveChoiceId(Player) : null;
-                string before = CaptureGenerationState(Player);
                 List<CardCreationResult> preparedCards = hasAssignment
                     ? RefreshCardChoices(this)
                     : await GenerateCardChoices(spec, Player);
@@ -1155,10 +1140,11 @@ public static class ApMirroredRewardDispatcher
                     throw new OperationCanceledException("Run changed during AP card reveal.");
                 spec.CardHasBeenRevealed = true;
                 spec.SerializedModels = preparedCards.Select(result => SerializeCard(result.Card)).ToList();
-                List<int> verification = ApCardRevealCodec.Encode(
-                    spec, before, CaptureGenerationState(Player), firstReveal: !hasAssignment);
                 if (multiplayer)
                 {
+                    // Check that picker indexes mean the same offered cards on every replica.
+                    // General gameplay-state divergence remains the native checksum system's job.
+                    List<int> verification = ApCardRevealCodec.Encode(spec, firstReveal: !hasAssignment);
                     if (LocalContext.IsMe(Player))
                     {
                         synchronizer.SyncLocalChoice(Player, verificationChoice,
