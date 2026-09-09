@@ -31,12 +31,20 @@ public sealed partial class ApSingleplayerCheckpointPicker : Control, IScreenCon
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Stop;
+        // Both AP trackers live in separate layer-0 canvases. A higher canvas
+        // layer keeps the picker above them regardless of scene insertion order.
+        // Keep it owned by the modal so clearing the picker also frees its canvas.
+        var canvas = new CanvasLayer { Name = "ApCheckpointPickerLayer", Layer = 1 };
+        AddChild(canvas);
+        var overlay = new Control { MouseFilter = MouseFilterEnum.Stop };
+        overlay.SetAnchorsPreset(LayoutPreset.FullRect);
+        canvas.AddChild(overlay);
         var panel = new PanelContainer();
         panel.SetAnchorsPreset(LayoutPreset.Center);
         panel.OffsetLeft = -530; panel.OffsetRight = 530;
         panel.OffsetTop = -350; panel.OffsetBottom = 350;
         panel.AddThemeStyleboxOverride("panel", CreatePanelStyle());
-        AddChild(panel);
+        overlay.AddChild(panel);
         var root = new VBoxContainer();
         root.AddThemeConstantOverride("separation", 12);
         panel.AddChild(root);

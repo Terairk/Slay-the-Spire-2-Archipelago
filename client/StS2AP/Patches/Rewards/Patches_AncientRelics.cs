@@ -368,7 +368,19 @@ namespace StS2AP.Patches
         private static EventOption CreateFakeOption(AncientEventModel ancient)
         {
             return new EventOption(ancient,
-                NEventRoom.Proceed,
+                () =>
+                {
+                    if (!MultiplayerSupport.IsRealMultiplayerRun
+                        && ApSingleplayerSaves.IsHandlingSingleplayerRun
+                        && !ancient.IsFinished)
+                    {
+                        // Opening the map alone leaves the Ancient unfinished. Its native
+                        // StateChanged callback saves the completed Act 1 checkpoint.
+                        LogUtility.Info($"Completing AP singleplayer Proceed-only Ancient {ancient.Id}");
+                        ancient.StartPreFinished();
+                    }
+                    return NEventRoom.Proceed();
+                },
                 new MegaCrit.Sts2.Core.Localization.LocString("events", "AP_PROCEED.title"),
                 new MegaCrit.Sts2.Core.Localization.LocString("events", "AP_PROCEED.description"),
                 "AP_PROCEED", new List<IHoverTip>());

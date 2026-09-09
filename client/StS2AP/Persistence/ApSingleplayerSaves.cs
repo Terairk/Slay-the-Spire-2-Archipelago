@@ -69,8 +69,8 @@ internal static class ApSingleplayerSaves
             bank.Save(bankKey, key, Patches_RunSaveManager.SaveRun.SerializeAndCompress(snapshot),
                 snapshot.MapPointHistory?.Sum(act => act.Count) ?? 0, startOfAct);
             LogUtility.Info($"AP local checkpoint saved: character={bankKey.Character}, checkpoint={key}");
-            NotificationUtility.ShowRawText("AP checkpoint saved locally.", timeout: 3.5,
-                includeInDevConsole: false);
+            NotificationUtility.ShowRawText("[font_size=80]GAME SAVED[/font_size]", timeout: 3.5,
+                priority: NotificationUtility.NotificationPriority.High, includeInDevConsole: false);
         }
         catch (Exception ex)
         {
