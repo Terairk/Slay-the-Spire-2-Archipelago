@@ -76,6 +76,7 @@ internal static class MirroredRewardAdapter
                 ApMirroredRewardKind.Card => RewardInputKind.Card,
                 ApMirroredRewardKind.Potion => RewardInputKind.Potion,
                 ApMirroredRewardKind.Relic => RewardInputKind.Relic,
+                ApMirroredRewardKind.Bonus => RewardInputKind.Bonus,
                 ApMirroredRewardKind.Ancient => RewardInputKind.Ancient,
                 ApMirroredRewardKind.Unavailable => RewardInputKind.Unavailable,
                 _ => throw new InvalidOperationException($"AP reward {spec.GrantId} had an invalid Unknown({(int)spec.Kind}) assignment."),

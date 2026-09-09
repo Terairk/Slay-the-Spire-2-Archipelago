@@ -1,4 +1,3 @@
-using System.Reflection;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Events;
@@ -15,9 +14,6 @@ namespace StS2AP.Patches;
 internal static class Patches_CrossCharacterCardPools
 {
     private const string GenericOptionKey = "AP_COLORFUL_PHILOSOPHERS_POOL";
-
-    private static readonly MethodInfo? OfferRewardsMethod =
-        AccessTools.Method(typeof(ColorfulPhilosophers), "OfferRewards", [typeof(CardPoolModel)]);
 
     /// <summary>
     /// Gives Prismatic Gem access to every built-in character pool plus installed modded
@@ -80,7 +76,7 @@ internal static class Patches_CrossCharacterCardPools
         [HarmonyPostfix]
         private static void Postfix(IRunState runState, ref bool __result)
         {
-            if (__result || OfferRewardsMethod is null)
+            if (__result)
                 return;
 
             __result = runState.Players.All(player =>
@@ -104,7 +100,6 @@ internal static class Patches_CrossCharacterCardPools
             ref IReadOnlyList<EventOption> __result)
         {
             if (__instance.Owner is null ||
-                OfferRewardsMethod is null ||
                 !CrossCharacterCardPoolUtility.TryGetPools(__instance.Owner, out var pools))
             {
                 return true;
@@ -146,7 +141,7 @@ internal static class Patches_CrossCharacterCardPools
     {
         var nativeKey =
             $"COLORFUL_PHILOSOPHERS.pages.INITIAL.options.{pool.EnergyColorName.ToUpperInvariant()}";
-        Func<Task> offerRewards = () => OfferRewards(philosophers, pool);
+        Func<Task> offerRewards = () => philosophers.OfferRewards(pool);
 
         // Use native (or character-mod-provided) copy whenever that pool supplies it.
         if (philosophers.GetOptionTitle(nativeKey) is not null &&
@@ -168,25 +163,5 @@ internal static class Patches_CrossCharacterCardPools
             $"{GenericOptionKey}.{pool.Id.Entry}",
             Array.Empty<IHoverTip>()
         );
-    }
-
-    private static Task OfferRewards(
-        ColorfulPhilosophers philosophers,
-        CardPoolModel pool)
-    {
-        try
-        {
-            return OfferRewardsMethod?.Invoke(philosophers, [pool]) as Task
-                ?? Task.FromException(
-                    new MissingMethodException(
-                        typeof(ColorfulPhilosophers).FullName,
-                        "OfferRewards"
-                    )
-                );
-        }
-        catch (TargetInvocationException ex) when (ex.InnerException is not null)
-        {
-            return Task.FromException(ex.InnerException);
-        }
     }
 }

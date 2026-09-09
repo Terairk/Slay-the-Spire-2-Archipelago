@@ -17,6 +17,8 @@ public sealed class ApPlayerRunState
     public Dictionary<long, int> InitialProgressiveAncientsByCharacter { get; set; } = new();
     public bool ReceiptSourceReady { get; set; }
     public ApRunProgressState Progress { get; set; } = new();
+    // Advanced independently by the native combat-end hook on every replica.
+    public int CombatsSinceLastWaxMelt { get; set; }
     public ApReplicaConstructionState Construction { get; set; } = new();
     public long ProgressRevision { get; set; }
     public ApProgressiveStarterPlayerState ProgressiveStarters { get; set; } = new();

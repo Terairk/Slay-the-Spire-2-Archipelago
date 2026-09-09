@@ -8,6 +8,7 @@ public enum MultiplayerFeature
     GoldRewards,
     CardRewards,
     RelicRewards,
+    BonusItems,
     PotionRewards,
     AncientRewardChoices,
     CombatRewardLocations,

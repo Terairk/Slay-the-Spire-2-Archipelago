@@ -157,7 +157,7 @@ type PotionRewardData internal (policy: RewardMaterialization, model: string) =
 
 /// Internal adapter vocabulary; the C# wire enum retains its existing numeric contract.
 [<RequireQualifiedAccess>]
-type RewardInputKind = Card | Potion | Relic | Ancient | Unavailable
+type RewardInputKind = Card | Potion | Relic | Ancient | Unavailable | Bonus
 
 /// Flat fields exist only at the decoder boundary, mirroring the explicit C# wire DTO.
 [<CLIMutable>]
@@ -177,24 +177,26 @@ type private RewardShape =
     | Card of CardRewardData
     | Potion of PotionRewardData
     | Relic of string
+    | Bonus of string
     | AncientChoice of IReadOnlyList<string>
     | Unavailable of string
 
 /// Completed reward snapshot. All collections are copied; no DTO or engine object is retained.
 type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
     member _.Origin = origin
-    member _.IsRelic = match shape with Relic _ -> true | Card _ | Potion _ | AncientChoice _ | Unavailable _ -> false
+    member _.IsRelic = match shape with Relic _ -> true | Card _ | Potion _ | AncientChoice _ | Unavailable _ | Bonus _ -> false
     member _.Effects : IReadOnlyList<RewardEffect> =
         match shape with
         | Card card -> card.Configuration.Effects
-        | Potion _ | Relic _ | AncientChoice _ | Unavailable _ -> RewardDecode.freeze Seq.empty
+        | Potion _ | Relic _ | AncientChoice _ | Unavailable _ | Bonus _ -> RewardDecode.freeze Seq.empty
 
     member _.Match(card: Func<CardRewardData, 'T>, potion: Func<PotionRewardData, 'T>,
-                   relic: Func<string, 'T>, ancient: Func<IReadOnlyList<string>, 'T>, unavailable: Func<string, 'T>) =
+                   relic: Func<string, 'T>, ancient: Func<IReadOnlyList<string>, 'T>, unavailable: Func<string, 'T>, bonus: Func<string, 'T>) =
         match shape with
         | Card value -> card.Invoke(value)
         | Potion value -> potion.Invoke(value)
         | Relic value -> relic.Invoke(value)
+        | Bonus value -> bonus.Invoke(value)
         | AncientChoice value -> ancient.Invoke(value)
         | Unavailable reason -> unavailable.Invoke(reason)
 
@@ -227,7 +229,7 @@ type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
         |> Result.bind (fun () ->
             match input.Kind with
             | RewardInputKind.Card -> MirroredReward.DecodeCardData(input, false)
-            | RewardInputKind.Potion | RewardInputKind.Relic | RewardInputKind.Ancient | RewardInputKind.Unavailable ->
+            | RewardInputKind.Potion | RewardInputKind.Relic | RewardInputKind.Ancient | RewardInputKind.Unavailable | RewardInputKind.Bonus ->
                 RewardDecode.invalid "expected a saved card assignment.")
 
     static member Decode(input: MirroredRewardInput, ancientChoiceCount: int) =
@@ -251,6 +253,9 @@ type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
                 | RewardInputKind.Relic -> rejectNonCardEffects (fun () ->
                     if input.Models.Length = 1 then Ok (Relic input.Models[0])
                     else RewardDecode.invalid "had an invalid Relic assignment.")
+                | RewardInputKind.Bonus -> rejectNonCardEffects (fun () ->
+                    if input.Models.Length = 1 then Ok (Bonus input.Models[0])
+                    else RewardDecode.invalid "had an invalid Bonus assignment.")
                 | RewardInputKind.Ancient -> rejectNonCardEffects (fun () ->
                     if ancientChoiceCount > 0 && input.Models.Length = ancientChoiceCount then
                         Ok (AncientChoice (RewardDecode.freeze input.Models))

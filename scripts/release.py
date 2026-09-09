@@ -42,6 +42,8 @@ REQUIRED_CLIENT_FILES = {
     "Archipelago.json",
     "Archipelago.dll",
     "Archipelago.pck",
+    "data/relic_custom_pools.data",
+    "data/bonus_relic_blacklist.data",
     APWORLD_ARCHIVE_NAME,
     VARIANT_MANIFEST_NAME,
     *(f"lib/{compat}/Archipelago.dll" for compat in SUPPORTED_STS2_API_COMPATS),
@@ -471,6 +473,12 @@ def build_client(paths: BuildPaths, versions: Versions, signature_root: Path) ->
         if include_client_file(path) and path.name != "Archipelago.dll":
             entries[path.name] = path
 
+    for catalog in ("relic_custom_pools.data", "bonus_relic_blacklist.data"):
+        source = latest_output / "data" / catalog
+        if not source.is_file():
+            raise ReleaseError(f"Bonus relic catalog output is missing: {source}")
+        entries[f"data/{catalog}"] = source
+
     variants: dict[str, dict[str, str]] = {}
     for compat in SUPPORTED_STS2_API_COMPATS:
         variant_dll = paths.repo / f"client/StS2AP/bin/{compat}/Release/net9.0/Archipelago.dll"
@@ -539,7 +547,7 @@ def validate_archive_entry_name(name: str) -> None:
         raise ReleaseError(f"Invalid client archive path: {name!r}")
     if len(path.parts) == 1:
         return
-    if len(path.parts) == 3 and name in REQUIRED_CLIENT_FILES:
+    if len(path.parts) in (2, 3) and name in REQUIRED_CLIENT_FILES:
         return
     raise ReleaseError(f"Unexpected nested client archive path: {name!r}")
 

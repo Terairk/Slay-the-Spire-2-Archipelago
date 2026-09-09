@@ -9,6 +9,11 @@ public sealed class ApRunProgressState
 {
     [JsonPropertyName("ancient_settings_for_run")]
     public AncientRewardSettings? AncientSettingsForRun { get; set; }
+    // Singleplayer only; multiplayer advances ApPlayerRunState independently on each replica.
+    [JsonPropertyName("combats_since_last_wax_melt")]
+    public int CombatsSinceLastWaxMelt { get; set; }
+    [JsonPropertyName("bonus_relic_assignments")]
+    public Dictionary<int, string> BonusRelicAssignments { get; set; } = new();
     [JsonPropertyName("initialized")]
     public bool Initialized { get; set; }
     [JsonPropertyName("card_rewards_attempted")]

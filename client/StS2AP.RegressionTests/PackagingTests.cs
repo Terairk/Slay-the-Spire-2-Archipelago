@@ -33,7 +33,7 @@ public sealed class PackagingTests
                     .GetMethod("Decode", BindingFlags.Public | BindingFlags.Static)!;
                 Type specType = variant.GetType("StS2AP.Models.ApMirroredRewardSpec", true)!;
                 object spec = JsonSerializer.Deserialize("""
-                    {"SchemaVersion":8,"ApSlotId":2,"ReceivedItemIndex":42,"OwnerNetId":1,
+                    {"SchemaVersion":9,"ApSlotId":2,"ReceivedItemIndex":42,"OwnerNetId":1,
                      "Kind":0,"CardRewardActIndex":1,"CardHasBeenRevealed":true,
                      "MaterializationStrategyId":"replica_native_v1","RequiresNativeMaterialization":false,
                      "SerializedModels":["{\"id\":\"CARD.A\"}"]}
@@ -71,6 +71,39 @@ public sealed class PackagingTests
         try
         {
             ValidateEmbeddedManifests(context.LoadFromAssemblyPath(Path.GetFullPath(path)), null);
+        }
+        finally
+        {
+            context.Unload();
+        }
+    }
+
+    [ArtifactFact("STS2AP_TEST_ASSEMBLY")]
+    [Trait("Category", "Manifest")]
+    public void BonusDefinitionsSurviveTheMultiplayerJsonBoundary()
+    {
+        string path = Path.GetFullPath(Environment.GetEnvironmentVariable("STS2AP_TEST_ASSEMBLY")!);
+        var context = new AssemblyLoadContext("bonus-settings-check", isCollectible: true);
+        context.Resolving += (_, name) =>
+        {
+            string dependency = Path.Combine(Path.GetDirectoryName(path)!, name.Name + ".dll");
+            return File.Exists(dependency) ? context.LoadFromAssemblyPath(dependency) : null;
+        };
+        try
+        {
+            var assembly = context.LoadFromAssemblyPath(path);
+            var definition = assembly.GetType("StS2AP.Models.BonusItemDefinition", true)!;
+            var arrayType = definition.MakeArrayType();
+            const string json = """
+                [{"Category":"WAX_RELIC","Pools":[],"Value":"THE_BOOT"},
+                 {"Category":"WAX_RELIC","Pools":["Common","Fake"],"Value":null}]
+                """;
+            var restored = (Array)JsonSerializer.Deserialize(json, arrayType)!;
+            var roundTrip = (Array)JsonSerializer.Deserialize(JsonSerializer.Serialize(restored, arrayType), arrayType)!;
+            Assert.Equal(2, roundTrip.Length);
+            Assert.Equal("THE_BOOT", definition.GetProperty("Value")!.GetValue(roundTrip.GetValue(0)));
+            Assert.Equal(new[] { "Common", "Fake" },
+                (IReadOnlyList<string>)definition.GetProperty("Pools")!.GetValue(roundTrip.GetValue(1))!);
         }
         finally
         {

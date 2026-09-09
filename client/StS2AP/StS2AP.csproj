@@ -88,6 +88,11 @@
 	  <EmbeddedResource Include="..\..\world\spire2\archipelago.json" LogicalName="StS2AP.Spire2Archipelago.json" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <None Include="..\..\shared\relic_custom_pools.json" Link="data\relic_custom_pools.data" CopyToOutputDirectory="PreserveNewest" />
+	  <None Include="..\..\shared\bonus_relic_blacklist.json" Link="data\bonus_relic_blacklist.data" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
 	<!-- Create steam_appid.txt for debugging outside Steam -->
 	<!-- Compile-only validation must embed the same manifests as Build. Without resource
 	     preparation, -t:Compile can replace the intermediate DLL with a resource-free one

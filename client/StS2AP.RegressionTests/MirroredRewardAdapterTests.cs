@@ -21,13 +21,14 @@ public sealed class MirroredRewardAdapterTests
     private static CardRewardData AsCard(MirroredReward reward) => reward.Match(
         card => card,
         _ => throw new InvalidOperationException(), _ => throw new InvalidOperationException(),
-        _ => throw new InvalidOperationException(), _ => throw new InvalidOperationException());
+        _ => throw new InvalidOperationException(), _ => throw new InvalidOperationException(),
+        _ => throw new InvalidOperationException());
 
     [Fact]
     public void ExistingWireJsonRoundTripsWithoutDomainSerialization()
     {
         const string json = """
-            {"SchemaVersion":8,"ApSlotId":7,"ReceivedItemIndex":42,"OwnerNetId":123,
+            {"SchemaVersion":9,"ApSlotId":7,"ReceivedItemIndex":42,"OwnerNetId":123,
              "Kind":0,"ItemName":"cards","SenderName":"sender","FoundLocation":"location",
              "IsRareCardReward":false,"CardRewardActIndex":1,"CardCanReroll":true,
              "CardHasBeenRevealed":true,"MaterializationStrategyId":"ap_rng_owner_final_v1",
@@ -193,6 +194,7 @@ public sealed class MirroredRewardAdapterTests
     [Theory]
     [InlineData(ApMirroredRewardKind.Potion, 1)]
     [InlineData(ApMirroredRewardKind.Relic, 1)]
+    [InlineData(ApMirroredRewardKind.Bonus, 1)]
     [InlineData(ApMirroredRewardKind.Ancient, 3)]
     [InlineData(ApMirroredRewardKind.Unavailable, 0)]
     public void OtherRewardKindsUseTheirNativePayload(ApMirroredRewardKind kind, int count)
@@ -204,7 +206,8 @@ public sealed class MirroredRewardAdapterTests
         spec.UnavailableReason = "No valid Ancient relic choice is available for this receipt.";
         MirroredReward reward = MirroredRewardAdapter.Decode(spec, 3);
         Assert.Equal(kind.ToString(), reward.Match(
-            _ => "Card", _ => "Potion", _ => "Relic", _ => "Ancient", _ => "Unavailable"));
+            _ => "Card", _ => "Potion", _ => "Relic", _ => "Ancient", _ => "Unavailable", _ => "Bonus"));
+        Assert.Equal(kind == ApMirroredRewardKind.Relic, reward.IsRelic);
     }
 
     [Fact]
@@ -228,7 +231,7 @@ public sealed class MirroredRewardAdapterTests
     {
         // Old fingerprint fields may still arrive, but must never enable generation or silent restoration.
         var spec = JsonSerializer.Deserialize<ApMirroredRewardSpec>("""
-            {"SchemaVersion":8,"ApSlotId":7,"ReceivedItemIndex":42,
+            {"SchemaVersion":9,"ApSlotId":7,"ReceivedItemIndex":42,
              "MaterializationStrategyId":"replica_native_v1","RequiresNativeMaterialization":true,
              "StateBeforeMaterialization":"pre","StateAfterMaterialization":"post",
              "SerializedModels":["invalid JSON"]}

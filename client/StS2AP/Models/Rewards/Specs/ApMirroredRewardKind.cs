@@ -10,4 +10,5 @@ public enum ApMirroredRewardKind
     Potion,
     Ancient,
     Unavailable,
+    Bonus,
 }

@@ -172,7 +172,7 @@ namespace StS2AP.Patches
                     HandleThreshholdItem(item, Progress.ProgressiveAncients, "Progressive Ancients");
 
                     // Keep receipts across future run-mode changes; menu policy controls visibility.
-                    Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
+                    ArchipelagoClient.Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
 
                     if (liveDelivery
                         && MultiplayerSupport.IsRealMultiplayerRun
@@ -223,13 +223,13 @@ namespace StS2AP.Patches
                     // Save loading replays the whole item list, then reconciles once at the end.
                     if (!liveDelivery)
                     {
-                        Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
+                        ArchipelagoClient.Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
                         return;
                     }
 
                     // Keep every receipt. Other characters and out-of-run deliveries may
                     // matter when their run starts or a checkpoint is loaded.
-                    Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
+                    ArchipelagoClient.Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
 
                     var player = GameUtility.CurrentPlayer;
                     var characterOffset = player?.Character.GetAPCharacterNumber();
@@ -376,7 +376,7 @@ namespace StS2AP.Patches
         private static void HandleUniversalItem(ItemInfo item, int index)
         {
             if (MultiplayerSupport.IsMultiplayerScope
-                && ItemTable.IsUniversalCombatBuff(item.ItemId))
+                && (ItemTable.IsUniversalCombatBuff(item.ItemId) || BonusRewardUtility.ConvertToGold(item.ItemId)))
             {
                 int addedGold = ApGrantDispatcher.AddUniversalBuffGold();
                 LogUtility.Success(
@@ -391,6 +391,9 @@ namespace StS2AP.Patches
             var universalId = item.GetUniversalItemId();
             switch (universalId)
             {
+                case APItem.BonusWaxRelic:
+                    ArchipelagoClient.Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
+                    break;
                 case APItem.FreeAttack:
                 case APItem.FreePower:
                 case APItem.FreeSkill:

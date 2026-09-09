@@ -29,7 +29,7 @@ public static class ApGrantDispatcher
         {
             if (ArchipelagoIdCodec.IsUniversalItemId(item.ItemId))
             {
-                if (ItemTable.IsUniversalCombatBuff(item.ItemId))
+                if (ItemTable.IsUniversalCombatBuff(item.ItemId) || BonusRewardUtility.ConvertToGold(item.ItemId))
                     buffCount++;
                 continue;
             }

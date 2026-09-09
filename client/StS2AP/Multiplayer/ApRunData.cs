@@ -130,6 +130,7 @@ public static class ApRunData
                 _ => true,
             },
             Progress = existing?.Progress ?? new ApRunProgressState(),
+            CombatsSinceLastWaxMelt = existing?.CombatsSinceLastWaxMelt ?? 0,
             Construction = existing?.Construction ?? new ApReplicaConstructionState(),
             ProgressRevision = existing?.ProgressRevision ?? 0,
             ProgressiveStarters = existing?.ProgressiveStarters
@@ -189,6 +190,14 @@ public static class ApRunData
             return _players.TryGet(runState, netId, out state);
         state = null!;
         return false;
+    }
+
+    internal static void SetWaxCombatCount(RunState runState, ulong netId, int count)
+    {
+        if (!_initialized || !_players.TryGet(runState, netId, out ApPlayerRunState state))
+            return;
+        state.CombatsSinceLastWaxMelt = count;
+        _players.Set(runState, netId, state);
     }
 
     /// <summary>

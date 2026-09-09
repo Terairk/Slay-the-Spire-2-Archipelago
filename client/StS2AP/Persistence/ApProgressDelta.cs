@@ -52,6 +52,8 @@ public sealed class ApProgressDelta
     public HashSet<long> CheckedCampfireLocationIdsRemoved { get; set; } = new();
     public Dictionary<int, ApCardAssignmentState> CardAssignmentUpserts { get; set; } = new();
     public List<int> CardAssignmentRemovals { get; set; } = new();
+    public Dictionary<int, string> BonusRelicAssignmentUpserts { get; set; } = new();
+    public List<int> BonusRelicAssignmentRemovals { get; set; } = new();
     public Dictionary<int, string> PotionAssignmentUpserts { get; set; } = new();
     public List<int> PotionAssignmentRemovals { get; set; } = new();
     public List<int> UsedItemsAdded { get; set; } = new();
@@ -89,6 +91,8 @@ public sealed class ApProgressDelta
         || CheckedCampfireLocationIdsRemoved.Count > 0
         || CardAssignmentUpserts.Count > 0
         || CardAssignmentRemovals.Count > 0
+        || BonusRelicAssignmentUpserts.Count > 0
+        || BonusRelicAssignmentRemovals.Count > 0
         || PotionAssignmentUpserts.Count > 0
         || PotionAssignmentRemovals.Count > 0
         || UsedItemsAdded.Count > 0
@@ -176,6 +180,14 @@ public sealed class ApProgressDelta
             delta.CardAssignmentRemovals
         );
         DiffDictionary(
+            before.BonusRelicAssignments,
+            after.BonusRelicAssignments,
+            static (left, right) => left == right,
+            static value => value,
+            delta.BonusRelicAssignmentUpserts,
+            delta.BonusRelicAssignmentRemovals
+        );
+        DiffDictionary(
             before.PotionAssignments,
             after.PotionAssignments,
             static (left, right) => left == right,
@@ -243,6 +255,7 @@ public sealed class ApProgressDelta
         result.CheckedCampfireLocationIds.ExceptWith(CheckedCampfireLocationIdsRemoved);
         result.CheckedCampfireLocationIds.UnionWith(CheckedCampfireLocationIdsAdded);
         ApplyDictionary(result.CardAssignments, CardAssignmentUpserts, CardAssignmentRemovals);
+        ApplyDictionary(result.BonusRelicAssignments, BonusRelicAssignmentUpserts, BonusRelicAssignmentRemovals);
         ApplyDictionary(result.PotionAssignments, PotionAssignmentUpserts, PotionAssignmentRemovals);
         result.UsedItems.RemoveAll(UsedItemsRemoved.Contains);
         foreach (int item in UsedItemsAdded)
@@ -267,6 +280,8 @@ public sealed class ApProgressDelta
         CardRewardsAttempted = source.CardRewardsAttempted,
         RareCardRewardsAttempted = source.RareCardRewardsAttempted,
         RelicRewardsAttempted = source.RelicRewardsAttempted,
+        CombatsSinceLastWaxMelt = source.CombatsSinceLastWaxMelt,
+        BonusRelicAssignments = new(source.BonusRelicAssignments),
         BankedRelicRewards = source.BankedRelicRewards,
         AncientSettingsForRun = source.AncientSettingsForRun,
         RelicRewardsAvailableAnytimeForRun = source.RelicRewardsAvailableAnytimeForRun,

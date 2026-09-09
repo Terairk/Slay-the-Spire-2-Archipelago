@@ -56,6 +56,7 @@ namespace StS2AP.Utils
                 ownedOrReservedRelicIds.UnionWith(reservedRelicIds);
             var eligibleAncients = GetEligibleAncients(ancientActIndex, specificAncient);
             var candidatesById = CollectCandidateRelics(
+                player,
                 eligibleAncients,
                 ownedOrReservedRelicIds,
                 logFailures: true,
@@ -179,6 +180,7 @@ namespace StS2AP.Utils
             var rolledAncient = TryGetRolledAncient(player, ancientActIndex);
             if (rolledAncient != null &&
                 CollectCandidateRelics(
+                    player,
                     new[] { rolledAncient },
                     ownedOrReservedRelicIds,
                     logFailures: false,
@@ -200,6 +202,7 @@ namespace StS2AP.Utils
             var runSeed = ResolveRunSeed(player);
             var fallback = GetFallbackAncients(player, ancientActIndex)
                 .Where(ancient => CollectCandidateRelics(
+                    player,
                     new[] { ancient },
                     ownedOrReservedRelicIds,
                     logFailures: false,
@@ -289,6 +292,7 @@ namespace StS2AP.Utils
 
         /// <summary>Extracts unique, eligible relic models from the supplied Ancients.</summary>
         private static Dictionary<ModelId, RelicModel> CollectCandidateRelics(
+            Player player,
             IEnumerable<AncientEventModel> ancients,
             IReadOnlySet<ModelId> ownedOrReservedRelicIds,
             bool logFailures,
@@ -309,7 +313,8 @@ namespace StS2AP.Utils
                         // TODO: do model selection in a better way than this
                         if (relic.Id == ModelId.none ||
                             ownedOrReservedRelicIds.Contains(relic.Id) ||
-                            IsExcluded(relic, settings, startOfActIndex))
+                            IsExcluded(relic, settings, startOfActIndex) ||
+                            !relic.IsAllowed(player.RunState))
                         {
                             continue;
                         }

@@ -6,8 +6,8 @@ namespace StS2AP.Models;
 /// </summary>
 public sealed class ApRewardMenuSpec
 {
-    // Every replica generates card offers; reveal messages verify digests instead of transferring cards.
-    public const int CurrentSchemaVersion = 8;
+    // Bonus relics have a distinct native grant shape and never use relic-coupon reservations.
+    public const int CurrentSchemaVersion = 9;
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public Guid RunId { get; set; }
     public Guid MenuId { get; set; } = Guid.NewGuid();

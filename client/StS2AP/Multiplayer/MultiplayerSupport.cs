@@ -36,6 +36,7 @@ public static class MultiplayerSupport
         MultiplayerFeature.GoldRewards,
         MultiplayerFeature.CardRewards,
         MultiplayerFeature.RelicRewards,
+        MultiplayerFeature.BonusItems,
         MultiplayerFeature.PotionRewards,
         MultiplayerFeature.AncientRewardChoices,
         MultiplayerFeature.CombatRewardLocations,
@@ -244,7 +245,10 @@ public static class MultiplayerSupport
     {
         var item = indexedItem.Item;
         if (ArchipelagoIdCodec.IsUniversalItemId(item.ItemId))
-            return IsUniversalCombatBuff(item.ItemId)
+            return item.GetUniversalItemId() == APItem.BonusWaxRelic
+                ? (ShouldRunReplicatedConstruction(MultiplayerFeature.BonusItems)
+                    ? MultiplayerFeature.BonusItems : MultiplayerFeature.GoldRewards)
+                : IsUniversalCombatBuff(item.ItemId)
                 ? MultiplayerFeature.GoldRewards
                 : MultiplayerFeature.UnknownReceivedItems;
 
@@ -864,6 +868,7 @@ public static class MultiplayerSupport
             ReleaseOnVictory = source.ReleaseOnVictory,
             CampfireSanity = source.CampfireSanity,
             GoldSanity = source.GoldSanity,
+            BonusItems = source.BonusItems.ToArray(),
             PotionSanity = source.PotionSanity,
             Floorsanity = source.Floorsanity,
             ProgressiveStarterCard = source.ProgressiveStarterCard,
@@ -989,6 +994,7 @@ public static class MultiplayerSupport
         {
             ApMirroredRewardKind.Card => MultiplayerFeature.CardRewards,
             ApMirroredRewardKind.Relic => MultiplayerFeature.RelicRewards,
+            ApMirroredRewardKind.Bonus => MultiplayerFeature.BonusItems,
             ApMirroredRewardKind.Potion => MultiplayerFeature.PotionRewards,
             ApMirroredRewardKind.Ancient => MultiplayerFeature.AncientRewardChoices,
             _ => MultiplayerFeature.UnknownReceivedItems,

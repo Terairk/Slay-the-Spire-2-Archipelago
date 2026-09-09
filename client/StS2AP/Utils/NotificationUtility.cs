@@ -201,6 +201,11 @@ namespace StS2AP.Utils
             return null;
         }
 
+        /// <summary>
+        /// Handles the notification for an item being sent.
+        /// This is the default way that item notifications are handled.
+        /// </summary>
+        /// <param name="msg">The log message containing information about the item being sent.</param>
         public static void HandleItemSend(ItemSendLogMessage msg)
         {
             if (!msg.IsRelatedToActivePlayer)
@@ -237,12 +242,7 @@ namespace StS2AP.Utils
         )
         {
             var result = ToColoredString(message, null);
-            EnqueueNotification(
-                result,
-                NotificationType.Info,
-                devConsoleOnly,
-                timeout
-            );
+            EnqueueNotification(result, NotificationType.Info, devConsoleOnly, timeout);
         }
 
         private static String ToColoredString(ItemSendLogMessage msg)

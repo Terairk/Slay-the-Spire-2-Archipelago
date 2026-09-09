@@ -124,6 +124,8 @@ class ClientArchiveTests(unittest.TestCase):
                 path.write_bytes(name.encode())
             entries[name] = path
 
+        for catalog in ("relic_custom_pools.data", "bonus_relic_blacklist.data"):
+            entries[f"data/{catalog}"] = b"{}"
         variants = {}
         for compat in release.SUPPORTED_STS2_API_COMPATS:
             dll = inputs / f"Archipelago-{compat}.dll"

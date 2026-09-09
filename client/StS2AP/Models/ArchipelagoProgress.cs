@@ -389,6 +389,10 @@ namespace StS2AP.Models
 
         public AncientRewardSettings? AncientSettingsForRun { get; set; }
 
+        public Dictionary<int, string> BonusRelicAssignments { get; set; } = new();
+
+        public int CombatsSinceLastWaxMelt { get; set; }
+
         public void ResetTrackers()
         {
             AncientSettingsForRun = MultiplayerSupport.IsRealMultiplayerRun
@@ -400,6 +404,8 @@ namespace StS2AP.Models
             RareCardRewardsAttempted = 0;
             BossRewardsDistributed = 0;
             RelicRewardsAttempted = 0;
+            CombatsSinceLastWaxMelt = 0;
+            BonusRelicAssignments.Clear();
             BankedRelicRewards = 0;
             RelicRewardsAvailableAnytimeForRun = RelicRewardUtility.EffectiveAvailableAnytime;
             GoldRewardsAttempted = 0;
@@ -473,6 +479,10 @@ namespace StS2AP.Models
         /// </summary>
         public bool IsAvailableInRewardMenu(IndexedItemInfo item, Player player)
         {
+            if (ArchipelagoIdCodec.IsUniversalItemId(item.Item.ItemId))
+                return item.Item.GetUniversalItemId() == APItem.BonusWaxRelic
+                    && !Items.IsUsed(item.Index)
+                    && !BonusRewardUtility.ConvertToGold(item.Item.ItemId);
             var itemId = item.Item.GetCharacterItemType();
             return item.Item.GetAPCharacterNumber() == GameUtility.CurrentAPCharacterNumber
                 && !Items.IsUsed(item.Index)
@@ -724,6 +734,8 @@ namespace StS2AP.Models
                 CardRewardsAttempted = CardRewardsAttempted,
                 RareCardRewardsAttempted = RareCardRewardsAttempted,
                 RelicRewardsAttempted = RelicRewardsAttempted,
+                CombatsSinceLastWaxMelt = CombatsSinceLastWaxMelt,
+                BonusRelicAssignments = new(BonusRelicAssignments),
                 BankedRelicRewards = BankedRelicRewards,
                 RelicRewardsAvailableAnytimeForRun = RelicRewardsAvailableAnytimeForRun,
                 RelicReceiptIndexesByCharacter = GetRelicReceiptIndexSnapshot(),
@@ -839,6 +851,8 @@ namespace StS2AP.Models
                 CardRewardsAttempted = saveData.CardRewardsAttempted,
                 RareCardRewardsAttempted = saveData.RareCardRewardsAttempted,
                 RelicRewardsAttempted = saveData.RelicRewardsAttempted,
+                CombatsSinceLastWaxMelt = saveData.CombatsSinceLastWaxMelt,
+                BonusRelicAssignments = new(saveData.BonusRelicAssignments),
                 BankedRelicRewards = saveData.BankedRelicRewards,
                 RelicRewardsAvailableAnytimeForRun = saveData.RelicRewardsAvailableAnytimeForRun,
                 GoldRewardsAttempted = saveData.GoldRewardsAttempted,

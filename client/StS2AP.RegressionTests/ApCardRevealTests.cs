@@ -40,7 +40,7 @@ public sealed class ApCardRevealTests
         foreach (var spec in RoundTrip(menu).Rewards)
         {
             var reward = MirroredRewardAdapter.Decode(spec, 3);
-            Assert.True(reward.Match(card => card.IsDeferred, _ => false, _ => false, _ => false, _ => false));
+            Assert.True(reward.Match(card => card.IsDeferred, _ => false, _ => false, _ => false, _ => false, _ => false));
             Assert.Empty(reward.Effects);
         }
         Assert.Throws<InvalidOperationException>(() =>

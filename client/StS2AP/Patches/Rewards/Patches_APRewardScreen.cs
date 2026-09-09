@@ -357,7 +357,9 @@ namespace StS2AP.Patches
         {
             if (!GodotObject.IsInstanceValid(linkedSet)
                 || linkedSet.IsQueuedForDeletion()
-                || FindRewardsScreen(linkedSet) is not { } screen)
+                || FindRewardsScreen(linkedSet) is not { } screen
+                || screen.IsQueuedForDeletion()
+                || !screen.IsInsideTree())
             {
                 return;
             }
@@ -367,7 +369,6 @@ namespace StS2AP.Patches
             // RewardCollectedFrom directly as well removes it twice and leaves the second call
             // dereferencing a null parent in NRewardsScreen.RemoveButton.
             linkedSet.EmitSignal(NLinkedRewardSet.SignalName.RewardClaimed, linkedSet);
-            linkedSet.QueueFreeSafely();
 
             Callable.From(() =>
             {

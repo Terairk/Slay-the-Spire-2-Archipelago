@@ -370,6 +370,8 @@ namespace StS2AP
         private static readonly object _connectionStateLock = new();
         private static bool _currentAttemptIsAutomaticReconnect;
         private static SessionCallbacks? _sessionCallbacks;
+        private static (ApSessionIdentity Identity, System.Version Version, int CompatFlag)?
+            _acceptedOlderApWorld;
 
         /// <summary>Runs session callbacks on Godot's thread only while their owner is current.</summary>
         internal static void RunForSession(ArchipelagoSession session, Action action) =>
@@ -441,6 +443,7 @@ namespace StS2AP
             CheckedLocations = new();
             ScoutedLocations = new();
             Seed = string.Empty;
+            _acceptedOlderApWorld = null;
             DeathLinkController = null;
             LastDeathLinkMessage = null;
             LastDeathLinkReceivedAt = null;
@@ -630,6 +633,9 @@ namespace StS2AP
             {
                 var success = (LoginSuccessful)result;
 
+                var connectedIdentity = ApSessionIdentity.Create(ServerAddress,
+                    connectionSession.RoomState.Seed, connectionSession.ConnectionInfo.Team,
+                    connectionSession.ConnectionInfo.Slot);
                 int apTeamId = connectionSession.ConnectionInfo.Team;
                 int apSlotId = connectionSession.ConnectionInfo.Slot;
                 if (!MultiplayerSupport.ValidateApSessionIdentity(
@@ -687,6 +693,20 @@ namespace StS2AP
                     return;
                 }
 
+                int apWorldAgeComparison = CompareMajorMinor(
+                    bundledApWorldVersion,
+                    apWorldVersion
+                );
+                if (apWorldAgeComparison < 0)
+                {
+                    RejectIncompatibleConnection(
+                        $"The server uses APWorld v{apWorldVersion}, which is newer than this "
+                            + $"client's bundled APWorld v{bundledApWorldVersion}. Update the client "
+                            + "before connecting.", wasAutomaticReconnect
+                    );
+                    return;
+                }
+
                 Settings = GetPlayerSettings(apWorldVersion);
                 if (!TryValidateConfiguredCharacters(Settings, out string characterError))
                 {
@@ -694,10 +714,6 @@ namespace StS2AP
                     return;
                 }
 
-                int apWorldAgeComparison = CompareMajorMinor(
-                    bundledApWorldVersion,
-                    apWorldVersion
-                );
                 if (apWorldAgeComparison > 0)
                 {
                     string warning =
@@ -706,14 +722,22 @@ namespace StS2AP
                             + "but updating the APWorld is recommended.";
                     LogUtility.Warn(warning);
 
+                    if (wasAutomaticReconnect
+                        && _acceptedOlderApWorld is { } accepted
+                        && accepted.Identity == connectedIdentity
+                        && accepted.Version == apWorldVersion
+                        && accepted.CompatFlag == apWorldCompatFlag)
+                    {
+                        LogUtility.Info($"Reusing accepted APWorld v{apWorldVersion} for {connectedIdentity}");
+                        OnConnected();
+                        return;
+                    }
+
                     if (wasAutomaticReconnect)
                     {
-                        NotificationUtility.ShowRawText(
-                            warning,
-                            timeout: 8.0,
-                            priority: NotificationUtility.NotificationPriority.High
-                        );
-                        OnConnected();
+                        RejectIncompatibleConnection(
+                            "The older APWorld requires manual confirmation. Reconnect manually to accept it.",
+                            wasAutomaticReconnect: true);
                         return;
                     }
 
@@ -726,8 +750,15 @@ namespace StS2AP
                         Body = warningBody,
                         ButtonPressed = continueConnecting =>
                         {
+                            // The warning may outlive its socket or a deliberate slot change.
+                            // Neither accepting nor cancelling it may affect a replacement session.
+                            if (!ReferenceEquals(Session, connectionSession) || !IsConnected)
+                                return;
                             if (continueConnecting)
+                            {
+                                _acceptedOlderApWorld = (connectedIdentity, apWorldVersion, apWorldCompatFlag);
                                 OnConnected();
+                            }
                             else
                                 RejectIncompatibleConnection(
                                     "Connection cancelled. Update the APWorld before trying again."
@@ -1538,6 +1569,12 @@ namespace StS2AP
                 settings.RelicRewardsAvailableAnytime = Convert.ToInt32(slotData["relic_rewards_available_anytime"]);
             if(slotData.ContainsKey("release_on_victory"))
                 settings.ReleaseOnVictory = Convert.ToBoolean(slotData["release_on_victory"]);
+
+            if (slotData.TryGetValue("bonus_items", out object? bonusItemsValue))
+            {
+                settings.BonusItems = BonusItemDefinition.ParseAll(bonusItemsValue);
+                LogUtility.Info($"SLOT - Bonus Items configured: {settings.BonusItems.Count}");
+            }
 
             if (slotData.ContainsKey("campfire_sanity"))
                 settings.CampfireSanity = Convert.ToInt32(slotData["campfire_sanity"]) != 0;

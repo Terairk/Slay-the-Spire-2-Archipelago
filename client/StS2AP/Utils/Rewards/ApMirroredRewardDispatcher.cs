@@ -392,6 +392,18 @@ public static class ApMirroredRewardDispatcher
                 spec.SerializedModels = reward.Cards.Select(SerializeCard).ToList();
                 break;
             }
+            case ApMirroredRewardKind.Bonus:
+            {
+                RelicModel? relic = BonusRewardUtility.GetOrAssign(receipt, player);
+                if (relic == null)
+                {
+                    spec.Kind = ApMirroredRewardKind.Unavailable;
+                    spec.UnavailableReason = "No eligible bonus wax relic is configured for this receipt.";
+                    break;
+                }
+                spec.SerializedModels.Add(SerializeRelic(relic));
+                break;
+            }
             case ApMirroredRewardKind.Relic:
             {
                 IReadOnlyList<RelicModel> choices =
@@ -485,7 +497,8 @@ public static class ApMirroredRewardDispatcher
         potion => new ApNativePotionReward(GetReplicaPotionAssignment(spec.Origin, potion, owner), owner, spec.Origin),
         relic => BuildStandardRelicReward(spec.Origin, relic, owner),
         choices => BuildAncientReward(spec.Origin, choices, owner),
-        reason => new ApUnavailableReward(spec.Origin.ItemName, reason, owner, spec.Origin));
+        reason => new ApUnavailableReward(spec.Origin.ItemName, reason, owner, spec.Origin),
+        relic => new ApNativeRelicReward(DeserializeRelic(relic), owner, spec.Origin, ApMirroredRewardKind.Bonus));
 
     private static Reward BuildCardReward(RewardOrigin origin, CardRewardData card, Player player)
     {
@@ -881,7 +894,7 @@ public static class ApMirroredRewardDispatcher
     private static int GetNativeOrder(ApMirroredRewardKind kind) => kind switch
     {
         ApMirroredRewardKind.Potion => 2,
-        ApMirroredRewardKind.Relic or ApMirroredRewardKind.Ancient => 3,
+        ApMirroredRewardKind.Relic or ApMirroredRewardKind.Ancient or ApMirroredRewardKind.Bonus => 3,
         ApMirroredRewardKind.Card => 5,
         _ => 99,
     };
@@ -892,7 +905,10 @@ public static class ApMirroredRewardDispatcher
     {
         kind = default;
         if (ArchipelagoIdCodec.IsUniversalItemId(receipt.Item.ItemId))
-            return false;
+        {
+            kind = ApMirroredRewardKind.Bonus;
+            return receipt.Item.GetUniversalItemId() == ItemTable.APItem.BonusWaxRelic;
+        }
         switch (receipt.Item.GetCharacterItemType())
         {
             case ItemTable.APItem.CardReward:

@@ -99,6 +99,12 @@ try {
         -not $_.Name.StartsWith("STS2-RitsuLib", [StringComparison]::OrdinalIgnoreCase)
     } | Copy-Item -Destination $stageRoot
 
+    $catalogDestination = Join-Path $stageRoot "data"
+    $null = New-Item -ItemType Directory -Path $catalogDestination
+    foreach ($catalog in @("relic_custom_pools.data", "bonus_relic_blacklist.data")) {
+        Copy-Item -LiteralPath (Join-Path $betaOutput "data\$catalog") -Destination $catalogDestination
+    }
+
     $manifest = [ordered]@{
         schema = 1
         modVersion = (Get-Content -LiteralPath (Join-Path $clientDirectory "Archipelago.json") -Raw | ConvertFrom-Json).version
