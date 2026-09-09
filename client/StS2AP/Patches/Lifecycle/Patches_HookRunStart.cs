@@ -39,6 +39,7 @@ namespace StS2AP.Patches
                     LogUtility.Error(message);
                     throw new InvalidOperationException(message);
                 }
+                ApSingleplayerSaves.BeginNew(officialName);
                 GameUtility.CurrentConfig = config;
                 if(GameUtility.CurrentConfig.Ascension.Count == 0)
                 {

@@ -69,7 +69,6 @@ namespace StS2AP.Utils
         /// <summary>
         /// Dictionary that holds the current AP Saves for each character. Stored in DataStorage.
         /// </summary>
-        public static Dictionary<string, string> APSaves { get; set; } = new Dictionary<string, string>();
 
         /// <summary>
         /// Returns the current player's one-based AP character number.
@@ -447,55 +446,8 @@ namespace StS2AP.Utils
             }
         }
 
-        /// <summary>
-        /// Sets up a watch for save files stored in datastorage.
-        /// </summary>
-        public static async Task SetupOnChangedSaves()
-        {
-            var session = ArchipelagoClient.Session;
-            if (session == null)
-            {
-                LogUtility.Warn("Cannot watch AP saves without an active AP session.");
-                return;
-            }
-            try
-            {
-                LogUtility.Info("Setting up StS Saves on the server");
-                var storageKey = "StS2AP_Saves";
-
-                // Initialize the key with an empty dict if it doesn't exist yet
-                session.DataStorage[
-                    Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
-                    .Initialize(new JObject()); 
-                // replace inside () with `new Newtonsoft.Json.Linq.JObject()` in case it breaks not sure if this is correct
-
-                // Read back whatever is stored
-                session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
-                    .OnValueChanged += (oldData, newData, additionalArguments) =>
-                    {
-                        if (newData != null)
-                        {
-                            var saves = newData.ToObject<Dictionary<string, string>>();
-                            ArchipelagoClient.RunForSession(session, () =>
-                            {
-                                APSaves = saves ?? new();
-                                LogUtility.Info($"Loaded saves from datastorage; got characters {string.Join(", ", APSaves.Keys)}");
-                            });
-                        }
-                    };
-                var loaded = await session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, storageKey]
-                    .GetAsync<Dictionary<string, string>>();
-                ArchipelagoClient.RunForSession(session, () => APSaves = loaded ?? new());
-            }
-            catch(Exception ex)
-            {
-                LogUtility.Warn($"Failed to initialize datastorage watch for save files: {ex.Message}");
-            }
-        }
-
         internal static void ResetSlotState()
         {
-            APSaves = new();
             _goaledCharacters = new();
             CurrentPlayer = null;
             CurrentConfig = null;
@@ -580,10 +532,6 @@ namespace StS2AP.Utils
                 {
                     LogUtility.Info($"TrySetGoalAchieved: '{charName}' already recorded as goaled. Total goaled: {_goaledCharacters.Count}");
                 }
-
-                // Delete save from server as a good steward
-                session.DataStorage[Archipelago.MultiClient.Net.Enums.Scope.Slot, "StS2AP_Saves"]
-                    += Operation.Update(new Dictionary<string, string> { { charName, "" } });
 
                 // num_chars_goal == 0 means all characters in the slot must complete
                 int required = settings.NumCharsGoal == 0
@@ -695,135 +643,13 @@ namespace StS2AP.Utils
             }
         }
 
-        /// <summary>
-        /// Builds a Godot user:// path for the emergency recovery save file
-        /// that is uniquely identifiable to the current Archipelago session.
-        /// Uses the Slot Name and the room Seed so the file persists across
-        /// connection/disconnection cycles.
-        /// </summary>
-        public static string GetRecoverySavePath()
-        {
-            var slotName = ArchipelagoClient.PlayerName ?? "unknown";
-            var seed = ArchipelagoClient.Seed ?? "unknown";
-            // Sanitise so no illegal path characters sneak in
-            var safeName = string.Join("_", slotName.Split(System.IO.Path.GetInvalidFileNameChars()));
-            var safeSeed = string.Join("_", seed.Split(System.IO.Path.GetInvalidFileNameChars()));
-            return $"user://sts_ap_recovery_{safeName}_{safeSeed}.save";
-        }
-
-        /// <summary>
-        /// When the connection to the Archipelago server is lost during a run, show a popup giving the player the option 
-        /// to create an emergency recovery save file so they don't lose progress.
-        /// 
-        /// Unlike usual, this save file will be stored locally, rather than in the Archipelago Server's DataStorage
-        /// </summary>
+        /// <summary>Local checkpoints survive a disconnect; arbitrary recovery would bypass Ancient gates.</summary>
         public static void ShowOptionsOnLostConnection()
         {
-            // Ignore if we're not in a run
             if (!IsInRun) return;
-
-            // Build a popup for the player to choose whether to create a save file or return to main menu
-            var popup = new ConfirmPopup();
-            popup.Header = new LocString("gameplay_ui", "AP_LOST_CONNECTION.header");
-            popup.Body = new LocString("gameplay_ui", "AP_LOST_CONNECTION.body");
-            popup.ButtonPressed = (savePressed) =>
-            {
-                if (savePressed)
-                {
-                    LogUtility.Info("Attempting to create an Emergency Save");
-                    CreateEmergencyRecoverySave();
-                }
-                else
-                {
-                    LogUtility.Info("No Emergency Save will be created, returning to menu");
-                }
-
-                NGame.Instance?.ReturnToMainMenuAfterRun();
-            };
-            popup.Show();
-        }
-
-        /// <summary>
-        /// Creates an emergency recovery save file locally.
-        /// Serializes the current run and its Archipelago progress using the same envelope as
-        /// the normal DataStorage save, then writes it locally until the server is available.
-        /// </summary>
-        private static void CreateEmergencyRecoverySave()
-        {
-            try
-            {
-                SerializableRun vanillaSave = RunManager.Instance.ToSave(preFinishedRoom: null);
-                var zipped = Patches_RunSaveManager.SaveRun.SerializeAndCompress(vanillaSave);
-
-                // Write to a local file using Godot's FileAccess (respects user:// virtual path)
-                var savePath = GetRecoverySavePath();
-                using var file = Godot.FileAccess.Open(savePath, Godot.FileAccess.ModeFlags.Write);
-                if (file == null)
-                {
-                    LogUtility.Error($"Failed to open recovery save file for writing: {Godot.FileAccess.GetOpenError()}");
-                    return;
-                }
-
-                file.StoreString(zipped);
-                LogUtility.Success($"Emergency recovery save written to {savePath}");
-            }
-            catch (Exception ex)
-            {
-                LogUtility.Error($"Failed to create emergency recovery save: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Checks whether a local emergency recovery save file exists for the current Archipelago session.
-        /// </summary>
-        public static bool HasRecoverySave()
-        {
-            return Godot.FileAccess.FileExists(GetRecoverySavePath());
-        }
-
-        /// <summary>
-        /// Loads the emergency recovery save data as a compressed string, or null if the file doesn't exist.
-        /// </summary>
-        public static string? LoadRecoverySaveData()
-        {
-            if (!HasRecoverySave()) return null;
-
-            try
-            {
-                var savePath = GetRecoverySavePath();
-                using var file = Godot.FileAccess.Open(savePath, Godot.FileAccess.ModeFlags.Read);
-                if (file == null)
-                {
-                    LogUtility.Error($"Failed to open recovery save file for reading: {Godot.FileAccess.GetOpenError()}");
-                    return null;
-                }
-
-                return file.GetAsText();
-            }
-            catch (Exception ex)
-            {
-                LogUtility.Error($"Failed to load recovery save: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Deletes the local emergency recovery save file.
-        /// </summary>
-        public static void DeleteRecoverySave()
-        {
-            try
-            {
-                if (HasRecoverySave())
-                {
-                    Godot.DirAccess.RemoveAbsolute(GetRecoverySavePath());
-                    LogUtility.Info("Emergency recovery save file deleted.");
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.Warn($"Failed to delete recovery save file: {ex.Message}");
-            }
+            NotificationUtility.ShowRawText(
+                "Connection lost. Your local AP checkpoints are preserved. Reconnect and select a run to resume.");
+            _ = NGame.Instance?.ReturnToMainMenuAfterRun();
         }
 
         #endregion

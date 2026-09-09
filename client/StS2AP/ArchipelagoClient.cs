@@ -1102,11 +1102,6 @@ namespace StS2AP
             // Restore goaled characters from DataStorage so cross-session goal tracking works
             _ = GameUtility.RestoreGoaledCharsFromStorage();
 
-            // Multiplayer progress is checkpointed only in the native host save. Do not attach
-            // the singleplayer AP DataStorage save mirror to a multiplayer session.
-            if (!MultiplayerSupport.IsMultiplayerScope)
-                _ = GameUtility.SetupOnChangedSaves();
-
             // Load the set of already-consumed buff indices from DataStorage before item processing begins.
             if (!MultiplayerSupport.IsMultiplayerScope)
                 _ = BuffUtility.LoadFromStorageAsync();

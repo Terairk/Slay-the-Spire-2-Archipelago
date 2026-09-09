@@ -53,6 +53,7 @@
     <Compile Include="..\StS2AP\Utils\Rewards\ApRewardSelectionQueue.cs" Link="Utils\Rewards\ApRewardSelectionQueue.cs" />
     <Compile Include="..\StS2AP\Utils\Rewards\ApRewardTravelGuard.cs" Link="Utils\Rewards\ApRewardTravelGuard.cs" />
     <Compile Include="..\StS2AP\Utils\RestSitePolicy.cs" Link="Utils\RestSitePolicy.cs" />
+    <Compile Include="..\StS2AP\Persistence\SingleplayerRunArchive.cs" Link="Persistence\SingleplayerRunArchive.cs" />
     <Compile Include="..\StS2AP\Persistence\CampaignSaveFiles.cs" Link="Persistence\CampaignSaveFiles.cs" />
     <Compile Include="..\StS2AP\Persistence\ApRelicReceiptState.cs" Link="Persistence\ApRelicReceiptState.cs" />
     <Using Include="StS2AP.Models" />

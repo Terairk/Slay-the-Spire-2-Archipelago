@@ -25,7 +25,11 @@ internal static class CampaignSaveFiles
 
     public static (string FileName, string Hash) Store(string directory, string source)
     {
-        byte[] bytes = File.ReadAllBytes(source);
+        return StoreBytes(directory, File.ReadAllBytes(source));
+    }
+
+    public static (string FileName, string Hash) StoreBytes(string directory, byte[] bytes)
+    {
         string hash = ComputeHash(bytes);
         string fileName = $"run-{hash}.save";
         string destination = GetPath(directory, fileName, hash);

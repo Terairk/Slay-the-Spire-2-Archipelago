@@ -20,6 +20,7 @@ namespace StS2AP.Patches
             [HarmonyPostfix]
             public static void Postfix(bool isVictory)
             {
+                ApSingleplayerSaves.MarkEnded(isVictory);
                 if (isVictory
                     && RunManager.Instance.NetService.Type
                         == MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Host)

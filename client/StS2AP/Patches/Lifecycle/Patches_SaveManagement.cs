@@ -1,11 +1,7 @@
-﻿using Archipelago.MultiClient.Net;
-using Archipelago.MultiClient.Net.Enums;
-using Archipelago.MultiClient.Net.Models;
-using Godot;
+﻿using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Multiplayer;
@@ -62,6 +58,8 @@ namespace StS2AP.Patches
                     return false;
                 }
 
+                if (!ApSingleplayerSaves.OwnsRun) return true;
+
                 LogUtility.Info($"Game attempted to save in room of type '{preFinishedRoom?.RoomType}'");
                 LogUtility.Info($"Current room type {RunManager.Instance.DebugOnlyGetState()?.CurrentRoom?.RoomType}");
                 LogUtility.Info($"Current Map node type {RunManager.Instance.DebugOnlyGetState()?.CurrentMapPoint?.PointType}");
@@ -86,7 +84,8 @@ namespace StS2AP.Patches
 
                 LogUtility.Info("Preparing AP checkpoint save");
                 SerializableRun saveMe = RunManager.Instance.ToSave(preFinishedRoom);
-                __result = asyncSave(saveMe, isBossAutosave || isTreasureAutosave);
+                ApSingleplayerSaves.Save(saveMe, isBossAutosave ? "boss" : isTreasureAutosave ? "treasure" : "ancient");
+                __result = Task.CompletedTask;
                 return false;
             }
 
@@ -119,7 +118,8 @@ namespace StS2AP.Patches
                     isBossAutosave
                     || isTreasureAutosave
                     || (
-                        preFinishedRoom?.RoomType == RoomType.Event
+                        (MultiplayerSupport.IsRealMultiplayerRun || currentAct == 1)
+                        && preFinishedRoom?.RoomType == RoomType.Event
                         && currentMapPointType == MapPointType.Ancient
                     );
                 AncientRelicLocation ancientRelicLocation = AncientSettingsUtility.Current.Location;
@@ -147,52 +147,9 @@ namespace StS2AP.Patches
                 return reason.Length == 0;
             }
 
-            public static async Task asyncSave(
-                SerializableRun vanillaSave,
-                bool showAutosaveNotification = false
-            )
-            {
-                var zipped = SerializeAndCompress(vanillaSave);
-                if(GameUtility.CurrentPlayer == null)
-                {
-                    return;
-                }
-                ArchipelagoSession? session = ArchipelagoClient.Session;
-                if (session == null)
-                {
-                    LogUtility.Error("Cannot upload an AP checkpoint without an active session.");
-                    return;
-                }
-                var saveDict = new Dictionary<string, string>();
-                saveDict[GameUtility.CurrentPlayer.getInternalName()] = zipped;
-                const string saveStorageKey = "StS2AP_Saves";
-                var saveOperation = session.DataStorage[
-                    Scope.Slot,
-                    saveStorageKey
-                ];
-                saveOperation += Operation.Update(saveDict);
-                if (showAutosaveNotification)
-                {
-                    saveOperation += Callback.Add(
-                        (_, _, _) =>
-                        {
-                            Callable.From(
-                                () => NotificationUtility.ShowRawText(
-                                    "[font_size=80]Game autosaved.[/font_size]",
-                                    timeout: 3.5,
-                                    priority: NotificationUtility.NotificationPriority.High,
-                                    includeInDevConsole: false
-                                )
-                            ).CallDeferred();
-                        }
-                    );
-                }
-                session.DataStorage[Scope.Slot, saveStorageKey] = saveOperation;
-            }
-
             /// <summary>
             /// Serializes a vanilla run together with all run-scoped Archipelago progress.
-            /// Both server checkpoints and local recovery saves use this same envelope.
+            /// Local checkpoints keep native and AP state in this same envelope.
             /// </summary>
             public static string SerializeAndCompress(SerializableRun vanillaSave)
             {
@@ -241,9 +198,9 @@ namespace StS2AP.Patches
     {
         /// <summary>
         /// Restores a compressed Archipelago save and reconstructs both the vanilla run and
-        /// all run-scoped AP state. Server checkpoints and local recovery saves share this path.
+        /// all run-scoped AP state. Local checkpoints share this path.
         /// </summary>
-        private static async Task RestoreRun(string compressedSave, string saveDescription)
+        internal static async Task RestoreRun(string compressedSave, string saveDescription, string expectedCharacter)
         {
             var unzipped = Patches_RunSaveManager.SaveRun.Unzip(compressedSave);
             SerializableAP? apSave = JsonSerializer.Deserialize<SerializableAP>(
@@ -274,7 +231,11 @@ namespace StS2AP.Patches
             }
 
             SerializableRun serializableRun = runResult.SaveData;
+            if (serializableRun.Players.Count != 1
+                || serializableRun.Players[0].CharacterId?.Entry != expectedCharacter)
+                throw new InvalidDataException("The checkpoint character does not match the selected AP run.");
             RunState runState = RunState.FromSerializable(serializableRun);
+            NAudioManager.Instance?.StopMusic();
             await RunManager.Instance.SetUpSavedSingleplayer(runState, serializableRun);
             Log.Info(
                 $"Continuing run from {saveDescription} with character: "
@@ -348,120 +309,8 @@ namespace StS2AP.Patches
                     return false;
                 }
 
-                var charName = character.Id.Entry;
-                foreach(var entry in GameUtility.APSaves)
-                {
-                    if (entry.Value.Length > 0)
-                    {
-                        LogUtility.Info($"Have save for {entry.Key}");
-                    }
-                }
-                if(GameUtility.APSaves.TryGetValue(charName, out var saveData) && saveData != null && saveData.Length > 0)
-                {
-                    LogUtility.Info($"AP Save detected for character {charName}");
-                    var popup = new ConfirmPopup();
-                    popup.Header = new LocString("main_menu_ui", "CONTINUE_RUN.header");
-                    popup.Body = new LocString("main_menu_ui", "CONTINUE_RUN.body");
-                    popup.ButtonPressed = (yesPressed) =>
-                    {
-                        if(yesPressed)
-                        {
-                            _ = ContinueRun(__instance);
-                        }
-                        else
-                        {
-                            __instance.Lobby.SetReady(ready: true);
-                        }
-                    };
-                    popup.Show();
-                    return false;
-                }
-                LogUtility.Info($"No AP Save detected for character {charName}");
-                return true;
-            }
-
-            private static async Task ContinueRun(NCharacterSelectScreen _charSelect)
-            {
-                var charName = BetaMainCompatibility.GetLocalCharacter(_charSelect.Lobby).Id.Entry;
-                if (!GameUtility.APSaves.TryGetValue(charName, out var saveStr))
-                {
-                    LogUtility.Error(
-                        "AP save disappeared before it could be loaded; preserving the current run selection"
-                    );
-                    NotificationUtility.ShowRawText("The checkpoint could not be found.");
-                    return;
-                }
-
-                try
-                {
-                    NAudioManager.Instance?.StopMusic();
-                    await RestoreRun(saveStr, "AP checkpoint");
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.Error($"Failed to load AP save: {ex}");
-                    NotificationUtility.ShowRawText("Failed to load checkpoint. The checkpoint was preserved.");
-                }
-            }
-        }
-
-        /// <summary>
-        /// When the Character Select screen opens, check for a local emergency
-        /// recovery save and prompt the user to load it.
-        /// </summary>
-        [HarmonyPatch(typeof(NCharacterSelectScreen), "OnSubmenuOpened")]
-        public static class CheckRecoverySaveOnOpen
-        {
-            [HarmonyPostfix]
-            public static void Postfix()
-            {
-                if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer)
-                    return;
-
-                if (!ArchipelagoClient.IsConnected) return;
-                if (!GameUtility.HasRecoverySave()) return;
-
-                LogUtility.Info("Recovery save file detected, prompting user...");
-
-                var popup = new ConfirmPopup();
-                popup.Header = new LocString("gameplay_ui", "AP_LOAD_RECOVERY.header");
-                popup.Body = new LocString("gameplay_ui", "AP_LOAD_RECOVERY.body");
-                popup.ButtonPressed = (yesPressed) =>
-                {
-                    if (yesPressed)
-                    {
-                        _ = LoadRecoverySave();
-                    }
-                    else
-                    {
-                        GameUtility.DeleteRecoverySave();
-                    }
-                };
-                popup.Show();
-            }
-
-            private static async Task LoadRecoverySave()
-            {
-                try
-                {
-                    var saveStr = GameUtility.LoadRecoverySaveData();
-                    if (string.IsNullOrEmpty(saveStr))
-                    {
-                        LogUtility.Error("Recovery save data was empty or null");
-                        return;
-                    }
-
-                    NAudioManager.Instance?.StopMusic();
-                    await RestoreRun(saveStr, "emergency recovery save");
-                    GameUtility.DeleteRecoverySave();
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.Error($"Failed to load recovery save: {ex}");
-                    NotificationUtility.ShowRawText(
-                        "Failed to load the recovery save. The recovery file was preserved."
-                    );
-                }
+                ApSingleplayerCampaignPicker.Show(__instance, character.Id.Entry);
+                return false;
             }
         }
     }
