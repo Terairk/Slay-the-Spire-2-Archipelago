@@ -613,7 +613,6 @@ namespace StS2AP
         {
             if (result.Successful && !connectionSession.Socket.Connected)
                 result = new LoginFailure("The Archipelago connection closed during login.");
-            string outText;
             bool wasAutomaticReconnect;
             lock (_connectionStateLock)
             {
@@ -792,11 +791,12 @@ namespace StS2AP
             {
                 // Log the error
                 var failure = (LoginFailure)result;
-                outText = $"Failed to connect to {ServerAddress} as {PlayerName}.";
+                string outText = $"Failed to connect to {ServerAddress} as {PlayerName}.";
                 outText = failure.Errors.Aggregate(
                     outText,
                     (current, error) => current + $"\n    {error}"
                 );
+                LogUtility.Error(outText);
 
                 // End the connection
                 Disconnect(showMultiplayerNotice: !wasAutomaticReconnect);
@@ -883,7 +883,11 @@ namespace StS2AP
             }
 
             string? versionText = versionElement.GetString();
-            string semanticCore = versionText?.Split('-', '+')[0] ?? string.Empty;
+            string semanticCore = versionText?.Split(
+                ['-', '+'],
+                2,
+                StringSplitOptions.None
+            )[0] ?? string.Empty;
             if (!System.Version.TryParse(semanticCore, out System.Version? version)
                 || version.Build < 0)
             {

@@ -13,7 +13,6 @@ from .options import (
     DexterityFillerWeight, StrengthFillerWeight, PlatingFillerWeight,
     FriendshipFillerWeight, PostCombatCardUpgradeFillerWeight, PostCombatCardRemovalFillerWeight,
     AdditionalCardRewardFillerWeight, BufferFillerWeight, VigorFillerWeight, ThornsFillerWeight, ArtifactFillerWeight,
-    SingleColorlessCardFillerWeight,
 )
 
 # The info needed for the Archipelago Website, not the actual `apworld`

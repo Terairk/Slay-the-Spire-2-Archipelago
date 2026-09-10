@@ -240,7 +240,7 @@ public static class ApMirroredRewardDispatcher
             synchronized: true,
             initiallyEmpty: set.Rewards.Count == 0
         );
-        ObserveOwnerCompletion(spec, completion);
+        _ = ObserveOwnerCompletionAsync(spec, completion);
         await Task.Yield();
         return true;
     }
@@ -751,8 +751,9 @@ public static class ApMirroredRewardDispatcher
             TaskCreationOptions.RunContinuationsAsynchronously
         );
         bool posted = RitsuLibSidecarGodotMainLoopScheduling.TryPostToMainLoop(() =>
-            CompleteRemoteMenu(menu, completion)
-        );
+        {
+            _ = CompleteRemoteMenuAsync(menu, completion);
+        });
         if (!posted)
         {
             completion.SetException(
@@ -800,7 +801,8 @@ public static class ApMirroredRewardDispatcher
         return true;
     }
 
-    private static async void CompleteRemoteMenu(
+    // changed to async Task as async void has lots of issues
+    private static async Task CompleteRemoteMenuAsync(
         ApRewardMenuSpec menu,
         TaskCompletionSource sidecarCompletion)
     {
@@ -825,11 +827,11 @@ public static class ApMirroredRewardDispatcher
                 rewards.Where(r => r.IsRelic).Select(r => r.Origin.ReceivedItemIndex));
             RewardsSet set = BuildRewardsSet(menu.Gold, rewards, owner);
             await RunManager.Instance.RewardsSetSynchronizer.BeginRewardsSet(set);
-            sidecarCompletion.SetResult();
+            sidecarCompletion.TrySetResult();
         }
         catch (Exception ex)
         {
-            sidecarCompletion.SetException(ex);
+            sidecarCompletion.TrySetException(ex);
             if (MultiplayerSupport.IsRealMultiplayerRun && TryGetCurrentMenuOwner(menu, out _, out _))
                 MultiplayerSupport.InvalidateRunClaims($"remote AP reward menu {menu.MenuId} failed");
         }
@@ -839,7 +841,7 @@ public static class ApMirroredRewardDispatcher
         }
     }
 
-    private static async void ObserveOwnerCompletion(ApRewardMenuSpec menu, Task completion)
+    private static async Task ObserveOwnerCompletionAsync(ApRewardMenuSpec menu, Task completion)
     {
         try
         {

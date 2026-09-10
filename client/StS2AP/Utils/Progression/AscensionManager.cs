@@ -5,6 +5,7 @@ using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Patches;
@@ -248,7 +249,8 @@ namespace StS2AP.Utils
         /// Removes the AscensionLevel from the current run.  If extra processing needs to occur to ensure this works as intended,
         /// this method will do so.
         /// </summary>
-        public async void RemoveLevel(AscensionLevel level)
+        // removed the async keyword here as async void hides exceptions and other issues
+        public void RemoveLevel(AscensionLevel level)
         {
             if(!CurrentAscension.Remove(level))
             {
@@ -263,7 +265,7 @@ namespace StS2AP.Utils
                     var card = GameUtility.CurrentPlayer?.Deck.Cards.Where((c) => c is AscendersBane).FirstOrDefault();
                     if(card != null)
                     {
-                        await CardPileCmd.RemoveFromDeck(card);
+                        _ = RemoveAscendersBaneAsync(card);
                     }
                     break;
                 case AscensionLevel.DoubleBoss:
@@ -315,6 +317,21 @@ namespace StS2AP.Utils
                 default:
                     // Nothing to do with the other ascensions
                     return;
+            }
+        }
+
+        private static async Task RemoveAscendersBaneAsync(CardModel card)
+        {
+            try
+            {
+                await CardPileCmd.RemoveFromDeck(card);
+            }
+            catch (Exception ex)
+            {
+                // The AP receipt is authoritative and is consumed by the caller. Surface an
+                // unexpected base-game command failure instead of letting async void crash the
+                // synchronization context or silently reopening the receipt.
+                LogUtility.Error($"Failed to remove Ascender's Bane after receiving its Ascension Down: {ex}");
             }
         }
 

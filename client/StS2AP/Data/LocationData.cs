@@ -240,11 +240,18 @@ namespace StS2AP.Data
             }
             for(int i = start; i <= count; i++)
             {
-                try
+                string locationName = CoopSlot.Name(pattern.Replace("#", i.ToString()));
+                long id = session.Locations.GetLocationIdFromName(
+                    "Slay the Spire II",
+                    locationName
+                );
+                // GetLocationIdFromName returns -1 on no location found so handle it
+                if (id < 0)
                 {
-                    var id = session.Locations.GetLocationIdFromName("Slay the Spire II", CoopSlot.Name(pattern.Replace("#", i.ToString())));
-                    ids.Add(id);
-                } catch { }
+                    LogUtility.Warn($"Could not resolve AP location '{locationName}'; skipping it.");
+                    continue;
+                }
+                ids.Add(id);
             }
             return ids;
         }

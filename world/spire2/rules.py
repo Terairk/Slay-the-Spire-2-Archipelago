@@ -3,21 +3,20 @@ import typing
 from collections import defaultdict
 from typing import TYPE_CHECKING, List
 
-from BaseClasses import CollectionState, MultiWorld, Item
+from BaseClasses import CollectionState, MultiWorld
 from NetUtils import JSONMessagePart
 from rule_builder.field_resolvers import FieldResolver
 from rule_builder.options import OptionFilter
-from rule_builder.rules import HasFromList, Rule, TWorld, True_, Has, HasFromListUnique, HasAnyCount, HasAllCounts
+from rule_builder.rules import Rule, True_, Has, HasFromListUnique
 from .characters import CharacterConfig, character_list
 from .coop import player_name
 from .items import ItemType
-from .options import CampfireSanity, ShopSanity, GoldSanity, NeowSanity, ShopRemoveSlots, ProgressiveStarterCard, \
+from .options import CampfireSanity, ShopSanity, GoldSanity, ShopRemoveSlots, ProgressiveStarterCard, \
     ProgressiveStarterRelic
 from ..AutoWorld import LogicMixin
-from ..generic.Rules import set_rule
 
 if TYPE_CHECKING:
-    from .world import SlayTheSpire2World, SlayTheSpire2Item
+    from .world import SlayTheSpire2World
 
 
 class SpireLogic(LogicMixin):

@@ -1,12 +1,9 @@
 import typing
-from copy import deepcopy
 from dataclasses import dataclass
-from typing import List
 
-from Options import OptionSet, OptionList, Range, Toggle, Visibility, Choice, TextChoice, OptionDict, OptionCounter, \
+from Options import OptionSet, OptionList, Range, Toggle, Visibility, Choice, TextChoice, OptionDict, \
     PerGameCommonOptions, OptionGroup, DeathLink as ArchipelagoDeathLink
 
-import schema
 from schema import Schema, Optional, And
 
 from .characters import character_list

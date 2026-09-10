@@ -1,4 +1,4 @@
-from BaseClasses import ItemClassification, Optional
+from BaseClasses import ItemClassification
 import typing
 from typing import Dict
 from collections import defaultdict
@@ -6,6 +6,7 @@ from enum import auto, Enum
 
 from worlds.spire2.characters import character_list
 from worlds.spire2.constants import CHAR_OFFSET, NUM_CUSTOM, ASCENSIONS
+from .coop import MAX_PLAYERS, expand_player_groups, player_id, player_name, power_key
 
 
 class ItemType(Enum):
@@ -128,7 +129,7 @@ def create_item_tables(vanilla_chars: typing.List[str], extras: int) -> typing.T
         **universal_bonus_items,
     }
 
-    characters_to_items: dict[typing.Union[str, int],dict[str, ItemData]] = defaultdict(lambda: dict())
+    characters_to_items: dict[typing.Union[str, int],dict[str, ItemData]] = defaultdict(dict)
     event_item_pairs: dict[str, str] = dict()
     char_num = 1
 
@@ -247,7 +248,6 @@ def create_item_groups(
 item_groups = create_item_groups(item_table, chars_to_items)
 
 # Keep the character tables canonical; expand only the public AP name/ID catalog.
-from .coop import MAX_PLAYERS, player_name, player_id, power_key, expand_player_groups
 _base_items = dict(item_table)
 for number in range(2, MAX_PLAYERS + 1):
     for name, data in _base_items.items():

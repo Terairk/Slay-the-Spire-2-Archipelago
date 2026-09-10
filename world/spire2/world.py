@@ -1,7 +1,6 @@
 import re
 import string
 import typing
-from collections import defaultdict
 from copy import deepcopy
 from typing import List, Optional, Any
 
@@ -9,10 +8,10 @@ from BaseClasses import Item, Location, Region, MultiWorld, ItemClassification, 
 from Options import OptionError
 from worlds.AutoWorld import World
 from .regions import create_regions
-from .rules import set_rules, SpireLogic
+from .rules import set_rules
 from .web_world import SlayTheSpire2Web
 from .characters import CharacterConfig, character_list, character_offset_map
-from .constants import NUM_CUSTOM, ASCENSION_LIST, CHAR_OFFSET, ASCENSIONS
+from .constants import NUM_CUSTOM, ASCENSION_LIST, CHAR_OFFSET
 from .items import item_table, chars_to_items, universal_items, bonus_item_table, ItemType, base_event_item_pairs, ItemData, item_groups
 from .locations import location_table, MAX_CARD_REWARDS, loc_ids_to_data, LocationData, LocationType, location_groups
 from .options import Spire2Options
@@ -159,10 +158,9 @@ class SlayTheSpire2World(World):
                 for char in characters:
                     if char.lower() == unlocked_char_value.lower():
                         return char
-                else:
-                    # We really shouldn't be able to get here anymore...but if we do, let us know, because it means this logic needs more work...
-                    raise OptionError(
-                        f"Configured {unlocked_char_value} as the first unlocked character, but was not one of: {characters}")
+                # We really shouldn't be able to get here anymore...but if we do, let us know, because it means this logic needs more work...
+                raise OptionError(
+                    f"Configured {unlocked_char_value} as the first unlocked character, but was not one of: {characters}")
         return unlocked_char
 
     def _handle_basic_chars(self) -> None:
@@ -243,18 +241,18 @@ class SlayTheSpire2World(World):
         ret = set()
         if len(ascensions) == 1:
             try:
-                number = int(list(ascensions)[0])
+                number = int(next(iter(ascensions)))
                 for i in range(0, number):
                     ret.add(ASCENSION_LIST[i].lower())
                 return ret
-            except:
+            except (TypeError, ValueError, IndexError):
                 return {asc.lower() for asc in ascensions}
 
         for asc in ascensions:
             try:
                 number = int(asc)
                 ret.add(ASCENSION_LIST[number - 1].lower())
-            except:
+            except (TypeError, ValueError, IndexError):
                 ret.add(asc.lower())
         return ret
 
@@ -262,7 +260,7 @@ class SlayTheSpire2World(World):
         ret = set()
         if len(ascension_downs) == 1:
             try:
-                number = int(list(ascension_downs)[0])
+                number = int(next(iter(ascension_downs)))
                 asc_list = ASCENSION_LIST[::-1]
                 count = 0
                 for i in range(0, len(asc_list)):
@@ -273,14 +271,14 @@ class SlayTheSpire2World(World):
                     if count >= len(ascensions) or count >= number:
                         break
                 return ret
-            except:
+            except (TypeError, ValueError, IndexError):
                 return {asc.lower() for asc in ascension_downs}
 
         for asc in ascension_downs:
             try:
                 number = int(asc)
                 ret.add(ASCENSION_LIST[number - 1].lower())
-            except:
+            except (TypeError, ValueError, IndexError):
                 ret.add(asc.lower())
         return ret
 
@@ -358,7 +356,15 @@ class SlayTheSpire2World(World):
     def create_regions(self) -> None:
         create_regions(self, self.player)
 
-    def create_region(self, player: int, prefix: Optional[str], name: str, config: CharacterConfig, locations: List[str] = None, exits: List[str] =None):
+    def create_region(
+            self,
+            player: int,
+            prefix: Optional[str],
+            name: str,
+            config: CharacterConfig,
+            locations: list[str] | None = None,
+            exits: list[str] | None = None,
+    ):
         ret = Region(f"{prefix} {name}" if prefix is not None else name, player, self.multiworld)
         if locations:
             locs: dict[str, Optional[int]] = dict()
@@ -447,7 +453,7 @@ class SlayTheSpire2World(World):
                     if ItemType.GOLD == val.type and ItemClassification.filler == val.classification
                 ]
 
-                for item_name, item_data in char_gold_items:
+                for item_name, _ in char_gold_items:
                     if "One Gold" in item_name:
                         weight = self.options.one_gold_filler_weight.value
                     elif "Five Gold" in item_name:
@@ -627,8 +633,10 @@ class SlayTheSpire2World(World):
                         amount = self.options.shop_potion_slots.value
                     elif ItemType.SHOP_REMOVE == data.type and self.options.shop_remove_slots.value != 0:
                         amount = 3
-                for _ in range(amount):
-                    pool.append(self.create_item(player_name(name, config.player_number)))
+                pool.extend(
+                    self.create_item(player_name(name, config.player_number))
+                    for _ in range(amount)
+                )
 
             if self.options.include_floor_checks.value:
 
