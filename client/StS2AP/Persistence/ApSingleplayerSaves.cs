@@ -3,6 +3,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Saves;
 using StS2AP.Patches;
 using StS2AP.Utils;
+using STS2RitsuLib.Networking.Sidecar;
 
 namespace StS2AP.Persistence;
 
@@ -58,8 +59,69 @@ internal static class ApSingleplayerSaves
             $"local AP checkpoint {checkpoint}", key.Character);
     }
 
+    internal static Task LoadRemote(SingleplayerCheckpointBank.BankKey key)
+    {
+        if (key.Owner != CurrentIdentity())
+            throw new InvalidOperationException("The connected AP slot changed. Reopen the checkpoint picker.");
+
+        // DataStorage completes away from Godot's thread. Publish both success and failure
+        // back on the main loop so the caller can safely update the modal or run lifecycle.
+        var completion = new TaskCompletionSource();
+        _ = DownloadAndRestore();
+        return completion.Task;
+
+        async Task DownloadAndRestore()
+        {
+            try
+            {
+                string payload = await ApRemoteSingleplayerSave.Download(key.Character);
+                bool posted = RitsuLibSidecarGodotMainLoopScheduling.TryPostToMainLoop(
+                    () => _ = RestoreOnMainLoop(payload)
+                );
+                if (!posted)
+                    completion.TrySetException(
+                        new InvalidOperationException("The Godot main loop is unavailable.")
+                    );
+            }
+            catch (Exception ex)
+            {
+                bool posted = RitsuLibSidecarGodotMainLoopScheduling.TryPostToMainLoop(
+                    () => completion.TrySetException(ex)
+                );
+                if (!posted)
+                    completion.TrySetException(ex);
+            }
+        }
+
+        async Task RestoreOnMainLoop(string payload)
+        {
+            try
+            {
+                if (key.Owner != CurrentIdentity())
+                    throw new InvalidOperationException(
+                        "The connected AP slot changed while downloading the remote save."
+                    );
+                _selected = key;
+                _bank = Bank;
+                // Keep ownership on setup failure so native cleanup preserves unrelated saves.
+                await Patches_NCharacterSelectScreen.RestoreRun(
+                    payload,
+                    "remote AP checkpoint",
+                    key.Character
+                );
+                completion.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        }
+    }
+
     internal static void Save(SerializableRun snapshot, string kind)
     {
+        string? payload = null;
+        string? character = null;
         try
         {
             var bankKey = _selected ?? throw new InvalidOperationException("No AP singleplayer character is selected.");
@@ -67,7 +129,9 @@ internal static class ApSingleplayerSaves
             string key = $"{snapshot.CurrentActIndex + 1}-{kind}";
             bool startOfAct = AncientSettingsUtility.Current.Location == AncientRelicLocation.StartOfAct;
             if (!CanLoad(key, bankKey.Character, startOfAct)) return;
-            bank.Save(bankKey, key, Patches_RunSaveManager.SaveRun.SerializeAndCompress(snapshot),
+            character = bankKey.Character;
+            payload = Patches_RunSaveManager.SaveRun.SerializeAndCompress(snapshot);
+            bank.Save(bankKey, key, payload,
                 snapshot.MapPointHistory?.Sum(act => act.Count) ?? 0, startOfAct);
             LogUtility.Info($"AP local checkpoint saved: character={bankKey.Character}, checkpoint={key}");
             NotificationUtility.ShowRawText("[font_size=80]GAME SAVED[/font_size]", timeout: 3.5,
@@ -78,6 +142,11 @@ internal static class ApSingleplayerSaves
             LogUtility.Error($"Failed to save local AP checkpoint: {ex}");
             NotificationUtility.ShowRawText("AP checkpoint save failed. Previous checkpoints were preserved; check the log.");
         }
+
+        // The opt-in remote copy is deliberately independent: a DataStorage failure must never
+        // undo the local checkpoint, and a local publication failure can still leave a backup.
+        if (payload != null && character != null)
+            ApRemoteSingleplayerSave.Upload(character, payload);
     }
 
     internal static void ClearSelection() { _selected = null; _bank = null; }

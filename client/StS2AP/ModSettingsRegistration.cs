@@ -36,6 +36,9 @@ public static class ModSettingsRegistration
     private const string RelicRewards_OverrideId = "override_relic_rewards_available_anytime";
     private const string RelicRewards_AvailableAnytimeId = "relic_rewards_available_anytime";
 
+    // Cloud saves
+    private const string CloudSaves_EnableId = "enable_remote_singleplayer_saves";
+
     #endregion
 
     #region Handle Hotkeys
@@ -118,6 +121,7 @@ public static class ModSettingsRegistration
                     .AddSection("keybinds", ConfigureKeybindsSection)
                     .AddSection("notifications", ConfigureNotificationsSection)
                     .AddSection("multiplayer", ConfigureMultiplayerSection)
+                    .AddSection("cloud_saves", ConfigureCloudSavesSection)
                     .AddSection("relic_rewards", ConfigureRelicRewardsSection)
                     .AddSection("ancient_rewards", ConfigureAncientRewardsSection)
                     .AddSection("deathlink", ConfigureDeathLinkSection)
@@ -396,6 +400,24 @@ public static class ModSettingsRegistration
                     ?? "Choose your player number, then connect to Archipelago."))
             .ConfigureEntryMenu(key, ModSettingsMenuCapabilities.None)
             .WithEntryEnabledWhen(key, CanChangePlayerNumber);
+    }
+
+    private static void ConfigureCloudSavesSection(ModSettingsSectionBuilder section)
+    {
+        section.WithTitle(ModSettingsText.Literal("Cloud Saves"))
+            .WithDescription(ModSettingsText.Literal(
+                "Local checkpoints are always created. Cloud saves are an optional remote backup stored on the connected Archipelago server."))
+            .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
+            .AddToggle(
+                CloudSaves_EnableId,
+                ModSettingsText.Literal("Enable AP Server Cloud Saves"),
+                CreateBinding(
+                    static settings => settings.EnableRemoteSingleplayerSaves,
+                    static (settings, value) => settings.EnableRemoteSingleplayerSaves = value
+                ),
+                ModSettingsText.Literal(
+                    "Uploads the latest eligible singleplayer checkpoint per character and enables Load Remote Save. Disabled by default."))
+            .ConfigureEntryMenu(CloudSaves_EnableId, ModSettingsMenuCapabilities.None);
     }
 
     private static bool CanChangePlayerNumber() => GetPlayerNumberLockReason() == null;

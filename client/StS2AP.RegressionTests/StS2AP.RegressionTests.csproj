@@ -57,6 +57,7 @@
     <Compile Include="..\StS2AP\Utils\Rewards\ApRewardTravelGuard.cs" Link="Utils\Rewards\ApRewardTravelGuard.cs" />
     <Compile Include="..\StS2AP\Utils\RestSitePolicy.cs" Link="Utils\RestSitePolicy.cs" />
     <Compile Include="..\StS2AP\Persistence\SingleplayerCheckpointBank.cs" Link="Persistence\SingleplayerCheckpointBank.cs" />
+    <Compile Include="..\StS2AP\Persistence\RemoteSingleplayerSaveKey.cs" Link="Persistence\RemoteSingleplayerSaveKey.cs" />
     <Compile Include="..\StS2AP\Persistence\CampaignSaveFiles.cs" Link="Persistence\CampaignSaveFiles.cs" />
     <Compile Include="..\StS2AP\Persistence\ApRelicReceiptState.cs" Link="Persistence\ApRelicReceiptState.cs" />
     <Using Include="StS2AP.Models" />

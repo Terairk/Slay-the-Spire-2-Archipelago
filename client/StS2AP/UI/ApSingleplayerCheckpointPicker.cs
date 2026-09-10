@@ -78,6 +78,14 @@ public sealed partial class ApSingleplayerCheckpointPicker : Control, IScreenCon
         try
         {
             var bankKey = new SingleplayerCheckpointBank.BankKey(ApSingleplayerSaves.CurrentIdentity(), _character);
+            if (ApRemoteSingleplayerSave.IsEnabled)
+            {
+                var remote = CreateButton("Load Remote Save");
+                remote.TooltipText = "Download and load the latest remote checkpoint for this character.";
+                remote.Pressed += () => { if (!_loading) _ = LoadRemote(bankKey); };
+                _list.AddChild(remote);
+            }
+
             var bank = ApSingleplayerSaves.Bank.Read(bankKey);
             foreach (string key in SingleplayerCheckpointBank.Milestones)
             {
@@ -115,6 +123,25 @@ public sealed partial class ApSingleplayerCheckpointPicker : Control, IScreenCon
             NotificationUtility.ShowRawText($"Could not load checkpoint: {ex.Message}. Saved checkpoints were preserved.");
             // Setup may have partially initialized the native run. Return through its cleanup
             // with AP ownership still active, instead of allowing a second setup on stale state.
+            if (ApSingleplayerSaves.IsHandlingSingleplayerRun)
+                if (MegaCrit.Sts2.Core.Nodes.NGame.Instance is { } game)
+                    await game.ReturnToMainMenuAfterRun();
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task LoadRemote(SingleplayerCheckpointBank.BankKey bankKey)
+    {
+        _loading = true;
+        NModalContainer.Instance?.Clear();
+        try
+        {
+            await ApSingleplayerSaves.LoadRemote(bankKey);
+        }
+        catch (Exception ex)
+        {
+            LogUtility.Error($"Failed to load remote AP checkpoint {bankKey.Character}: {ex}");
+            NotificationUtility.ShowRawText($"Could not load remote save: {ex.Message}");
             if (ApSingleplayerSaves.IsHandlingSingleplayerRun)
                 if (MegaCrit.Sts2.Core.Nodes.NGame.Instance is { } game)
                     await game.ReturnToMainMenuAfterRun();
