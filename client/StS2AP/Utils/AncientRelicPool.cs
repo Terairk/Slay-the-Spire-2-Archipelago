@@ -52,6 +52,7 @@ namespace StS2AP.Utils
                 ownedOrReservedRelicIds.UnionWith(reservedRelicIds);
             var eligibleAncients = GetEligibleAncients(ancientActIndex, specificAncient);
             var candidatesById = CollectCandidateRelics(
+                player,
                 eligibleAncients,
                 ownedOrReservedRelicIds,
                 logFailures: true,
@@ -155,7 +156,7 @@ namespace StS2AP.Utils
 
             var rolledAncient = TryGetRolledAncient(player, ancientActIndex);
             if (rolledAncient != null &&
-                CollectCandidateRelics(new[] { rolledAncient }, ownedOrReservedRelicIds, logFailures: false).Count >= ChoiceCount)
+                CollectCandidateRelics(player, new[] { rolledAncient }, ownedOrReservedRelicIds, logFailures: false).Count >= ChoiceCount)
             {
                 LogUtility.Info($"Using rolled Act {ancientActIndex + 1} Ancient '{rolledAncient.Id}' for '{choiceKey}'");
                 return rolledAncient;
@@ -171,7 +172,7 @@ namespace StS2AP.Utils
 
             var runSeed = ResolveRunSeed(player);
             var fallback = GetFallbackAncients(player, ancientActIndex)
-                .Where(ancient => CollectCandidateRelics(new[] { ancient }, ownedOrReservedRelicIds, logFailures: false).Count >= ChoiceCount)
+                .Where(ancient => CollectCandidateRelics(player, new[] { ancient }, ownedOrReservedRelicIds, logFailures: false).Count >= ChoiceCount)
                 .OrderBy(ancient => StableChoiceKey(runSeed, $"{choiceKey}|ancient", ancient.Id))
                 .FirstOrDefault();
 
@@ -251,6 +252,7 @@ namespace StS2AP.Utils
 
         /// <summary>Extracts unique, eligible relic models from the supplied Ancients.</summary>
         private static Dictionary<ModelId, RelicModel> CollectCandidateRelics(
+            Player player,
             IEnumerable<AncientEventModel> ancients,
             IReadOnlySet<ModelId> ownedOrReservedRelicIds,
             bool logFailures,
@@ -267,10 +269,11 @@ namespace StS2AP.Utils
                                                   .OfType<RelicModel>())
                     {
                         extractedForAncient++;
-                        // TODO: do model selection in a better way than this
+                        // AllPossibleOptions includes relics restricted to particular run modes.
                         if (relic.Id == ModelId.none ||
                             ownedOrReservedRelicIds.Contains(relic.Id) ||
-                            IsExcluded(relic, startOfActIndex))
+                            IsExcluded(relic, startOfActIndex) ||
+                            !relic.IsAllowed(player.RunState))
                         {
                             continue;
                         }

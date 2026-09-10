@@ -22,12 +22,12 @@
     <!-- Fallback defaults for the Windows build machine if local.props is missing. -->
     <STS2GamePath Condition="'$(STS2GamePath)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2</STS2GamePath>
     <GodotExePath Condition="'$(GodotExePath)' == ''">godot</GodotExePath>
-    <ModName Condition="'$(ModName)' == ''">ExampleMod</ModName>
-    <ModDisplayName Condition="'$(ModDisplayName)' == ''">Example Mod</ModDisplayName>
-    <ModAuthor Condition="'$(ModAuthor)' == ''">Unknown</ModAuthor>
+    <ModName Condition="'$(ModName)' == ''">Archipelago</ModName>
+    <ModDisplayName Condition="'$(ModDisplayName)' == ''">Archipelago Client</ModDisplayName>
+    <ModAuthor Condition="'$(ModAuthor)' == ''">Kirbyfanner, Platano Bailando, Lyxn, MartyredG, Terairk</ModAuthor>
 
     <AssemblyName>$(ModName)</AssemblyName>
-    <Version>1.0.1</Version>
+    <Version>1.1.1</Version>
 
     <!-- Build/deploy paths on the Windows build machine. -->
     <ModsOutputDir>$(STS2GamePath)\mods\$(ModName)</ModsOutputDir>
@@ -71,17 +71,25 @@
       LogicalName="StS2AP.Spire2Archipelago.json"
     />
 
-    <!-- Bonus relic pool data ships next to the mod DLL so it can be updated by editing
-         the shared JSON and rebuilding, without recompiling code. -->
+    <!-- Keep shared sources as JSON; deploy .data files to avoid recursive mod manifest discovery. -->
     <None Include="..\..\shared\relic_custom_pools.json">
-      <Link>relic_custom_pools.json</Link>
+      <Link>data\relic_custom_pools.data</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\..\shared\bonus_relic_blacklist.json">
-      <Link>bonus_relic_blacklist.json</Link>
+      <Link>data\bonus_relic_blacklist.data</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <!-- Clean stale catalog JSON even when only building output for packaging. -->
+  <Target Name="RemoveObsoleteBonusCatalogOutput" AfterTargets="CopyFilesToOutputDirectory">
+    <Delete Files="$(TargetDir)relic_custom_pools.json;$(TargetDir)bonus_relic_blacklist.json;$(TargetDir)data\relic_custom_pools.json;$(TargetDir)data\bonus_relic_blacklist.json" />
+  </Target>
+
+  <!-- Compile-only checks must embed the manifests too, since a later incremental
+       build can reuse their assembly for deployment. -->
+  <Target Name="PrepareManifestResourcesForCompile" BeforeTargets="_GenerateCompileInputs" DependsOnTargets="PrepareResources" />
 
   <!-- Create steam_appid.txt for Windows debugging outside Steam. -->
   <Target Name="CreateSteamAppId" BeforeTargets="Build">
@@ -245,15 +253,19 @@ dotnet/embed_build_outputs=false
     <Copy SourceFiles="@(DependencyDlls)" DestinationFolder="$(ModsOutputDir)" />
     <Copy SourceFiles="Archipelago.json" DestinationFiles="$(ModsOutputDir)\Archipelago.json" />
 
-    <!-- Deploy the bonus relic pool data alongside the DLL so the running mod can read it. -->
+    <!-- Deploy the catalogs in the same data/ layout used by the build output and runtime. -->
+    <MakeDir Directories="$(ModsOutputDir)\data" />
     <Copy
-      SourceFiles="..\..\shared\relic_custom_pools.json"
-      DestinationFiles="$(ModsOutputDir)\relic_custom_pools.json"
+      SourceFiles="$(TargetDir)data\relic_custom_pools.data"
+      DestinationFiles="$(ModsOutputDir)\data\relic_custom_pools.data"
     />
     <Copy
-      SourceFiles="..\..\shared\bonus_relic_blacklist.json"
-      DestinationFiles="$(ModsOutputDir)\bonus_relic_blacklist.json"
+      SourceFiles="$(TargetDir)data\bonus_relic_blacklist.data"
+      DestinationFiles="$(ModsOutputDir)\data\bonus_relic_blacklist.data"
     />
+
+    <!-- Remove only obsolete catalog copies, including the former data/ JSON layout. -->
+    <Delete Files="$(ModsOutputDir)\relic_custom_pools.json;$(ModsOutputDir)\bonus_relic_blacklist.json;$(ModsOutputDir)\data\relic_custom_pools.json;$(ModsOutputDir)\data\bonus_relic_blacklist.json" />
 
     <!-- Copy the APWorld if it has already been built. -->
     <PropertyGroup>

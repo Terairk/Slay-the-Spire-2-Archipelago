@@ -320,13 +320,21 @@ try {
         Copy-Item -Path $file.FullName -Destination $archDir -Force
     }
 
+    # Package the runtime catalogs under the same data/ layout used by the client.
+    $catalogDir = Join-Path $archDir "data"
+    New-Item -ItemType Directory -Force -Path $catalogDir | Out-Null
+    $catalogNames = @('relic_custom_pools.data', 'bonus_relic_blacklist.data')
+    foreach ($catalogName in $catalogNames) {
+        Copy-Item -LiteralPath (Join-Path $outputDir "data/$catalogName") -Destination $catalogDir -Force -ErrorAction Stop
+    }
+
     # Zip the Archipelago folder directly (so zip contains Archipelago > files)
     Compress-Archive -Path $archDir -DestinationPath $zipPath -Force
     if (-not (Test-Path $zipPath)) {
         Write-Error "Failed to create $zipPath"
         exit 1
     }
-    $fileCount = $filesToZip.Count
+    $fileCount = $filesToZip.Count + $catalogNames.Count
     Write-Host "  Created: sts2-client.zip [$fileCount files]" -ForegroundColor Green
 } finally {
     # Clean up temp directory

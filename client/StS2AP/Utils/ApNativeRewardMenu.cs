@@ -135,27 +135,11 @@ public static class ApNativeRewardMenu
         Player player,
         bool rare)
     {
-        CardReward? assignment = GameUtility.GetOrAssignCardReward(
-            presentation.ItemIndex,
-            player,
-            rare
-        );
-        if (assignment == null)
-        {
-            return new ApUnavailableReward(
-                presentation,
-                player,
-                "The card choices could not be assigned."
-            );
-        }
-
         CardCreationOptions options = CreateCardOptions(player, rare);
         return new ApNativeCardReward(
-            assignment.Cards,
             player,
             options,
             presentation,
-            assignment.CanReroll,
             rare
         );
     }
@@ -458,7 +442,7 @@ public static class ApNativeRewardMenu
         public override void OnSkipped() { }
     }
 
-    private sealed class ApNativeCardReward : CardReward, IApNativeReward
+    private sealed class ApNativeCardReward : ApDeferredCardReward, IApNativeReward
     {
         private readonly int _itemIndex;
         private readonly bool _isRare;
@@ -471,13 +455,11 @@ public static class ApNativeRewardMenu
         public override LocString Description => _description;
 
         public ApNativeCardReward(
-            IEnumerable<CardModel> cards,
             Player player,
             CardCreationOptions rerollOptions,
             ReceiptPresentation presentation,
-            bool canReroll,
             bool isRare)
-            : base(cards, CardCreationSource.Encounter, player, rerollOptions)
+            : base(rerollOptions, player)
         {
             _itemIndex = presentation.ItemIndex;
             _isRare = isRare;
@@ -485,7 +467,6 @@ public static class ApNativeRewardMenu
                 new LocString("gameplay_ui", "COMBAT_REWARD_ADD_CARD"),
                 presentation
             );
-            CanReroll = canReroll;
         }
 
         public bool CanClaim(out string reason)
@@ -496,6 +477,14 @@ public static class ApNativeRewardMenu
 
         public bool HasOriginText => true;
         public bool UseAncientStyle => false;
+
+        protected override Task<CardReward?> ResolveAssignment()
+        {
+            CardReward? assignment = GameUtility.GetOrAssignCardReward(_itemIndex, Player, _isRare);
+            if (assignment == null)
+                NotificationUtility.ShowRawText("Could not prepare this card reward. Try again.");
+            return Task.FromResult(assignment);
+        }
 
         protected override async Task<bool> OnSelect()
         {
