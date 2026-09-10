@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
@@ -44,10 +42,17 @@ internal static class BonusRewardUtility
         }
         else
         {
+            int? playerSlotIndex = MultiplayerSupport.IsRealMultiplayerRun
+                ? player.RunState.GetPlayerSlotIndex(player)
+                : null;
             selected = BonusRelicResolver.BuildPoolCandidates(definition.Pools, rejectPickupEffectRelics: true)
                 .Where(relic => relic.IsAllowed(player.RunState))
-                .OrderBy(relic => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-                    $"sts2ap-bonus-relic-v1|{player.RunState.Rng.StringSeed}|WAX_RELIC:{ordinal}|{relic.Id}"))), StringComparer.Ordinal)
+                .OrderBy(relic => BonusRewardSelectionKey.Create(
+                    player.RunState.Rng.StringSeed,
+                    ordinal,
+                    relic.Id.ToString(),
+                    playerSlotIndex
+                ), StringComparer.Ordinal)
                 .FirstOrDefault();
         }
         if (selected == null)
