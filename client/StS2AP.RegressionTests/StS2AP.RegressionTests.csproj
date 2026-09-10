@@ -43,6 +43,8 @@
              Link="Persistence\ApReplicaConstructionState.cs" />
     <Compile Include="..\StS2AP\Utils\Connection\ApSessionIdentity.cs"
              Link="Utils\Connection\ApSessionIdentity.cs" />
+    <Compile Include="..\StS2AP\Utils\Connection\ApConnectionIndicatorPolicy.cs"
+             Link="Utils\Connection\ApConnectionIndicatorPolicy.cs" />
     <Compile Include="..\StS2AP\Utils\Connection\ApSlotIdentity.cs"
              Link="Utils\Connection\ApSlotIdentity.cs" />
     <Compile Include="..\StS2AP\Utils\Connection\ApSessionIdentityJsonConverter.cs"

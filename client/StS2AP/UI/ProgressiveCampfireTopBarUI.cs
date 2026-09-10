@@ -47,13 +47,13 @@ public abstract class ProgressiveCampfireTopBarHandler(bool smith) : IModTopBarB
 [RegisterOwnedTopBarButton(
     "progressive_rest",
     IconPath = "res://images/relics/regal_pillow.png",
-    ButtonOrder = 1)]
+    ButtonOrder = 2)]
 public sealed class ProgressiveRestTopBarHandler() : ProgressiveCampfireTopBarHandler(smith: false);
 
 [RegisterOwnedTopBarButton(
     "progressive_smith",
     IconPath = "res://images/relics/whetstone.png",
-    ButtonOrder = 2)]
+    ButtonOrder = 3)]
 public sealed class ProgressiveSmithTopBarHandler() : ProgressiveCampfireTopBarHandler(smith: true);
 
 internal static class ProgressiveCampfireTopBarUI
