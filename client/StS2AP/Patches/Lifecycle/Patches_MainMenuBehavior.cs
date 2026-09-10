@@ -352,6 +352,8 @@ namespace StS2AP.Patches
                 NClickableControl.SignalName.Released,
                 Callable.From<NButton>(_ =>
                 {
+                    // clear state so people can change their player number
+                    MultiplayerSupport.ClearPendingPlaySelection();
                     MenuUtility.OpenArchipelagoSettings();
                 })
             );
