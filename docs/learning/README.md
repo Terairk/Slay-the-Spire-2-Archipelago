@@ -1,21 +1,32 @@
-# Multiplayer code learning handoff
+# Multiplayer code learning and presentation guide
+
+This is the living entry point for understanding and presenting the multiplayer implementation.
+It is deliberately a navigation guide, not a replacement for reading the source: each route names
+the code boundaries to follow and the questions the learner should be able to answer afterward.
+Historical inventories and commit-specific walkthroughs remain separate.
 
 ## Resume here
 
-Continue a source-guided walkthrough of **`ApRelicReceiptState.ApproveMenu`** in
-[ApRelicReceiptState.cs](../../client/StS2AP/Persistence/ApRelicReceiptState.cs).
-Explain receipt eligibility, the anytime allowance, banked relic opportunities, and outstanding
-menu reservations. Relic reconciliation was just introduced; do not assume the learner has
-mastered the complete chest/menu reservation flow.
+First, complete a source-guided walkthrough of **`ApRunData.OnProgressSnapshotReceived`** and
+**`ApRunData.OnProgressDeltaReceived`** in
+[ApRunData.cs](../../client/StS2AP/Multiplayer/ApRunData.cs). Follow one non-host mutation from
+`ArchipelagoClient.Progress` through publication, host validation, rebroadcast, replica storage,
+and eventual host checkpointing. Pay particular attention to the fact that the owner advances its
+local baseline after sending; there is no host acknowledgment round trip in `PublishLocalProgress`.
 
-Suggested opening: “We have distinguished reserving an AP receipt from reserving a concrete
-relic model. Let us follow how `ApproveMenu` decides which receipts can enter the menu.”
-Use a small concrete example and walk through actual expressions and their state changes.
+Then return to the previous resume point, **`ApRelicReceiptState.ApproveMenu`** in
+[ApRelicReceiptState.cs](../../client/StS2AP/Persistence/ApRelicReceiptState.cs). Explain receipt
+eligibility, the anytime allowance, banked relic opportunities, and outstanding menu reservations.
+Relic reconciliation was introduced previously; do not assume the complete chest/menu reservation
+flow has been mastered.
+
+Use small concrete examples and walk through actual expressions, process ownership, and state
+changes. An overview or prepared explanation does not mark either route as learned.
 
 ## Objective and working style
 
 The user understands the high-level multiplayer decisions and wants detailed code understanding
-to explain a large multiplayer PR against upstream/main to its maintainer.
+to navigate and explain the implementation against upstream/main to its maintainer.
 
 - Keep this learning session **read-only**. The user will do editing work in another session.
 - Explain small, connected execution paths with the source open and clickable file/symbol references.
@@ -28,19 +39,111 @@ to explain a large multiplayer PR against upstream/main to its maintainer.
 - Check current source before relying on this handoff, old comments, or historical design documents.
 - Do not infer permission to edit, commit, or push from a learning question.
 
+## How to navigate and present one feature
+
+Do not read a large coordinator such as `MultiplayerSupport` or
+`ApMirroredRewardDispatcher` from top to bottom. Begin at an observable game event and follow this
+order:
+
+1. **Native boundary:** the Harmony patch, UI callback, or RitsuLib lifecycle event that starts the
+   path.
+2. **Coordinator:** the method deciding ownership, admission, and replication policy.
+3. **State:** the DTO or run-data object read or changed by the coordinator.
+4. **Native execution:** the MegaCrit synchronizer, command, reward, or model hook that performs the
+   concrete game action.
+5. **Durability:** the publication or save boundary that makes the AP bookkeeping recoverable.
+
+When presenting a code excerpt, label its execution lane as **local owner only**, **host only**,
+**every replica**, or **native synchronizer**. Keep separate notes for:
+
+- what the method validates;
+- what it mutates before its first `await`;
+- what it mutates after native execution succeeds;
+- whether failure retries, preserves the receipt, or invalidates further claims.
+
+## Current presenter routes
+
+The paths below are ordered for explanation, not by folder or commit history.
+
+| Route | Start here | Follow these symbols | Source question |
+| --- | --- | --- | --- |
+| Lobby contribution | `RequireApReadyToEmbark.Prefix` | `StageLocalPlayer` -> `TryValidateHostLobbyContributions` -> final `BeginRunForAllPlayersIfAllReady` guard | Why is readiness recomputed instead of stored as a boolean? |
+| Active-run binding | `BindLocalMultiplayerPlayer` on `RunManager.Launch` | `MultiplayerSupport.BeginRun` -> `RestoreLocalProgress` -> `RestorePreparedReceiptView` -> `PublishLocalProgress` | Why can the local AP session only be bound after `LocalContext` exists? |
+| Progress transport | `ApRunData.PublishLocalProgress` | snapshot/delta creation -> receive handler -> host rebroadcast -> `_players.Set` | Which copy is the owner baseline, which copy is canonical run data, and when is either durable? |
+| Native reward menu | `ArchipelagoRewardUI.ShowRewards` | `OpenOnMainThread` -> `ApMirroredRewardDispatcher.OpenMenu` -> `BuildOwnerMenuSpec` -> `BeginRewardsSet` | Why must the sidecar menu exist before native reward synchronization begins? |
+| Card reveal | `ApNativeCardReward.PrepareCards` | choice-ID reservation -> `GenerateCardChoices`/`RefreshCardChoices` -> `ApCardRevealCodec` -> `SelectCards` -> `OnSelect` | At which exact boundaries is a card received, assigned, revealed, selected, and consumed? |
+| Relic/chest agreement | `RelicReceiptMultiplayer.ApproveMenu` and `BeginChest` | `ApRelicReceiptState` decisions -> host request/reply -> native candidate agreement -> consumption | What is reserved: a receipt, a reward opportunity, or a concrete relic model? |
+| Multiplayer saves | patched `RunSaveManager.SaveRun(AbstractRoom)` | `CaptureLocalHostProgressBeforeSave` -> `ToSave` -> `SaveHostSnapshot` -> `SyncSavedSnapshot` -> `ActivateCampaign` | Why is `current_run_mp.save` an active interchange file rather than the campaign archive? |
+| AP singleplayer saves | the same patched `SaveRun(AbstractRoom)` branch | `ApSingleplayerSaves.Save` -> `SerializableAP` -> `SingleplayerCheckpointBank` -> `RestoreRun` -> save-isolation patches | Which structures are shared with multiplayer, and which native save paths are deliberately isolated? |
+
+### Current card-reward overlay
+
+The commit-specific card walkthrough remains useful for motivation and detailed native-hook context,
+but the current route is:
+
+```text
+ArchipelagoRewardUI.ShowRewards
+  -> OpenOnMainThread
+  -> ApMirroredRewardDispatcher.OpenMenu
+  -> BuildOwnerMenuSpec / BuildAssignedSpec
+  -> sidecar publication
+  -> BuildRewardsSet / RewardsSetSynchronizer.BeginRewardsSet
+  -> ApNativeCardReward.PrepareCards
+  -> GenerateCardChoices or RefreshCardChoices
+  -> ApCardRevealCodec.Encode / Verify
+  -> SelectCards
+  -> ApNativeCardReward.OnSelect
+  -> CommitDiscreteReward
+```
+
+Current multiplayer card offers use menu schema 9 and reveal protocol 3. New receipts enter the
+outer menu as recipes; every replica generates the ordered offer on first reveal using the
+receipt-local RNG and native hooks. The verification digest covers the receipt and ordered offer,
+not a general before/after player-state snapshot. Use the source to determine exactly when the
+owner publishes the serialized assignment and why skip/reopen is different from successful claim.
+
+### Current save overlay
+
+Both modes share `ApRunProgressState`, checkpoint eligibility, and immutable SHA-256 payload helpers,
+but do not share the same active save lifecycle.
+
+```text
+Multiplayer host:
+  native SaveRun boundary
+    -> capture AP run data
+    -> write current_run_mp.save
+    -> copy it into the selected campaign bank
+    -> update floor-recovery and optionally AP-checkpoint metadata
+
+AP singleplayer:
+  native SaveRun boundary
+    -> create SerializableAP { Progress, native SaveData }
+    -> write one of six AP-slot/character checkpoint positions
+    -> suppress current_run.save writes/deletes while the AP run is handled
+```
+
+The multiplayer continuation path copies a selected campaign payload back into
+`current_run_mp.save` for the native load lobby. The singleplayer continuation path instead calls
+`RestoreRun` directly and reconstructs both native and AP state. Trace both before describing them
+as a shared save system.
+
 ## Files and revision boundaries
 
 - [Complete historical learning map](multiplayer-diff-map.md): 17 chapters, every one of the original
   234 Git change entries assigned exactly once, with entry points and cross-cutting file guidance.
 - [Machine-readable historical inventory](multiplayer-diff-inventory.json): optional coverage aid.
+- [Cross-machine continuation prompt](continue-on-another-machine.md): current lesson state and the
+  source-guided teaching contract to give another LLM session.
 - Original comparison base: `7a1535c7cfd6f4de972eb72cf7e18d5073c78ba4` (then-local upstream/main).
 - Original comparison head: `0650885b5b30d6fe0167b6c76091409817a5d051` (multiplayer-squashed).
 - Code head when this handoff was prepared: `cbf37df06dcd21ef6f01b67349ef8a3390c0ccfa`.
+- Code head used for the current navigation overlay: `43b9a6b33c087836847928bf88cf114e0bf29892`
+  (`experimental/multiple-singleplayer-saves`).
 
-The original map is intentionally historical. Its counts do not include the newer Ancient
-settings commit or these learning documents. Source links target the current checkout and may
-therefore show newer behavior than the pinned map describes. Recompute the full diff before
-claiming current complete review coverage.
+The original map is intentionally historical. Its counts do not include later Ancient settings,
+replicated card reveal, bonus rewards, or isolated singleplayer checkpoints. Source links target
+the current checkout and may therefore show newer behavior than the pinned map describes.
+Recompute the full diff before claiming current complete review coverage.
 
 ## What has been discussed
 
@@ -185,7 +288,5 @@ Untracked `.qoder/`, `PR_230_REVIEW.md`, and `Spire2-Beta-Decompiled 2/` are unr
 
 ## Starter prompt on the other machine
 
-> Read docs/learning/README.md and use docs/learning/multiplayer-diff-map.md as our syllabus.
-> Keep this session read-only. Continue teaching from ApRelicReceiptState.ApproveMenu using a
-> concrete example, source links, and small code sections. Explain expressions and ownership;
-> avoid compulsory quizzes. Check current source and account for changes since the pinned map.
+Use the complete [cross-machine continuation prompt](continue-on-another-machine.md). It records the
+current method, unanswered exercise, teaching style, and how to treat learner-authored comments.

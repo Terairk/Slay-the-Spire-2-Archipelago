@@ -1,6 +1,10 @@
 # Multiplayer diff learning map
 
-> Historical map pinned to 0650885. Start with [the learning handoff](README.md) for study progress and subsequent code changes.
+> **Historical inventory, not the current presentation guide.** This map classifies the original
+> `7a1535c..0650885` comparison and preserves its mechanically checked 234-entry accounting. Do not
+> refresh its counts piecemeal or present its prose as the current implementation. Start with the
+> [living learning and presentation guide](README.md), which overlays later lobby, card-reveal,
+> bonus-reward, multiplayer campaign, and isolated singleplayer-save work.
 
 Base: `7a1535c7cfd6f4de972eb72cf7e18d5073c78ba4` (locally stored `upstream/main`).
 Head: `0650885b5b30d6fe0167b6c76091409817a5d051` (`multiplayer-squashed`).
@@ -199,6 +203,12 @@ NonCombatActionAdmissionState enumerates loading, combat transition, executor, a
 
 The old ApNativeRewardMenu is replaced by ApMirroredRewardDispatcher. Follow OpenMenu, BuildOwnerMenuSpec/BuildAssignedSpec, typed DecodeRewards, completed model transport, CompleteRemoteMenu, and native wrappers. F# owns validated reward shapes and effect decisions; C# owns DTO/JSON conversion, native model construction, sender validation, and game execution. Completed assignments are restored on peers instead of rerolled. Study reveal state, saved assignments, card-hook effects, successful grant consumption, skips/full potion slots, and stale menu work during travel separately. Existing presentation models are also reorganized.
 
+**Current overlay:** new card receipts now enter the menu as recipes. On first reveal every replica
+generates through the native card factory and hooks using receipt-local RNG, then reveal protocol 3
+compares the receipt and ordered offer before the picker choice is applied. The historical
+completed-model/effect-transport description above remains part of this pinned diff, not the
+current card architecture. Follow the current symbol route in [README.md](README.md).
+
 **Entry points:**
 - [client/StS2AP/Utils/Rewards/ApMirroredRewardDispatcher.cs](<../../client/StS2AP/Utils/Rewards/ApMirroredRewardDispatcher.cs>)
 - [client/StS2AP.Domain/MirroredReward.fs](<../../client/StS2AP.Domain/MirroredReward.fs>)
@@ -348,6 +358,12 @@ MultiplayerLocationChecks separates replicated construction from the direct AP c
 **Question:** What exactly gets saved, selected, and restored?
 
 ApMultiplayerCampaignStore/Flow and the picker add a campaign layer around native multiplayer saves: metadata, roster/identity validation, snapshots, checkpoint/recovery selection, and filesystem integrity. Patches_SaveManagement integrates saving and continuation. SerializableAP is moved and substantially reduced around the shared progress DTO. Trace the multiplayer native snapshot and the singleplayer envelope separately. Data schemas belong with chapter 03; this chapter owns the disk/UI/lifecycle flow.
+
+**Current overlay:** later work adds `ApSingleplayerSaves`, `SingleplayerCheckpointBank`,
+`ApRemoteSingleplayerSave`, and `Patches_SingleplayerSaveIsolation`. AP singleplayer checkpoints
+wrap native `SerializableRun` plus `ApRunProgressState` and deliberately avoid `current_run.save`;
+multiplayer continues to bank exact native `current_run_mp.save` payloads. These later files are not
+included in the inventory counts below.
 
 **Entry points:**
 - [client/StS2AP/Multiplayer/ApMultiplayerCampaignFlow.cs](<../../client/StS2AP/Multiplayer/ApMultiplayerCampaignFlow.cs>)
