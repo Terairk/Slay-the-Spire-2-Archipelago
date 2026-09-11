@@ -5,7 +5,6 @@ using Archipelago.MultiClient.Net.Helpers;
 using Archipelago.MultiClient.Net.MessageLog.Messages;
 using Archipelago.MultiClient.Net.Models;
 using Godot;
-using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using Newtonsoft.Json.Linq;
 using System.Text.Json;
@@ -38,8 +37,8 @@ namespace StS2AP
     public static class ArchipelagoClient
     {
         /// <summary>
-        /// Slot-data contract supported by this client. Increment only when a future client can
-        /// no longer safely consume worlds using the previous contract.
+        /// Compatibility marker emitted by APWorld releases. The marker is diagnostic rather
+        /// than a symmetric protocol version: a newer APWorld may still support an older client.
         /// </summary>
         public const int SupportedCompatFlag = 1;
 
@@ -298,9 +297,6 @@ namespace StS2AP
         private static readonly object _connectionStateLock = new();
         private static bool _currentAttemptIsAutomaticReconnect;
         private static ApSessionIdentity? _authenticatedIdentity;
-        // Consent lasts only while this slot is retained, including recoverable disconnects.
-        private static (ApSessionIdentity Identity, System.Version Version, int CompatFlag)?
-            _acceptedOlderApWorld;
         private static ReceivedItemsHelper.ItemReceivedHandler? _itemReceivedHandler;
 
         internal static bool HasSlotConnection =>
@@ -367,7 +363,6 @@ namespace StS2AP
             ScoutedLocations = new();
             Seed = string.Empty;
             _authenticatedIdentity = null;
-            _acceptedOlderApWorld = null;
             DeathLinkController = null!;
             LastDeathLinkMessage = null;
             LastDeathLinkReceivedAt = null;
@@ -595,7 +590,7 @@ namespace StS2AP
 
                 if (!TryReadApWorldCompatibility(
                         out System.Version apWorldVersion,
-                        out int apWorldCompatFlag,
+                        out int? apWorldCompatFlag,
                         out string compatibilityError
                     ))
                 {
@@ -608,94 +603,39 @@ namespace StS2AP
                 LogUtility.Info($"Bundled APWorld Version: v{bundledApWorldVersion}");
                 LogUtility.Info($"Client Version: {Version}");
                 LogUtility.Info(
-                    $"APWorld CompatFlag: {apWorldCompatFlag}; client CompatFlag: {SupportedCompatFlag}"
+                    $"APWorld CompatFlag: {apWorldCompatFlag?.ToString() ?? "unavailable"}; "
+                        + $"client CompatFlag: {SupportedCompatFlag}"
                 );
-
-                if (apWorldCompatFlag != SupportedCompatFlag)
-                {
-                    RejectIncompatibleConnection(
-                        $"Incompatible APWorld contract: the APWorld uses CompatFlag "
-                            + $"{apWorldCompatFlag}, but this client requires {SupportedCompatFlag}."
-                    );
-                    return;
-                }
-
-                int apWorldAgeComparison = CompareMajorMinor(
-                    bundledApWorldVersion,
-                    apWorldVersion
-                );
-                if (apWorldAgeComparison < 0)
-                {
-                    RejectIncompatibleConnection(
-                        $"The server uses APWorld v{apWorldVersion}, which is newer than this "
-                            + $"client's bundled APWorld v{bundledApWorldVersion}. Update the client "
-                            + "before connecting."
-                    );
-                    return;
-                }
 
                 Settings = GetPlayerSettings();
 
-                if (apWorldAgeComparison > 0)
+                // These metadata fields cannot predict whether this client understands every
+                // enabled item and location. Treat discrepancies as visible diagnostics and let
+                // the concrete runtime behavior decide whether the combination actually works.
+                bool apWorldVersionDiffers = apWorldVersion != bundledApWorldVersion;
+                bool compatFlagDiffers = apWorldCompatFlag != SupportedCompatFlag;
+                if (apWorldVersionDiffers || compatFlagDiffers)
                 {
                     LogUtility.Warn(
-                        $"The server's APWorld v{apWorldVersion} is older than the bundled APWorld "
-                            + $"v{bundledApWorldVersion}. CompatFlag {SupportedCompatFlag} still matches, "
-                            + "but updating the APWorld is recommended."
+                        "Allowing an unverified APWorld/client combination: "
+                            + $"clientVersion={Version}, "
+                            + $"bundledApWorldVersion=v{bundledApWorldVersion}, "
+                            + $"serverApWorldVersion=v{apWorldVersion}, "
+                            + $"clientCompatFlag={SupportedCompatFlag}, "
+                            + $"serverCompatFlag={apWorldCompatFlag?.ToString() ?? "unavailable"}."
                     );
 
-                    if (wasAutomaticReconnect
-                        && _acceptedOlderApWorld is { } accepted
-                        && accepted.Identity == connectedIdentity
-                        && accepted.Version == apWorldVersion
-                        && accepted.CompatFlag == apWorldCompatFlag)
+                    if (!wasAutomaticReconnect)
                     {
-                        LogUtility.Info($"Reusing accepted APWorld v{apWorldVersion} for {connectedIdentity}");
-                        OnConnected();
-                        return;
-                    }
-
-                    if (wasAutomaticReconnect)
-                    {
-                        ApReconnectController.Stop("the older APWorld requires manual confirmation");
-                        Disconnect(showLostConnectionPrompt: false);
                         NotificationUtility.ShowRawText(
-                            "Automatic reconnect stopped because the server uses an older APWorld. Reconnect manually to review the warning."
+                            "APWorld compatibility mismatch. Connected anyway; some items or checks "
+                                + $"might not work. Client {Version}; APWorld v{apWorldVersion}.",
+                            timeout: 10.0,
+                            priority: NotificationUtility.NotificationPriority.High
                         );
-                        return;
                     }
-
-                    var warningBody = new LocString("main_menu_ui", "APWORLD_OLDER.body");
-                    warningBody.Add("server", $"v{apWorldVersion}");
-                    warningBody.Add("bundled", $"v{bundledApWorldVersion}");
-                    var popup = new ConfirmPopup
-                    {
-                        Header = new LocString("main_menu_ui", "APWORLD_OLDER.header"),
-                        Body = warningBody,
-                        ButtonPressed = continueConnecting =>
-                        {
-                            // The warning may outlive its socket or a deliberate slot change.
-                            // Neither accepting nor cancelling it may affect a replacement session.
-                            if (!ReferenceEquals(Session, connectionSession) || !IsConnected)
-                                return;
-                            if (continueConnecting)
-                            {
-                                _acceptedOlderApWorld = (connectedIdentity, apWorldVersion, apWorldCompatFlag);
-                                OnConnected();
-                            }
-                            else
-                                RejectIncompatibleConnection(
-                                    "Connection cancelled. Update the APWorld before trying again."
-                                );
-                        },
-                    };
-
-                    ArchipelagoConnectionUI.Hide();
-                    popup.Show();
-                    return;
                 }
 
-                // Patch-only differences within one major/minor line are intentionally silent.
                 OnConnected();
             }
             else
@@ -717,12 +657,12 @@ namespace StS2AP
 
         private static bool TryReadApWorldCompatibility(
             out System.Version apWorldVersion,
-            out int compatFlag,
+            out int? compatFlag,
             out string error
         )
         {
             apWorldVersion = new System.Version(0, 0, 0);
-            compatFlag = SupportedCompatFlag;
+            compatFlag = null;
             error = string.Empty;
 
             if (!SlotData.TryGetValue("mod_compat_version", out object? versionValue)
@@ -739,7 +679,9 @@ namespace StS2AP
 
             if (!SlotData.TryGetValue("CompatFlag", out object? compatValue))
             {
-                LogUtility.Info("APWorld omitted CompatFlag; defaulting to contract 1.");
+                LogUtility.Warn(
+                    "APWorld omitted CompatFlag; treating the connection as unverified."
+                );
                 return true;
             }
 
@@ -752,9 +694,12 @@ namespace StS2AP
             }
             catch (Exception ex)
             {
-                error = $"The APWorld supplied an invalid CompatFlag "
-                    + $"('{Convert.ToString(compatValue)}'): {ex.Message}";
-                return false;
+                LogUtility.Warn(
+                    $"APWorld supplied an invalid CompatFlag ('{Convert.ToString(compatValue)}'): "
+                        + $"{ex.Message} Treating the connection as unverified."
+                );
+                compatFlag = null;
+                return true;
             }
         }
 
@@ -800,14 +745,6 @@ namespace StS2AP
                 );
             }
             return version;
-        }
-
-        private static int CompareMajorMinor(System.Version left, System.Version right)
-        {
-            int majorComparison = left.Major.CompareTo(right.Major);
-            return majorComparison != 0
-                ? majorComparison
-                : left.Minor.CompareTo(right.Minor);
         }
 
         private static void RejectIncompatibleConnection(string reason)
