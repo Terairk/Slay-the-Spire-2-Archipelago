@@ -700,9 +700,11 @@ namespace StS2AP
                 // These metadata fields cannot predict whether this client understands every
                 // enabled item and location. Treat discrepancies as visible diagnostics and let
                 // the concrete runtime behavior decide whether the combination actually works.
-                bool apWorldVersionDiffers = apWorldVersion != bundledApWorldVersion;
+                bool apWorldMajorMinorDiffers =
+                    apWorldVersion.Major != bundledApWorldVersion.Major
+                    || apWorldVersion.Minor != bundledApWorldVersion.Minor;
                 bool compatFlagDiffers = apWorldCompatFlag != SupportedCompatFlag;
-                if (apWorldVersionDiffers || compatFlagDiffers)
+                if (apWorldMajorMinorDiffers || compatFlagDiffers)
                 {
                     LogUtility.Warn(
                         "Allowing an unverified APWorld/client combination: "
