@@ -20,11 +20,10 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class DeathLinkMultiplayer
 {
-    private const int SchemaVersion = 3;
-    private const string InboundRequestMessageKey = "death_link_inbound_request_v3";
-    private const string CombatActionKey = "death_link_combat_damage_v3";
-    private const string NonCombatActionKey = "death_link_noncombat_damage_v3";
-    private const string OutboundInstructionMessageKey = "death_link_outbound_instruction_v3";
+    private const string InboundRequestMessageKey = "death_link_inbound_request";
+    private const string CombatActionKey = "death_link_combat_damage";
+    private const string NonCombatActionKey = "death_link_noncombat_damage";
+    private const string OutboundInstructionMessageKey = "death_link_outbound_instruction";
     private static readonly object StateLock = new();
 
     private static readonly Queue<DeathLinkInboundRequestMessage> PendingInbound = new();
@@ -715,7 +714,6 @@ public static class DeathLinkMultiplayer
         settings = null!;
         if (!MultiplayerSupport.IsRealMultiplayerRun
             || !MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
-            || request.SchemaVersion != SchemaVersion
             || request.RunId == Guid.Empty
             || request.EventId == Guid.Empty
             || request.TimestampTicks <= 0 || request.TimestampTicks > DateTime.MaxValue.Ticks
@@ -756,7 +754,6 @@ public static class DeathLinkMultiplayer
                 out ulong hostNetId
             )
             || actionOwner.NetId != hostNetId
-            || message.SchemaVersion != SchemaVersion
             || message.RunId == Guid.Empty
             || message.EventId == Guid.Empty
             || message.Source is null
@@ -884,7 +881,6 @@ public static class DeathLinkMultiplayer
         return netService.Type == NetGameType.Client
             && BetaMainCompatibility.TryGetHostNetId(netService, out ulong hostNetId)
             && senderNetId == hostNetId
-            && message.SchemaVersion == SchemaVersion
             && message.RunId != Guid.Empty
             && message.EventId != Guid.Empty
             && message.OwnerNetId == netService.NetId

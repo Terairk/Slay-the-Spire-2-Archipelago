@@ -24,8 +24,7 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class AscensionMultiplayer
 {
-    private const int SchemaVersion = 1;
-    private const string ActionKey = "ascension_down_v1";
+    private const string ActionKey = "ascension_down";
 
     private static readonly RitsuLibManagedNetActionDescriptor<ApAscensionDownActionMessage>
         ActionDescriptor = new(
@@ -506,7 +505,6 @@ public static class AscensionMultiplayer
         if (!MultiplayerSupport.IsRealMultiplayerRun
             || !MultiplayerSupport.ShouldRunReplicatedConstruction(
                 MultiplayerFeature.AscensionEffects)
-            || message.SchemaVersion != SchemaVersion
             || message.RunId == Guid.Empty
             || message.ActionId == Guid.Empty
             || message.OwnerNetId != owner.NetId

@@ -39,7 +39,7 @@ namespace StS2AP.Utils;
 /// </summary>
 public static class ApMirroredRewardDispatcher
 {
-    private const string SidecarMessageKey = "received_reward_menu_v1";
+    private const string SidecarMessageKey = "received_reward_menu";
     private const string ReplicatedCardStrategyId = "ap_rng_replicated_card_v1";
     private const string OwnerFinalApRngStrategyId = "ap_rng_owner_final_v1";
 
@@ -469,8 +469,8 @@ public static class ApMirroredRewardDispatcher
 
     private static IReadOnlyList<MirroredReward> DecodeRewards(ApRewardMenuSpec menu)
     {
-        if (menu.SchemaVersion != ApRewardMenuSpec.CurrentSchemaVersion || menu.Rewards == null)
-            throw new InvalidOperationException("Invalid AP reward-menu schema.");
+        if (menu.Rewards == null)
+            throw new InvalidOperationException("Invalid AP reward-menu payload.");
         return Array.AsReadOnly(menu.Rewards.Select(spec =>
         {
             if (spec == null || spec.OwnerNetId != menu.OwnerNetId || spec.ApSlotId != menu.ApSlotId)
@@ -744,8 +744,8 @@ public static class ApMirroredRewardDispatcher
         RitsuLibSidecarSyncMessageContext<ApRewardMenuSpec> context)
     {
         ApRewardMenuSpec menu = context.Message;
-        if (menu.SchemaVersion != ApRewardMenuSpec.CurrentSchemaVersion || context.SenderNetId != menu.OwnerNetId)
-            throw new InvalidOperationException("Invalid AP reward-menu owner or schema.");
+        if (context.SenderNetId != menu.OwnerNetId)
+            throw new InvalidOperationException("Invalid AP reward-menu owner.");
 
         var completion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously

@@ -77,6 +77,10 @@ variant. Unit tests establish the behavior of our policies, not native callbacks
 
 | In-game scenario | Expected result |
 | --- | --- |
+| Two clients on 2.3.1: reveal/reopen cards, apply a progressive starter and Ascension Down, and trigger DeathLink | Matching offers verify; each ordered action applies once without message schema fields |
+| Two clients on 2.3.1: publish initial progress and a delta, claim a banked relic, and finish a treasure room | Renamed snapshot/delta, relic receipt, and treasure readiness routes reach their handlers; progress agrees and both players can proceed |
+| Connect a 2.3.0 client to a 2.3.1 host | Native lobby rejects the connection with `ModMismatch` before AP actions begin |
+| Continue a current campaign, then try an unsupported saved AP schema | Current campaign continues; unsupported campaign stays blocked with a clear refusal and its save preserved |
 | Rest unlocked/locked; Smith with/without an upgrade target; both locked; relic-provided action | Valid native actions survive; an exit exists when needed; taking an AP check is optional |
 | Campfire sanity off, vanilla guest, or unresolved AP progress | Native options remain unchanged |
 | `!collect`, then enter another rest site with two AP slots | Collected checks stay hidden on all replicas; another slot's checks remain available |
@@ -107,7 +111,7 @@ Keep generated saves, diagnostic logs, installed binaries, and decompiled refere
 For card offers, `Prepared replicated AP card offer` reports `firstReveal` and `localOwner`.
 `Replicated AP card offer ... disagreed with the owner` is a terminal mismatch, not a retry.
 The owner publishes a digest; it does not await an acknowledgment from every replica. Each
-replica verifies before its own native picker execution. Reveal protocol 3 covers receipt identity,
+replica verifies before its own native picker execution. The eight-integer SHA-256 digest covers receipt identity,
 offer configuration, first-reveal status, and ordered serialized cards. Singleplayer does not
 calculate a verification digest. General gameplay state (including before/after relic counters
 and RNG snapshots) is left to the game's native checksum system. In beta 0.111.0,
@@ -117,8 +121,9 @@ check. NetFullCombatState includes saved relic properties but explicitly exclude
 and Shops player RNG streams. Removing snapshots gives up their extra diagnostic coverage;
 native checksums are not equivalent to the removed snapshot. Keeping the offer digest prevents
 a remote picker index from selecting a different card.
-Test with matching game/mod builds: reveal protocols 1 and 2 are rejected. Persisted assignments
-and the current menu schema 9 are unchanged by the protocol 3 fix.
+Test with matching game/mod builds: the native lobby checks declared mod versions. Live messages
+have no schema field, routing keys have no numeric version suffix, and the digest has no version prefix.
+Saved-data schemas and campaign refusal checks remain. Client 2.3.1 separates this wire format from 2.3.0.
 The original replicated-generation migration requires a new run; old execution protocols
 are not migrated. Crucible remains excluded by MegaCrit in multiplayer; its native behavior can
 only be checked in single-player or an explicitly forced diagnostic scenario.

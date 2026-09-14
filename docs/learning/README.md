@@ -96,7 +96,8 @@ ArchipelagoRewardUI.ShowRewards
   -> CommitDiscreteReward
 ```
 
-Current multiplayer card offers use menu schema 9 and reveal protocol 3. New receipts enter the
+Current multiplayer card offers use an eight-integer SHA-256 digest without a version prefix;
+live peer compatibility uses the lobby's declared mod-version check. New receipts enter the
 outer menu as recipes; every replica generates the ordered offer on first reveal using the
 receipt-local RNG and native hooks. The verification digest covers the receipt and ordered offer,
 not a general before/after player-state snapshot. Use the source to determine exactly when the

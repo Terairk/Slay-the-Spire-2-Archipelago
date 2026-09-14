@@ -1,7 +1,9 @@
 # Replicated AP card rewards: historical implementation walkthrough
 
 > **Historical scope:** this document explains commit `24bd923`; it is not the living description
-> of the current branch. Current code uses menu schema 9 and reveal protocol 3. Protocol 3 verifies
+> of the current branch. Current code has no live-message schema or reveal-version prefix;
+> the lobby's mod-version gate handles peer compatibility, while saved-data schemas remain.
+> An eight-integer SHA-256 digest verifies
 > only the receipt and ordered card offer, only in multiplayer. The before/after player snapshots
 > described in sections 6.3 and 9 were removed after their anonymous type failed with the game's
 > source-generated serializer. General state divergence remains with native checksums; offer

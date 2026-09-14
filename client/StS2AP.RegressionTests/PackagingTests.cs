@@ -33,7 +33,7 @@ public sealed class PackagingTests
                     .GetMethod("Decode", BindingFlags.Public | BindingFlags.Static)!;
                 Type specType = variant.GetType("StS2AP.Models.ApMirroredRewardSpec", true)!;
                 object spec = JsonSerializer.Deserialize("""
-                    {"SchemaVersion":9,"ApSlotId":2,"ReceivedItemIndex":42,"OwnerNetId":1,
+                    {"ApSlotId":2,"ReceivedItemIndex":42,"OwnerNetId":1,
                      "Kind":0,"CardRewardActIndex":1,"CardHasBeenRevealed":true,
                      "MaterializationStrategyId":"ap_rng_replicated_card_v1","RequiresNativeMaterialization":false,
                      "SerializedModels":["{\"id\":\"CARD.A\"}"]}

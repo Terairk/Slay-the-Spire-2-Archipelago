@@ -204,7 +204,7 @@ NonCombatActionAdmissionState enumerates loading, combat transition, executor, a
 The old ApNativeRewardMenu is replaced by ApMirroredRewardDispatcher. Follow OpenMenu, BuildOwnerMenuSpec/BuildAssignedSpec, typed DecodeRewards, completed model transport, CompleteRemoteMenu, and native wrappers. F# owns validated reward shapes and effect decisions; C# owns DTO/JSON conversion, native model construction, sender validation, and game execution. Completed assignments are restored on peers instead of rerolled. Study reveal state, saved assignments, card-hook effects, successful grant consumption, skips/full potion slots, and stale menu work during travel separately. Existing presentation models are also reorganized.
 
 **Current overlay:** new card receipts now enter the menu as recipes. On first reveal every replica
-generates through the native card factory and hooks using receipt-local RNG, then reveal protocol 3
+generates through the native card factory and hooks using receipt-local RNG, then a SHA-256 digest
 compares the receipt and ordered offer before the picker choice is applied. The historical
 completed-model/effect-transport description above remains part of this pinned diff, not the
 current card architecture. Follow the current symbol route in [README.md](README.md).

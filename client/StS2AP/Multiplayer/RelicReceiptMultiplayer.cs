@@ -46,17 +46,17 @@ public static class RelicReceiptMultiplayer
     private static readonly RitsuLibSidecarJsonSerializer<Request> RequestSerializer = new();
     private static readonly RitsuLibSidecarJsonSerializer<Reply> ReplySerializer = new();
     private static readonly RitsuLibSidecarMessageDescriptor<Request> RequestDescriptor = new(
-        ModEntry.ModId, "relic_receipt_request_v1", RequestSerializer.Serialize,
+        ModEntry.ModId, "relic_receipt_request", RequestSerializer.Serialize,
         RequestSerializer.Deserialize, Required: true);
     private static readonly RitsuLibSidecarMessageDescriptor<Reply> ReplyDescriptor = new(
-        ModEntry.ModId, "relic_receipt_decision_v1", ReplySerializer.Serialize,
+        ModEntry.ModId, "relic_receipt_decision", ReplySerializer.Serialize,
         ReplySerializer.Deserialize, Required: true);
     private static readonly RitsuLibSidecarJsonSerializer<TreasureProceedReady>
         TreasureProceedReadySerializer = new();
     private static readonly RitsuLibSidecarMessageDescriptor<TreasureProceedReady>
         TreasureProceedReadyRequestDescriptor = new(
             ModEntry.ModId,
-            "treasure_proceed_ready_request_v1",
+            "treasure_proceed_ready_request",
             TreasureProceedReadySerializer.Serialize,
             TreasureProceedReadySerializer.Deserialize,
             Required: true
@@ -64,7 +64,7 @@ public static class RelicReceiptMultiplayer
     private static readonly RitsuLibSidecarMessageDescriptor<TreasureProceedReady>
         TreasureProceedReadyDecisionDescriptor = new(
             ModEntry.ModId,
-            "treasure_proceed_ready_decision_v1",
+            "treasure_proceed_ready_decision",
             TreasureProceedReadySerializer.Serialize,
             TreasureProceedReadySerializer.Deserialize,
             Required: true

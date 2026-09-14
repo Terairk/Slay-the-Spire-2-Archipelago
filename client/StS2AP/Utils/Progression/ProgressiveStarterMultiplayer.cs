@@ -26,8 +26,7 @@ public static class ProgressiveStarterMultiplayer
         StarterKind Kind,
         StarterPlan<CapturedStarterRecipe> Plan);
 
-    private const int SchemaVersion = 1;
-    private const string ActionKey = "progressive_starter_v1";
+    private const string ActionKey = "progressive_starter";
 
     private static readonly RitsuLibManagedNetActionDescriptor<ApProgressiveStarterActionMessage>
         ActionDescriptor = new(
@@ -450,7 +449,6 @@ public static class ProgressiveStarterMultiplayer
             || !MultiplayerSupport.ShouldRunReplicatedConstruction(
                 MultiplayerFeature.ProgressiveStarters
             )
-            || message.SchemaVersion != SchemaVersion
             || message.RunId == Guid.Empty
             || message.ActionId == Guid.Empty
             || message.Reason is not (

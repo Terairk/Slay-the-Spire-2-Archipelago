@@ -3,7 +3,9 @@
 > Historical account of the owner-final migration. The current
 > `experiment/replicated-card-reward-generation` branch generates card offers on every replica
 > at first reveal, runs native callbacks locally, and compares a receipt/card-offer digest in multiplayer.
-> It uses menu schema 9, reveal protocol 3, and `ap_rng_replicated_card_v1`; it does not replay the effect records
+> It uses `ap_rng_replicated_card_v1` and an eight-integer SHA-256 digest. The lobby checks the
+> declared mod version for peer compatibility; live-message versions are removed and saved-data
+> schemas remain. It does not replay the effect records
 > described below. Current validation boundaries and the runtime matrix are in
 > [the regression-test README](../../client/StS2AP.RegressionTests/README.md).
 

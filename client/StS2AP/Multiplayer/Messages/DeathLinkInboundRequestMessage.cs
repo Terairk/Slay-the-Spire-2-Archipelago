@@ -6,7 +6,6 @@ namespace StS2AP.Multiplayer.Messages;
 /// </summary>
 public sealed class DeathLinkInboundRequestMessage
 {
-    public int SchemaVersion { get; set; } = 3;
     public Guid RunId { get; set; }
     public Guid EventId { get; set; }
     public ulong OwnerNetId { get; set; }

@@ -53,7 +53,7 @@ public sealed class ApCardRevealTests
         var local = ApCardRevealCodec.Encode(replica);
         var remote = ApCardRevealCodec.Encode(owner);
         ApCardRevealCodec.Verify(local, remote, "7:42");
-        Assert.Equal(9, remote.Count); // Version plus SHA-256, no final-model transport.
+        Assert.Equal(8, remote.Count); // SHA-256 only, no final-model transport.
         Assert.Empty(replica.AppliedEffects);
     }
 
@@ -104,24 +104,23 @@ public sealed class ApCardRevealTests
         effects.AppliedEffects.Add(new() { EffectId = "silken_tress_used_v1", BeforeValue = 0, AfterValue = 1 });
         Assert.Throws<InvalidOperationException>(() => MirroredRewardAdapter.Decode(effects, 3));
         var digest = ApCardRevealCodec.Encode(Final());
-        Assert.Throws<InvalidOperationException>(() => ApCardRevealCodec.Verify(digest, digest.Take(8).ToList(), "7:42"));
-        foreach (int version in new[] { 1, 2 })
-        {
-            var oldProtocol = digest.ToList();
-            oldProtocol[0] = version;
-            Assert.Throws<InvalidOperationException>(() => ApCardRevealCodec.Verify(digest, oldProtocol, "7:42"));
-        }
+        Assert.Throws<InvalidOperationException>(() => ApCardRevealCodec.Verify(digest, digest.Take(7).ToList(), "7:42"));
+        var corrupted = digest.ToList();
+        corrupted[0] ^= 1;
+        Assert.Throws<InvalidOperationException>(() => ApCardRevealCodec.Verify(digest, corrupted, "7:42"));
     }
 
     [Theory]
-    [InlineData(5)]
-    [InlineData(6)]
+    [InlineData(0)]
     [InlineData(7)]
-    public void PreviousMenuSchemaIsRejectedBeforeStartingNativeChoices(int version)
+    [InlineData(9)]
+    public void VerificationRejectsMalformedDigestLengthsEvenWhenBothPeersAgree(int count)
     {
-        var spec = Recipe();
-        spec.SchemaVersion = version;
-        Assert.Throws<InvalidOperationException>(() => MirroredRewardAdapter.Decode(spec, 3));
+        var digest = ApCardRevealCodec.Encode(Final());
+        var malformed = Enumerable.Repeat(0, count).ToList();
+        Assert.Throws<InvalidOperationException>(() => ApCardRevealCodec.Verify(digest, malformed, "7:42"));
+        Assert.Throws<InvalidOperationException>(() => ApCardRevealCodec.Verify(malformed, digest, "7:42"));
+        Assert.Throws<InvalidOperationException>(() => ApCardRevealCodec.Verify(malformed, malformed, "7:42"));
     }
 
     [Fact]

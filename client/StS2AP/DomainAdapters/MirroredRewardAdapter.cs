@@ -46,8 +46,8 @@ internal static class MirroredRewardAdapter
 
     private static MirroredRewardInput ToInput(ApMirroredRewardSpec spec)
     {
-        if (spec == null || spec.SchemaVersion != ApRewardMenuSpec.CurrentSchemaVersion)
-            throw new InvalidOperationException("Invalid AP reward-menu entry schema.");
+        if (spec == null)
+            throw new InvalidOperationException("Invalid AP reward-menu entry.");
         RejectReplicaGeneration(spec);
 
         // These are MegaCrit serialized objects. Parsing, including model restoration, stays in C#.

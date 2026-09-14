@@ -28,7 +28,6 @@ public sealed class ApProgressiveStarterActionMessage
         public ApProgressiveStarterKindState Specification { get; set; } = new();
     }
 
-    public int SchemaVersion { get; set; } = 1;
     public Guid RunId { get; set; }
     public Guid ActionId { get; set; }
     public ulong OwnerNetId { get; set; }

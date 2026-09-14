@@ -22,8 +22,8 @@ namespace StS2AP.Multiplayer;
 public static class ApRunData
 {
     internal const int RunSchemaVersion = 9;
-    private const string ProgressSnapshotMessageKey = "player_ap_progress_snapshot_v1";
-    private const string ProgressDeltaMessageKey = "player_ap_progress_delta_v1";
+    private const string ProgressSnapshotMessageKey = "player_ap_progress_snapshot";
+    private const string ProgressDeltaMessageKey = "player_ap_progress_delta";
     private static RunSavedData<ApRunSharedState> _sharedRun = null!;
     private static PlayerRunSavedData<ApPlayerRunState> _players = null!;
     private static readonly RitsuLibSidecarJsonSerializer<ApProgressSnapshotMessage>

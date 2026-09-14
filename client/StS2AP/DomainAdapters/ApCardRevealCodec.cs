@@ -10,7 +10,6 @@ namespace StS2AP.DomainAdapters;
 /// </summary>
 internal static class ApCardRevealCodec
 {
-    private const int Version = 3;
     private const int DigestWords = 8;
 
     internal static List<int> Encode(ApMirroredRewardSpec spec, bool firstReveal = true)
@@ -32,7 +31,7 @@ internal static class ApCardRevealCodec
         using (var writer = new Utf8JsonWriter(stream))
             WriteCanonical(writer, document.RootElement);
         byte[] digest = SHA256.HashData(stream.ToArray());
-        var result = new List<int> { Version };
+        var result = new List<int>(DigestWords);
         for (int offset = 0; offset < digest.Length; offset += sizeof(int))
             result.Add(BinaryPrimitives.ReadInt32LittleEndian(digest.AsSpan(offset, sizeof(int))));
         return result;
@@ -40,8 +39,8 @@ internal static class ApCardRevealCodec
 
     internal static void Verify(IReadOnlyList<int> local, IReadOnlyList<int> owner, string receipt)
     {
-        if (local.Count != DigestWords + 1 || owner.Count != DigestWords + 1
-            || local[0] != Version || owner[0] != Version || !local.SequenceEqual(owner))
+        if (local.Count != DigestWords || owner.Count != DigestWords
+            || !local.SequenceEqual(owner))
             throw new InvalidOperationException($"Replicated AP card offer {receipt} disagreed with the owner "
                 + "(receipt or card offer). No picker choice was applied.");
     }

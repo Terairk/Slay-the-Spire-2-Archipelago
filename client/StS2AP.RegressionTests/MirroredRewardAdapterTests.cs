@@ -28,7 +28,7 @@ public sealed class MirroredRewardAdapterTests
     public void ExistingWireJsonRoundTripsWithoutDomainSerialization()
     {
         const string json = """
-            {"SchemaVersion":9,"ApSlotId":7,"ReceivedItemIndex":42,"OwnerNetId":123,
+            {"ApSlotId":7,"ReceivedItemIndex":42,"OwnerNetId":123,
              "Kind":0,"ItemName":"cards","SenderName":"sender","FoundLocation":"location",
              "IsRareCardReward":false,"CardRewardActIndex":1,"CardCanReroll":true,
              "CardHasBeenRevealed":true,"MaterializationStrategyId":"ap_rng_owner_final_v1",
@@ -212,12 +212,10 @@ public sealed class MirroredRewardAdapterTests
     }
 
     [Fact]
-    public void SchemaAndUnknownKindFailBeforeNativeExecution()
+    public void MissingEntryAndUnknownKindFailBeforeNativeExecution()
     {
+        Assert.Throws<InvalidOperationException>(() => MirroredRewardAdapter.Decode(null!, 3));
         var spec = Card();
-        spec.SchemaVersion = ApRewardMenuSpec.CurrentSchemaVersion + 1;
-        Assert.Throws<InvalidOperationException>(() => MirroredRewardAdapter.Decode(spec, 3));
-        spec.SchemaVersion = ApRewardMenuSpec.CurrentSchemaVersion;
         spec.Kind = (ApMirroredRewardKind)100;
         Assert.Throws<InvalidOperationException>(() => MirroredRewardAdapter.Decode(spec, 3));
     }
@@ -232,7 +230,7 @@ public sealed class MirroredRewardAdapterTests
     {
         // Old fingerprint fields may still arrive, but must never enable generation or silent restoration.
         var spec = JsonSerializer.Deserialize<ApMirroredRewardSpec>("""
-            {"SchemaVersion":9,"ApSlotId":7,"ReceivedItemIndex":42,
+            {"ApSlotId":7,"ReceivedItemIndex":42,
              "MaterializationStrategyId":"replica_native_v1","RequiresNativeMaterialization":true,
              "StateBeforeMaterialization":"pre","StateAfterMaterialization":"post",
              "SerializedModels":["invalid JSON"]}

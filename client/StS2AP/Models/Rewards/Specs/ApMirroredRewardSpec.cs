@@ -7,8 +7,6 @@ namespace StS2AP.Models;
 /// </summary>
 public sealed class ApMirroredRewardSpec
 {
-    public int SchemaVersion { get; set; } = ApRewardMenuSpec.CurrentSchemaVersion;
-
     public int ApSlotId { get; set; }
     public int ReceivedItemIndex { get; set; }
 
