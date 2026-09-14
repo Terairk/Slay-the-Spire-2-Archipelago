@@ -241,7 +241,7 @@ namespace StS2AP.Patches
                     );
                     return;
                 }
-                if (!ApGrantDispatcher.BeginRun(__result, config.CharOffset, out string bindError))
+                if (!ApGrantDispatcher.BeginRun(config.CharOffset, out string bindError))
                 {
                     MultiplayerSupport.InvalidateRunClaims(bindError);
                     return;

@@ -960,6 +960,7 @@ public static class ApMirroredRewardDispatcher
 
         protected override async Task<bool> OnSelect()
         {
+            // Known edge case: removing Poverty while this menu stays open leaves this offer underpaying.
             bool applied = await base.OnSelect();
             if (applied && LocalContext.IsMe(Player))
                 ApGrantDispatcher.CommitGoldClaim(claim);

@@ -278,19 +278,6 @@ namespace StS2AP.Utils
                 || progress.RelicChoiceAssignments.ContainsKey(receipt.Index);
         }
 
-        /// <summary>
-        /// Completes a relic claimed through the AP reward menu and releases its persisted choice.
-        /// The bank, when one was required, was already spent when this assignment was created.
-        /// </summary>
-        public static void CompleteMenuClaim(Player player, int itemIndex)
-        {
-            var progress = ArchipelagoClient.Progress;
-            progress.Items.MarkUsed(itemIndex);
-
-            progress.RelicChoiceAssignments.Remove(itemIndex);
-            ApRunData.PublishLocalProgress(player);
-        }
-
         private static IndexedItemInfo? FindWaitingReceiptForNaturalReward(Player player)
         {
             var progress = ArchipelagoClient.Progress;

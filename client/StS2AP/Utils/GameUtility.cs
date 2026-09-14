@@ -154,61 +154,6 @@ namespace StS2AP.Utils
         }
 
         /// <summary>
-        /// Returns the CardReward assigned to the given item index, creating and populating one if it hasn't been assigned yet.
-        /// This ensures that even if the player skips a Card Reward, the same three cards are shown next time.
-        /// </summary>
-        internal static CardReward? GetOrAssignCardReward(int index, Player player, bool rare)
-        {
-            if (ArchipelagoClient.Progress.CardAssignments.TryGetValue(index, out var existing))
-            {
-                ApCardRewardLifecycle.Freeze(existing);
-                LogUtility.Info($"Existing rewards: {string.Join(",", existing.Cards.Select(c => c.Title))}");
-                return existing;
-            }
-
-            try
-            {
-                var rarity = rare ? CardRarityOddsType.BossEncounter : CardRarityOddsType.RegularEncounter;
-                var options = BetaMainCompatibility.WithCombatRewardCompatibility(
-                    new CardCreationOptions(
-                        new[] { player.Character.CardPool },
-                        CardCreationSource.Encounter,
-                        rarity)
-                );
-
-                var reward = new CardReward(options, 3, player);
-                ApCardRewardLifecycle.Freeze(reward);
-                var rewardActIndex = rare ? null : GetCardRewardActIndex(index, player);
-                if (rewardActIndex.HasValue)
-                {
-                    Patches_APCardRewardUpgradeOdds.PopulateForAct(
-                        reward,
-                        rewardActIndex.Value
-                    );
-                }
-                else
-                {
-                    reward.Populate();
-                }
-
-                ArchipelagoClient.Progress.CardAssignments[index] = reward;
-                var rewardActDescription = rewardActIndex.HasValue
-                    ? (rewardActIndex.Value + 1).ToString()
-                    : "current";
-                LogUtility.Info(
-                    $"Pre-assigned card reward for item w/ index {index} " +
-                    $"(rare={rare}, rewardAct={rewardActDescription})"
-                );
-                return reward;
-            }
-            catch (Exception ex)
-            {
-                LogUtility.Error($"Failed to pre-assign card reward for item w/ index {index}: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
         /// Maps a regular AP Card Reward's stable item ordinal to the act whose native
         /// card-upgrade odds it should use. AP item indices are stable even when the player
         /// waits until a later act to claim the reward.

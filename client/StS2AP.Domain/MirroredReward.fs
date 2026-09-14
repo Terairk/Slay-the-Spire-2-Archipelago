@@ -48,7 +48,6 @@ type CardRewardConfiguration private
     member _.HasBeenRevealed = reveal = CardRevealState.Revealed
     member _.CanReroll = canReroll
     member _.Policy = policy
-    member _.WithRevealed() = CardRewardConfiguration(recipe, CardRevealState.Revealed, canReroll, policy)
 
     static member Decode(isRare, actIndex, revealed, canReroll, strategy) =
         CardRecipe.Decode(isRare, actIndex)

@@ -947,7 +947,6 @@ public static class MultiplayerSupport
         _claimInvalidationNoticeShown = false;
         ApRunData.EndRun();
         ManagedActionRequestScheduler.EndRun();
-        ApGrantDispatcher.EndRun();
         ApMirroredRewardDispatcher.EndRun();
         RelicReceiptMultiplayer.EndRun();
         ProgressiveStarterMultiplayer.EndRun();

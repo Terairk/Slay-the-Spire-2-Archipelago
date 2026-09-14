@@ -130,14 +130,6 @@ namespace StS2AP.Utils
         }
 
         /// <summary>
-        /// Returns the number of queued notifications.
-        /// </summary>
-        public static int GetQueueCount()
-        {
-            return _priorityQueue.Count + _queue.Count;
-        }
-
-        /// <summary>
         /// Clears all queued notifications.
         /// </summary>
         public static void ClearQueue()
@@ -323,16 +315,6 @@ namespace StS2AP.Utils
             else if (Archipelago.MultiClient.Net.Models.Color.Plum == color)
                 return "plum";
             return null;
-        }
-
-        /// <summary>
-        /// Display an Error Message to the user
-        /// </summary>
-        /// <param name="errorMessage">The error to display</param>
-        public static void ShowError(string errorMessage)
-        {
-            var message = $"⚠ Error: {errorMessage}";
-            EnqueueNotification(message, NotificationType.Error);
         }
 
         /// <summary>

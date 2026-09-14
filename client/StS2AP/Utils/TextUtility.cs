@@ -54,24 +54,6 @@ public static class TextUtility
     }
 
     /// <summary>
-    /// Inject multiple localized strings into the specified localization table.
-    /// </summary>
-    /// <param name="text">A dictionary of key-value pairs representing the localized strings</param>
-    /// <param name="tableName">The name of the localization table</param>
-    public static void RegisterLocStrings(Dictionary<string, string> text, string tableName)
-    {
-        try
-        {
-            LocTable table = LocManager.Instance.GetTable(tableName);
-            table.MergeWith(text);
-        }
-        catch (LocException)
-        {
-            LogUtility.Error($"Loc table '{tableName}' not found. Consider pre-creating it.");
-        }
-    }
-
-    /// <summary>
     /// Retrieve a string from a localization table using the specified key.
     /// </summary>
     /// <param name="key">The key to retrieve</param>
@@ -80,18 +62,5 @@ public static class TextUtility
     public static LocString GetLocString(string key, string tableName)
     {
         return new LocString(tableName, key);
-    }
-
-    public static string GetRawTextByKey(string key, string tableName)
-    {
-        try
-        {
-            return LocManager.Instance.GetTable(tableName).GetRawText(key);
-        }
-        catch (LocException)
-        {
-            LogUtility.Error($"Loc table '{tableName}' not found. Consider pre-creating it.");
-            return $"[{tableName}:{key}]";
-        }
     }
 }

@@ -316,43 +316,6 @@ namespace StS2AP.Models
         }
 
         /// <summary>
-        /// Returns the potion assigned to the given location, pulling one from the PotionFactory if it hasn't been assigned yet.
-        /// This guarantees that the same potion is shown every time the reward screen is opened for the same item.
-        /// </summary>
-        /// <param name="index">The index of the specific item sent from the Multiworld.</param>
-        /// <param name="player">The current player, needed by PotionFactory.</param>
-        /// <returns>The assigned PotionModel, or null if no player is provided or the factory fails.</returns>
-        public PotionModel? GetOrAssignPotion(int index, Player? player)
-        {
-            if( PotionAssignments.TryGetValue(index,out var existing))
-            {
-                return existing;
-            }
-
-            if(player == null)
-            {
-                LogUtility.Warn($"Cannot assign potion for item w/ index {index}; no active player");
-                return null;
-            }
-
-            try
-            {
-                var potion = PotionFactory.CreateRandomPotionOutOfCombat(
-                    player,
-                    player.PlayerRng.Rewards
-                ).ToMutable();
-                PotionAssignments[index] = potion;
-                LogUtility.Info($"Pre-assigned potion '{potion.Id}' for item w/ index {index}");
-                return potion;
-            }
-            catch(Exception ex)
-            {
-                LogUtility.Error($"Failed to pre-assign relic for item w/ index {index}: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
         /// Fires when a run starts, to make sure that all progress trackers are reset and ready to go.
         /// </summary>
         /// <param name="player">The current player, needed to initialize trackers.</param>
@@ -576,36 +539,8 @@ namespace StS2AP.Models
 
             return new ArchipelagoGoldOffer(
                 SourceAmount: sourceAmount,
-                GrantedAmount: grantedAmount,
-                WithheldAmount: sourceAmount - grantedAmount,
-                PovertyApplied: povertyApplied
+                GrantedAmount: grantedAmount
             );
-        }
-
-        /// <summary>
-        /// Handles the edge-case when you get an Ascension Down during the AP reward menu.
-        /// Updates the GoldRedeemed global state as well.
-        /// </summary>
-        /// <param name="offer"></param>
-        /// <returns> The amount to grant to the player</returns>
-        public int ConsumeGoldOffer(ArchipelagoGoldOffer offer)
-        {
-            bool povertyCurrentlyApplied = Ascensions.HasLevel(AscensionLevel.Poverty);
-
-            GoldRedeemed += offer.SourceAmount;
-
-            if (offer.PovertyApplied && povertyCurrentlyApplied)
-            {
-                return offer.GrantedAmount;
-            }
-
-            if (offer.PovertyApplied)
-            {
-                // received an Ascension Down while viewing the reward so give proper amount
-                return offer.GrantedAmount + offer.WithheldAmount;
-            }
-            
-            return offer.GrantedAmount;
         }
 
         #endregion

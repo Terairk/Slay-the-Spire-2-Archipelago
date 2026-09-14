@@ -93,17 +93,6 @@ module MirroredRewardTests =
         Assert.Throws<NotSupportedException>(fun () -> (decoded.Models :?> IList<string>)[0] <- "mutation") |> ignore
 
     [<Fact>]
-    let ``reveal transition retains recipe policy and reroll`` () =
-        let config = CardRewardConfiguration.Decode(false, Nullable 1, false, true, "ap_rng_replicated_card_v1") |> require
-        let revealed = config.WithRevealed()
-        Assert.False(config.HasBeenRevealed)
-        Assert.True(revealed.HasBeenRevealed)
-        Assert.True(revealed.WithRevealed().HasBeenRevealed)
-        Assert.Same(config.Recipe, revealed.Recipe)
-        Assert.Same(config.Policy, revealed.Policy)
-        Assert.True(revealed.CanReroll)
-
-    [<Fact>]
     let ``malformed nullable boundary values are rejected`` () =
         for value in [ { input RewardInputKind.Card with Models = null }
                        { input RewardInputKind.Card with Models = [| null |] }

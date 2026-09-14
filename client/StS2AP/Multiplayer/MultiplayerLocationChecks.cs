@@ -200,28 +200,6 @@ public static class MultiplayerLocationChecks
         return false;
     }
 
-    /// <summary>
-    /// Resolves the player's Net-ID-keyed progress that owns their location checks.
-    /// </summary>
-    public static bool TryGetCheckProgress(
-        Player player,
-        out ApRunProgressState progress,
-        out string reason)
-    {
-        if (!ApPlayerContextResolver.HasCharacterChecks(player))
-        {
-            progress = null!;
-            reason = $"player {player.NetId} has no AP slot that owns character checks";
-            return false;
-        }
-
-        return ApPlayerContextResolver.TryGetRewardProgress(
-            player,
-            out progress,
-            out reason
-        );
-    }
-
     internal static IReadOnlyList<int> GetReplicatedRelicReceiptIndexes(
         Player player,
         ApRunProgressState progress)

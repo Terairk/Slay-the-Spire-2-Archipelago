@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 using StS2AP.Utils;
-using static StS2AP.Data.ItemTable;
 
 namespace StS2AP.Models
 {
@@ -34,13 +33,6 @@ namespace StS2AP.Models
             Pools = pools;
             Value = value;
         }
-
-        /// <summary>Maps a received AP item to the bonus category it unlocks, or null if it is not a bonus item.</summary>
-        public static string? CategoryFor(APItem item) => item switch
-        {
-            APItem.BonusWaxRelic => WaxRelicCategory,
-            _ => null,
-        };
 
         /// <summary>
         /// Parses the ordered `bonus_items` slot-data value, which is a list of single-key objects

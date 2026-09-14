@@ -1,6 +1,5 @@
 using Archipelago.MultiClient.Net.Models;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Data;
 using static StS2AP.Data.ItemTable;
 
@@ -16,8 +15,6 @@ namespace StS2AP.Utils;
 public static class ApGrantDispatcher
 {
     public const int UniversalBuffGoldValue = UniversalBuffGold.ValuePerBuff;
-
-    private static long? _activeCharacterOffset;
 
     /// <summary>Rebuilds the raw per-character bank from authoritative AP history.</summary>
     public static void RebuildGoldBank(IReadOnlyList<ItemInfo> receivedItems)
@@ -91,7 +88,7 @@ public static class ApGrantDispatcher
     }
 
     /// <summary>Binds the local player's aggregate gold cursor to the launched STS run.</summary>
-    public static bool BeginRun(RunState runState, long characterOffset, out string reason)
+    public static bool BeginRun(long characterOffset, out string reason)
     {
         reason = string.Empty;
         if (MultiplayerSupport.PreparedApRoomSeed is not { } roomSeed
@@ -112,7 +109,6 @@ public static class ApGrantDispatcher
             redeemedRaw = Math.Clamp(redeemedRaw, 0, receivedRaw);
         }
 
-        _activeCharacterOffset = characterOffset;
         ArchipelagoClient.Progress.GoldRedeemed = redeemedRaw;
         LogUtility.Info(
             $"Bound aggregate AP gold cursor: room={roomSeed}, team={apTeamId}, slot={apSlotId}, "
@@ -169,10 +165,5 @@ public static class ApGrantDispatcher
             "the aggregate AP gold cursor could not be published after applying gold"
         );
         return false;
-    }
-
-    public static void EndRun()
-    {
-        _activeCharacterOffset = null;
     }
 }

@@ -573,15 +573,6 @@ public static class ApMultiplayerCampaignStore
             second.Select(player => (player.NetId, player.CharacterId)).ToArray()
         );
 
-    private static List<CampaignRosterEntry> BuildSerializableRoster(SerializableRun run) =>
-        run.Players.Select(player => new CampaignRosterEntry
-        {
-            NetId = player.NetId,
-            DisplayName = ResolvePlayerName(run.PlatformType, player.NetId),
-            CharacterId = player.CharacterId?.Entry ?? "Unknown Character",
-            Participation = ApParticipationKind.VanillaGuest,
-        }).ToList();
-
     private static List<CampaignRosterEntry> BuildImportedRoster(
         RunState runState,
         PlatformType platform)
