@@ -297,7 +297,7 @@ public static class MultiplayerSupport
         }
     }
 
-    /// <summary>Rejects a reconnect that would replace the AP owner of an active STS lobby/run.</summary>
+    /// <summary>Retains the authenticated AP owner until an intentional home-screen slot departure.</summary>
     public static bool ValidateApSessionIdentity(
         string roomSeed,
         int apTeamId,
@@ -308,12 +308,7 @@ public static class MultiplayerSupport
         var candidate = ApSessionIdentity.Create(
             ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId,
             ArchipelagoClient.LocalSettings.Value.MultiplayerPlayerNumber);
-        bool identityLocked =
-            ApReconnectController.IsActive
-            || _observedStartLobbyScreen != null
-            || IsRealMultiplayerRun || GameUtility.IsInRun || RunManager.Instance.IsInProgress;
-        if (identityLocked
-            && _preparedSessionIdentity is { } expected
+        if (_preparedSessionIdentity is { } expected
             && expected != candidate)
         {
             reason = $"Expected AP session {expected}, but connected to {candidate}.";

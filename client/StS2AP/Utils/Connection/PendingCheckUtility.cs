@@ -46,6 +46,12 @@ namespace StS2AP.Utils
             LogUtility.Debug($"Bound pending-check outbox to AP session {identity}");
         }
 
+        internal static void ClearSlotBinding()
+        {
+            lock (_stateLock)
+                _boundSession = null;
+        }
+
         /// <summary>
         /// Retains unsent multiplayer checks when leaving a slot after returning to the menu.
         /// The next login replays this existing slot/seed outbox, even if no run is continued.
@@ -102,7 +108,6 @@ namespace StS2AP.Utils
                 LogUtility.Error(
                     $"Could not persist location check {locationId}: no authenticated AP identity is bound"
                 );
-                TrySendWithoutPersistence(locationId);
                 return;
             }
 
@@ -317,53 +322,6 @@ namespace StS2AP.Utils
             {
                 LogUtility.Warn(
                     $"Location check transmission failed; {locationIds.Length} check(s) remain queued: {ex.Message}"
-                );
-            }
-        }
-
-        /// <summary>
-        /// Preserves the old immediate-send behavior if identity binding failed. Nothing is
-        /// persisted or replayed because ownership could not be proven.
-        /// </summary>
-        private static void TrySendWithoutPersistence(long locationId)
-        {
-            if (!ArchipelagoClient.IsConnected)
-                return;
-
-            ArchipelagoSession? session = ArchipelagoClient.Session;
-            if (session == null)
-            {
-                LogUtility.Warn(
-                    $"Could not submit location check {locationId} without persistence: "
-                        + "no active AP session"
-                );
-                return;
-            }
-            _ = SendWithoutPersistenceAsync(session, locationId);
-        }
-
-        private static async Task SendWithoutPersistenceAsync(
-            ArchipelagoSession session,
-            long locationId
-        )
-        {
-            if (
-                !ArchipelagoClient.IsConnected
-                || !ReferenceEquals(ArchipelagoClient.Session, session)
-            )
-                return;
-
-            try
-            {
-                await session.Locations.CompleteLocationChecksAsync(locationId);
-                LogUtility.Warn(
-                    $"Submitted location check {locationId} without durable outbox protection"
-                );
-            }
-            catch (Exception ex)
-            {
-                LogUtility.Error(
-                    $"Location check {locationId} could not be persisted or submitted: {ex.Message}"
                 );
             }
         }

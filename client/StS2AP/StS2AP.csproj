@@ -93,6 +93,11 @@
 	  <None Include="..\..\shared\bonus_relic_blacklist.json" Link="data\bonus_relic_blacklist.data" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
+	<!-- Remove catalog JSON left by older builds; recursive manifest discovery must only see the mod manifest. -->
+	<Target Name="RemoveObsoleteBonusCatalogOutput" AfterTargets="CopyFilesToOutputDirectory">
+		<Delete Files="$(TargetDir)relic_custom_pools.json;$(TargetDir)bonus_relic_blacklist.json;$(TargetDir)data\relic_custom_pools.json;$(TargetDir)data\bonus_relic_blacklist.json" />
+	</Target>
+
 	<!-- Create steam_appid.txt for debugging outside Steam -->
 	<!-- Compile-only validation must embed the same manifests as Build. Without resource
 	     preparation, -t:Compile can replace the intermediate DLL with a resource-free one

@@ -1,50 +1,70 @@
 using HarmonyLib;
-using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Extensions;
-using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Relics;
-using MegaCrit.Sts2.Core.Rewards;
-using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Unlocks;
 using StS2AP.Utils;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 
 namespace StS2AP.Patches;
 
-/// <summary>Uses the same owner-scoped pools as Prismatic Gem and Colourful Philosophers.</summary>
-[HarmonyPatch(typeof(Kaleidoscope), nameof(Kaleidoscope.AfterObtained))]
-internal static class Patches_Kaleidoscope
+/// <summary>
+/// AP character locks control run selection, not Kaleidoscope's other-character choices.
+/// Replace only this relic's pool lookup and retain its native generation and reward lifecycle.
+/// </summary>
+[HarmonyPatch]
+public static class Patches_Kaleidoscope
 {
-    [HarmonyPrefix]
-    private static bool Prefix(Kaleidoscope __instance, ref Task __result)
+    [HarmonyTargetMethods]
+    private static IEnumerable<MethodBase> TargetMethods()
     {
-        if (!CrossCharacterCardPoolUtility.TryGetPools(__instance.Owner, out var pools))
-            return true;
-        __result = OfferRewards(__instance, pools);
-        return false;
+        Type? stateMachine = AccessTools.Method(typeof(Kaleidoscope), nameof(Kaleidoscope.AfterObtained))
+            ?.GetCustomAttribute<AsyncStateMachineAttribute>()?.StateMachineType;
+        MethodInfo? moveNext = stateMachine == null ? null : AccessTools.Method(stateMachine, "MoveNext");
+        if (moveNext == null)
+        {
+            LogUtility.Warn("Could not locate Kaleidoscope reward generation; leaving native behavior unchanged");
+            yield break;
+        }
+        yield return moveNext;
     }
 
-    private static async Task OfferRewards(Kaleidoscope relic, IReadOnlyList<CardPoolModel> pools)
+    [HarmonyTranspiler]
+    private static IEnumerable<CodeInstruction> Transpiler(
+        IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
     {
-        Player player = relic.Owner;
-        var rewards = new List<Reward>();
-#if STS2_0_107_1
-        var rerollOptions = CardCreationOptions.ForNonCombatWithDefaultOdds(Array.Empty<CardModel>());
-#else
-        var rerollOptions = CardCreationOptions.ForNonCombatWithDefaultOdds(Array.Empty<CardPoolModel>());
-#endif
-        for (int i = 0; i < relic.DynamicVars.Cards.IntValue; i++)
+        List<CodeInstruction> code = instructions.ToList();
+        MethodInfo getter = AccessTools.PropertyGetter(typeof(UnlockState), nameof(UnlockState.CharacterCardPools));
+        List<CodeInstruction> lookups = code.Where(instruction => instruction.Calls(getter)).ToList();
+        FieldInfo? relicField = AccessTools.Field(__originalMethod.DeclaringType, "<>4__this");
+        if (lookups.Count != 1 || relicField == null)
         {
-            var cards = new List<CardModel>();
-            foreach (CardPoolModel pool in pools.Where(pool => pool.Id != player.Character.CardPool.Id)
-                         .ToList().StableShuffle(player.RunState.Rng.Niche).Take(3))
-            {
-                var options = new CardCreationOptions([pool], CardCreationSource.Other,
-                    CardRarityOddsType.RegularEncounter).WithFlags(CardCreationFlags.NoCardPoolModifications);
-                cards.Add(CardFactory.CreateForReward(player, 1, options).First().Card);
-            }
-            rewards.Add(new CardReward(cards, CardCreationSource.Other, player, rerollOptions));
+            LogUtility.Warn($"Could not safely replace Kaleidoscope card pools (lookups={lookups.Count}, ownerField={relicField != null}); leaving native behavior unchanged");
+            return code;
         }
-        await RewardsCmd.OfferCustom(player, rewards);
+
+        // Pass the relic itself so replicas resolve its owner, even if players share an
+        // UnlockState. Keep the original getter instruction's labels and exception blocks.
+        int lookupIndex = code.IndexOf(lookups[0]);
+        lookups[0].opcode = OpCodes.Ldarg_0;
+        lookups[0].operand = null;
+        code.InsertRange(lookupIndex + 1,
+        [
+            new CodeInstruction(OpCodes.Ldfld, relicField),
+            new CodeInstruction(OpCodes.Call,
+                AccessTools.Method(typeof(Patches_Kaleidoscope), nameof(GetCardPools))),
+        ]);
+        return code;
+    }
+
+    private static IEnumerable<CardPoolModel> GetCardPools(UnlockState unlockState, Kaleidoscope relic)
+    {
+        var player = relic.Owner;
+        if (!CrossCharacterCardPoolUtility.TryGetPools(player, out var pools))
+            return unlockState.CharacterCardPools;
+
+        LogUtility.Info($"Kaleidoscope: using {pools.Count} owner-scoped character card pools for player {player.NetId}");
+        return pools;
     }
 }

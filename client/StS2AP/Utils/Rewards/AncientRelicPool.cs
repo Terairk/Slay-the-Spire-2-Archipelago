@@ -310,7 +310,7 @@ namespace StS2AP.Utils
                                                   .OfType<RelicModel>())
                     {
                         extractedForAncient++;
-                        // TODO: do model selection in a better way than this
+                        // AllPossibleOptions includes relics restricted to particular run modes.
                         if (relic.Id == ModelId.none ||
                             ownedOrReservedRelicIds.Contains(relic.Id) ||
                             IsExcluded(relic, settings, startOfActIndex) ||

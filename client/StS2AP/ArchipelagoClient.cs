@@ -1,4 +1,5 @@
-﻿using Archipelago.MultiClient.Net;
+﻿using MegaCrit.Sts2.Core.Localization;
+using Archipelago.MultiClient.Net;
 using Archipelago.MultiClient.Net.BounceFeatures.DeathLink;
 using Archipelago.MultiClient.Net.Enums;
 using Archipelago.MultiClient.Net.Helpers;
@@ -371,6 +372,7 @@ namespace StS2AP
         #region Networking
 
         private static ReaderWriterLock ConnectionLock { get; } = new ReaderWriterLock();
+        private static TaskCompletionSource<bool>? _pendingCompatibilityConfirmation;
         private static readonly object _connectionStateLock = new();
         private static bool _currentAttemptIsAutomaticReconnect;
         private static SessionCallbacks? _sessionCallbacks;
@@ -445,6 +447,7 @@ namespace StS2AP
             CheckedLocations = new();
             ScoutedLocations = new();
             Seed = string.Empty;
+            PendingCheckUtility.ClearSlotBinding();
             DeathLinkController = null;
             LastDeathLinkMessage = null;
             LastDeathLinkReceivedAt = null;
@@ -554,12 +557,13 @@ namespace StS2AP
                                     loginResult = new LoginFailure(ex.ToString());
                                 }
 
-                                var prepared = new TaskCompletionSource();
-                                Callable.From(() =>
+                                var prepared = new TaskCompletionSource(
+                                    TaskCreationOptions.RunContinuationsAsynchronously);
+                                Callable.From((Action)(async () =>
                                 {
                                     try
                                     {
-                                        HandleConnectResult(connectionSession, loginResult);
+                                        await HandleConnectResult(connectionSession, loginResult);
                                     }
                                     catch (Exception ex)
                                     {
@@ -572,9 +576,9 @@ namespace StS2AP
                                     }
                                     finally
                                     {
-                                        prepared.SetResult();
+                                        prepared.TrySetResult();
                                     }
-                                }).CallDeferred();
+                                })).CallDeferred();
                                 prepared.Task.GetAwaiter().GetResult();
                             }
                             finally
@@ -584,7 +588,7 @@ namespace StS2AP
                         }
                         catch (Exception ex)
                         {
-                            RunForSession(connectionSession, () => HandleConnectResult(
+                            RunForSession(connectionSession, () => _ = HandleConnectResult(
                                 connectionSession, new LoginFailure(ex.ToString())));
                         }
                     });
@@ -593,7 +597,7 @@ namespace StS2AP
             {
                 Callable
                     .From(() =>
-                        HandleConnectResult(connectionSession, new LoginFailure(e.ToString()))
+                        _ = HandleConnectResult(connectionSession, new LoginFailure(e.ToString()))
                     )
                     .CallDeferred();
             }
@@ -602,7 +606,7 @@ namespace StS2AP
         /// <summary>
         /// Handle the outcome of a connection attempt
         /// </summary>
-        private static void HandleConnectResult(
+        private static async Task HandleConnectResult(
             ArchipelagoSession connectionSession,
             LoginResult result
         )
@@ -645,7 +649,7 @@ namespace StS2AP
                     ApReconnectController.Stop(identityError);
                     Disconnect();
                     NotificationUtility.ShowRawText(
-                        "Archipelago reconnected to a different room or slot. This run remains disconnected."
+                        "Archipelago connected to a different room or slot. Leave the current slot before switching worlds."
                     );
                     return;
                 }
@@ -681,17 +685,18 @@ namespace StS2AP
                         + $"client CompatFlag: {SupportedCompatFlag}"
                 );
 
+                ArchipelagoSettings preparedSettings;
                 try
                 {
-                    Settings = GetPlayerSettings(apWorldVersion);
+                    preparedSettings = GetPlayerSettings(apWorldVersion);
                 }
                 catch (Exception ex)
                 {
                     RejectIncompatibleConnection($"Invalid AP player settings: {ex.Message}", wasAutomaticReconnect);
                     return;
                 }
-                LogUtility.Info($"Using co-op Player {Settings.PlayerNumber}/{Settings.PlayerCount} in AP slot {apSlotId}.");
-                if (!TryValidateConfiguredCharacters(Settings, out string characterError))
+                LogUtility.Info($"Using co-op Player {preparedSettings.PlayerNumber}/{preparedSettings.PlayerCount} in AP slot {apSlotId}.");
+                if (!TryValidateConfiguredCharacters(preparedSettings, out string characterError))
                 {
                     RejectIncompatibleConnection(characterError, wasAutomaticReconnect);
                     return;
@@ -717,15 +722,44 @@ namespace StS2AP
 
                     if (!wasAutomaticReconnect)
                     {
-                        NotificationUtility.ShowRawText(
-                            "APWorld compatibility mismatch. Connected anyway; some items or checks "
-                                + $"might not work. Client {Version}; APWorld v{apWorldVersion}.",
-                            timeout: 10.0,
-                            priority: NotificationUtility.NotificationPriority.High
+                        var warningBody = new LocString("main_menu_ui", "APWORLD_MISMATCH.body");
+                        warningBody.Add("server", $"v{apWorldVersion}");
+                        warningBody.Add("bundled", $"v{bundledApWorldVersion}");
+                        warningBody.Add("server_flag", apWorldCompatFlag?.ToString() ?? "unavailable");
+                        warningBody.Add("client_flag", SupportedCompatFlag.ToString());
+                        var confirmation = new TaskCompletionSource<bool>(
+                            TaskCreationOptions.RunContinuationsAsynchronously
                         );
+                        _pendingCompatibilityConfirmation = confirmation;
+                        var popup = new ConfirmPopup
+                        {
+                            Header = new LocString("main_menu_ui", "APWORLD_MISMATCH.header"),
+                            Body = warningBody,
+                            ButtonPressed = accepted => confirmation.TrySetResult(accepted),
+                        };
+
+                        ArchipelagoConnectionUI.Hide();
+                        popup.Show();
+                        bool continueConnecting = await confirmation.Task;
+                        if (ReferenceEquals(_pendingCompatibilityConfirmation, confirmation))
+                            _pendingCompatibilityConfirmation = null;
+                        // A popup can outlive its socket or a deliberate session change.
+                        if (!ReferenceEquals(Session, connectionSession) || !IsConnected)
+                            return;
+                        if (!continueConnecting)
+                        {
+                            ApReconnectController.Stop("APWorld compatibility warning declined");
+                            Disconnect(showMultiplayerNotice: false);
+                            ArchipelagoConnectionUI.Show();
+                            ArchipelagoConnectionUI.SetConnectButtonEnabled(true);
+                            ArchipelagoConnectionUI.SetCloseButtonEnabled(CanLeaveSlot);
+                            ArchipelagoConnectionUI.SetStatus("Connection cancelled. Update the APWorld or client before trying again.");
+                            return;
+                        }
                     }
                 }
 
+                Settings = preparedSettings;
                 OnConnected();
             }
             else
@@ -1180,6 +1214,9 @@ namespace StS2AP
                 _currentAttemptIsAutomaticReconnect = false;
             }
 
+            _pendingCompatibilityConfirmation?.TrySetResult(false);
+            _pendingCompatibilityConfirmation = null;
+
             if (session != null)
             {
                 // Stop the socket-close callback from re-entering this workflow after an
@@ -1301,7 +1338,8 @@ namespace StS2AP
         /// </summary>
         private static void OnItemReceived(ArchipelagoSession session, ReceivedItemsHelper helper)
         {
-            ConnectionLock.AcquireReaderLock(120000);
+            // A compatibility popup may stay open indefinitely; receipts wait for its decision.
+            ConnectionLock.AcquireReaderLock(Timeout.Infinite);
 
             try
             {
