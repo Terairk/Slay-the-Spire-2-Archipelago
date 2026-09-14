@@ -6,9 +6,12 @@ This is an xUnit project. Run it from the repository root:
 dotnet test client/StS2AP.RegressionTests/StS2AP.RegressionTests.csproj -c Release
 ```
 
-The normal suite references the domain library and links production C# helpers. It does not
-build the game client or require Godot, RitsuLib, a game installation, an AP server, local.props,
-or files from the locally excluded admission harness. Each case is discoverable through xUnit.
+The normal suite references the domain library and links production C# helpers. Each case is discoverable through xUnit.
+
+## Human Note:
+I've had a look at these test cases and for the most part they look roughly correct in my eyes
+but maybe they aren't testing exactly what they should be but they should be a good baseline for at least
+some tests. There might be a few suites which I haven't looked at as intensely.
 
 | Suite | Coverage |
 | --- | --- |
@@ -38,9 +41,7 @@ validation, and persistence helpers; they do not execute MegaCrit's card factory
 native picker, or live choice transport. Queue tests run the production async queue, but not its
 Harmony interception or the native message dispatcher. Those require a game-backed integration harness.
 
-The excluded `StS2AP.AdmissionTests` console harness is not a dependency and remains local.
-Its scheduler tests and Godot/game stubs are intentionally not migrated. F# domain rules and
-generated-input tests remain in `StS2AP.Domain.Tests`; C# logic need not be rewritten to test it.
+F# domain rules and generated-input tests remain in `StS2AP.Domain.Tests`; C# logic need not be rewritten to test it.
 
 Packaging tests need built artifacts. Without the corresponding environment variable,
 xUnit reports them as skipped. A supplied path that is missing or invalid fails the test.

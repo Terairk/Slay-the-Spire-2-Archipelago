@@ -18,7 +18,7 @@ You also need to:
   - Keep `<UseSts2RefLib>true</UseSts2RefLib>` for portable, permissioned compile-time references from NuGet
   - Optionally set `<UseSts2RefLib>false</UseSts2RefLib>` and configure `<Sts2ApiSignatureRoot>` to compile against DLLs extracted from your own game installations
   - `<GodotExePath>` should point to the Godot Directory that has `Godot_v4.5.1-stable_mono_win64.exe`
-  - See [Selecting an STS2 API for development](docs/sts2-api-compat.md) for configuring your editor and compatibility builds
+  - See [Selecting an STS2 API for development](docs/contributing/sts2-api-compat.md) for configuring your editor and compatibility builds
 
 > [!CAUTION]
 > For the moment this mod only supports Windows, primarily because of the way I'm handling real-time logging for the purpose of debugging the app. This should not be the case in the future.

@@ -8,18 +8,17 @@ dotnet test client/StS2AP.Domain.Tests/StS2AP.Domain.Tests.fsproj -c Release
 
 These are discoverable xUnit tests written in F#, with FsCheck property tests. They reference
 only `StS2AP.Domain`, not the client, MegaCrit, Godot, Harmony, or RitsuLib. No game installation,
-AP server, local.props, or packaging/export step is needed. FsCheck.Xunit 3.3.2 uses xUnit v2;
+AP server, local.props, or packaging/export step is needed. This is intentional
+and follows the philosophy of the F# Domain where it contains self-contained business logic
+so its easier to test.
+FsCheck.Xunit 3.3.2 uses xUnit v2;
 the package choices deliberately keep those versions compatible.
 
 The tests target net9.0, like the domain library. `RollForward=Major` lets the runner use
 .NET 10 on development machines without .NET 9 installed; CI installs both SDKs/runtimes.
-This is domain behavior verification, not proof of the game's embedded runtime integration.
 
 Use `[<Fact>]` for examples and `[<Theory>]` for explicit boundary cases. Use
-`[<Property(MaxTest = 500)>]` for invariants over generated inputs. FsCheck shrinks failing
-inputs and reports replay information: retain that output and turn important counterexamples
-into named regression tests. Reproduce a seed using the property's `Replay` setting when needed;
-do not permanently pin every property to one seed.
+`[<Property(MaxTest = 500)>]` for invariants over generated inputs.
 
 Current coverage includes both supported assignment provenances, malformed/null wire
 values, provenance identity, selective delegate evaluation,
