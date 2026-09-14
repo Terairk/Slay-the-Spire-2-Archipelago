@@ -11,7 +11,7 @@ type MaterializationError =
         match this with
         | MaterializationError.UnknownStrategy wireId -> unknownStrategy.Invoke(wireId)
 
-/// Provenance of a completed reward. Completed assignments restore final models without rerolling.
+/// OwnerFinal shares owner-generated models; ReplicatedCard runs native generation hooks on every replica and verifies matching choices.
 type RewardMaterialization =
     private
     | OwnerFinal

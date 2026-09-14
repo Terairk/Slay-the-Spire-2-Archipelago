@@ -19,6 +19,7 @@ type CardRecipe =
     private
     | Rare
     | ActBased of int
+    /// Fallback for a regular AP card reward that cannot be mapped to a stable act.
     | CurrentAct
 
     member this.IsRareReward = match this with Rare -> true | ActBased _ | CurrentAct -> false
