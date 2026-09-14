@@ -747,10 +747,10 @@ namespace StS2AP.Patches
 
         /// <summary>
         /// The native load lobby permits continuing with missing players. Preserve that, but
-        /// reject any connected STS identity that was not in the campaign's frozen roster.
+        /// reject unsupported beta save contracts and identities outside the frozen roster.
         /// </summary>
         [HarmonyPatch(typeof(NMultiplayerLoadGameScreen), "ShouldAllowRunToBegin")]
-        private static class RequireOriginalSavedRoster
+        private static class RequireCompatibleSavedCampaign
         {
             [HarmonyPostfix]
             private static void Postfix(
@@ -766,7 +766,7 @@ namespace StS2AP.Patches
             {
                 if (!await vanillaResult)
                     return false;
-                if (ApMultiplayerCampaignFlow.ValidateLoadLobbyRoster(
+                if (ApMultiplayerCampaignFlow.ValidateLoadLobby(
                     screen,
                     out string reason))
                 {

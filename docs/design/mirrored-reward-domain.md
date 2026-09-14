@@ -53,9 +53,9 @@ Removed with the unused path: new-native F# cases, the overlapping `RewardGenera
 type, before/after fingerprint fields and capture/comparison, card/potion strategy
 interfaces and diagnostic switch, replica-generation factories, acknowledgement and
 decision messages/subscriptions, agreement digests, timeout tasks, and related run
-state. `RewardMaterialization` now has exactly two provenance cases, both describing
-completed assignments. The normal menu synchronization and native selection
-synchronizer remain in use.
+state. `RewardMaterialization` distinguishes owner-final models from replicated
+card generation; the removed `replica_native_v1` strategy is rejected. The normal
+menu synchronization and native selection synchronizer remain in use.
 
 ## Domain contract
 
@@ -69,7 +69,7 @@ synchronizer remain in use.
 | Ancient choice | Exactly the existing `AncientRelicPool.ChoiceCount` models, supplied by C# rather than duplicated as a game constant in F#. |
 | Unavailable | A reason and no model payload. Surplus Ancient rewards still produce the existing disabled row. |
 | Owner-final | Restore the owner's final models; never roll again. |
-| Restored native | Retain `replica_native_v1` provenance while restoring models without RNG replay. |
+| Replicated card | Generate choices on every replica at first picker opening and verify agreement; restore existing final models on reopen/continue. |
 | Silken Tress | Only `0 -> 1`; apply at zero, do nothing at one, reject unrelated state. |
 | Silver Crucible | Only nonnegative `n -> n + 1`, without integer overflow. Apply at `n`; later counter values already subsume the persisted effect. |
 

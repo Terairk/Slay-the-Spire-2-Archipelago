@@ -35,14 +35,14 @@ public sealed class PackagingTests
                 object spec = JsonSerializer.Deserialize("""
                     {"SchemaVersion":9,"ApSlotId":2,"ReceivedItemIndex":42,"OwnerNetId":1,
                      "Kind":0,"CardRewardActIndex":1,"CardHasBeenRevealed":true,
-                     "MaterializationStrategyId":"replica_native_v1","RequiresNativeMaterialization":false,
+                     "MaterializationStrategyId":"ap_rng_replicated_card_v1","RequiresNativeMaterialization":false,
                      "SerializedModels":["{\"id\":\"CARD.A\"}"]}
                     """, specType)!;
                 object reward = decode.Invoke(null, [spec, 3])!;
                 object configuration = variant.GetType("StS2AP.DomainAdapters.MirroredRewardAdapter", true)!
                     .GetMethod("CardConfiguration", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [spec])!;
                 object provenance = configuration.GetType().GetProperty("Policy")!.GetValue(configuration)!;
-                Assert.Equal("replica_native_v1", provenance.GetType().GetProperty("StrategyId")!.GetValue(provenance));
+                Assert.Equal("ap_rng_replicated_card_v1", provenance.GetType().GetProperty("StrategyId")!.GetValue(provenance));
                 object origin = reward.GetType().GetProperty("Origin")!.GetValue(reward)!;
                 Assert.Equal("2:42", origin.GetType().GetProperty("ReceiptIdentity")!.GetValue(origin));
 

@@ -253,6 +253,13 @@ public sealed partial class ApMultiplayerCampaignPicker : Control, IScreenContex
     {
         try
         {
+            string? compatibilityError = ApMultiplayerCampaignStore.GetCompatibilityError(campaign, kind);
+            if (compatibilityError != null)
+            {
+                LogUtility.Warn($"Blocked AP campaign continue: {compatibilityError}");
+                NotificationUtility.ShowRawText(compatibilityError);
+                return;
+            }
             ApMultiplayerCampaignStore.ActivateCampaign(campaign, kind);
             ReadSaveResult<SerializableRun> read = SaveManager.Instance
                 .LoadAndCanonicalizeMultiplayerRunSave(

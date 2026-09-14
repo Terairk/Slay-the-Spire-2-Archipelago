@@ -72,7 +72,7 @@ public sealed class MirroredRewardAdapterTests
     }
 
     [Theory]
-    [InlineData("replica_native_v1")]
+    [InlineData("ap_rng_replicated_card_v1")]
     [InlineData("ap_rng_owner_final_v1")]
     [InlineData("")]
     public void SavedRevealedCardsRestoreWithoutReplayOrReroll(string strategy)
@@ -96,8 +96,8 @@ public sealed class MirroredRewardAdapterTests
         Assert.Null(card.Configuration.Recipe.ActIndex);
         Assert.Equal(saved.SerializedCards, card.Models);
         Assert.Equal(strategy == "" ? "ap_rng_owner_final_v1" : strategy, card.Configuration.Policy.StrategyId);
-        Assert.Equal(strategy == "replica_native_v1" ? "restore" : "owner", card.Configuration.Policy.Match(
-            () => "owner", () => "restore", () => "replicated"));
+        Assert.Equal(strategy == "ap_rng_replicated_card_v1" ? "replicated" : "owner", card.Configuration.Policy.Match(
+            () => "owner", () => "replicated"));
     }
 
     [Fact]
@@ -181,6 +181,7 @@ public sealed class MirroredRewardAdapterTests
 
     [Theory]
     [InlineData("unknown", false, "used an unknown materialization strategy.")]
+    [InlineData("replica_native_v1", false, "used an unknown materialization strategy.")]
     [InlineData("ap_rng_owner_final_v1", true, "requested removed replica-native generation.")]
     public void ExistingStrategyDiagnosticsRetainReceiptContext(string strategy, bool replay, string message)
     {

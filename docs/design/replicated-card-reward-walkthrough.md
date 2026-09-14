@@ -133,11 +133,11 @@ This F# type describes how an assignment was materialized. A discriminated union
 
 The edits, in source order:
 
-1. The comment now says completed assignments restore final models without rerolling. That statement applies to the new strategy too: continuing a run should restore an existing offer, not generate it again.
-2. Add `ReplicatedCard` alongside `OwnerFinal` and `RestoredReplicaNative`.
+1. The comment distinguishes sharing owner-generated final models from running native card generation on every replica and verifying matching choices. Continuing a run still restores an existing offer without rerolling.
+2. `ReplicatedCard` sits alongside `OwnerFinal`. The former `RestoredReplicaNative` case has since been removed; its wire strategy is rejected.
 3. Map it to the wire string `ap_rng_replicated_card_v1` in `StrategyId`.
 4. Set `AllowsPersistentEffects` to false for this case.
-5. Add a third callback to `Match`, and invoke it when the value is `ReplicatedCard`.
+5. `Match` takes an owner-final callback and a replicated-card callback, selecting the latter for `ReplicatedCard`.
 6. Recognize the new string in `Decode`; unknown strings still produce an error.
 
 The name `AllowsPersistentEffects` needs careful reading. Here it means “allows our serialized **effect-replay records**.” It does **not** mean that a native relic is forbidden from changing persistent state. Native callbacks now change that state themselves.
@@ -148,12 +148,11 @@ The C#-friendly `Match` method is approximately this switch:
 switch (strategy)
 {
     case OwnerFinal: return ownerFinal();
-    case RestoredReplicaNative: return restoredReplicaNative();
     case ReplicatedCard: return replicatedCard();
 }
 ```
 
-Callers must supply the third handler, which explains several small interop/test changes later.
+Callers supply both handlers, so each generation contract is handled explicitly.
 
 #### 4.2 `MirroredReward.fs`: reject contradictory payloads
 

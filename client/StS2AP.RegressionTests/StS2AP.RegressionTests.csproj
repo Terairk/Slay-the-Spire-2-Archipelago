@@ -20,6 +20,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <ProjectReference Include="..\StS2AP.Domain\StS2AP.Domain.fsproj" />
+    <Compile Include="..\StS2AP\Persistence\ApCampaignCompatibility.cs" Link="Persistence\ApCampaignCompatibility.cs" />
     <Compile Include="..\StS2AP\Models\ApReceivedItemLedger.cs" Link="Models\ApReceivedItemLedger.cs" />
     <Compile Include="..\StS2AP\Models\IndexedItemInfo.cs" Link="Models\IndexedItemInfo.cs" />
     <Compile Include="..\StS2AP\Multiplayer\ApParticipationKind.cs" Link="Multiplayer\ApParticipationKind.cs" />

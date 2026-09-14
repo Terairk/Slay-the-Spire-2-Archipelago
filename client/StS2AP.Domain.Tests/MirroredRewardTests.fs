@@ -80,18 +80,11 @@ module MirroredRewardTests =
 
     [<Theory>]
     [<MemberData(nameof provenanceRewardKinds)>]
-    let ``restored native assignment never replays generation`` kind =
-        let reward = decode { input kind with Strategy = "replica_native_v1" }
-        let identify (policy: RewardMaterialization) =
-            policy.Match(Func<_>(fun () -> "owner"), Func<_>(fun () -> "restored"), Func<_>(fun () -> "replicated"))
-        let actual = reward.Match(
-            Func<CardRewardData, string>(fun card -> identify card.Configuration.Policy),
-            Func<PotionRewardData, string>(fun potion -> identify potion.Policy),
-            Func<string, string>(fun _ -> "relic"),
-            Func<IReadOnlyList<string>, string>(fun _ -> "ancient"),
-            Func<string, string>(fun _ -> "unavailable"),
-            Func<string, string>(fun _ -> "bonus"))
-        Assert.Equal("restored", actual)
+    let ``removed native provenance is rejected for cards and potions`` kind =
+        match MirroredReward.Decode({ input kind with Strategy = "replica_native_v1" }, 3) with
+        | Error (RewardDecodeError.Materialization (MaterializationError.UnknownStrategy original)) ->
+            Assert.Equal("replica_native_v1", original)
+        | actual -> failwithf "Expected UnknownStrategy, got %A" actual
 
     [<Fact>]
     let ``snapshot copies models and effect inputs and exposes no mutable collections`` () =
@@ -121,7 +114,7 @@ module MirroredRewardTests =
     let ``effects require a unique owner final card transition`` () =
         let effects = [| effect "silken_tress_used_v1" 0 1 |]
         for value in [ { input RewardInputKind.Card with Effects = Array.append effects effects }
-                       { input RewardInputKind.Card with Effects = effects; Strategy = "replica_native_v1" }
+                       { input RewardInputKind.Card with Effects = effects; Strategy = "ap_rng_replicated_card_v1"; Revealed = true }
                        { input RewardInputKind.Potion with Effects = effects }
                        { input RewardInputKind.Relic with Effects = effects }
                        { input RewardInputKind.Bonus with Effects = effects } ] do

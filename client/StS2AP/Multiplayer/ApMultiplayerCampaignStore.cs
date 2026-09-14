@@ -189,6 +189,21 @@ public static class ApMultiplayerCampaignStore
         );
     }
 
+    internal static string? GetCompatibilityError(CampaignMetadata metadata, SaveKind kind)
+    {
+        string? saveError = GetSnapshotError(metadata, kind);
+        if (saveError != null)
+            return saveError;
+        CampaignSnapshot snapshot = GetSnapshot(metadata, kind)!;
+        return ApCampaignCompatibility.GetError(
+            File.ReadAllText(GetSnapshotPath(metadata.CampaignId, snapshot)),
+            ModEntry.ModId, ApRunData.RunSchemaVersion, metadata.Roster.Select(player => player.NetId));
+    }
+
+    internal static string? GetActiveCompatibilityError(IEnumerable<ulong> playerIds) =>
+        ApCampaignCompatibility.GetError(File.ReadAllText(GetActiveSavePath()),
+            ModEntry.ModId, ApRunData.RunSchemaVersion, playerIds);
+
     internal static void ArchiveCampaign(string campaignId)
     {
         CampaignMetadata metadata = ReadMetadata(campaignId);
@@ -219,6 +234,14 @@ public static class ApMultiplayerCampaignStore
         string activeSavePath = GetActiveSavePath();
         if (!File.Exists(activeSavePath))
             return;
+
+        string? compatibilityError = GetActiveCompatibilityError(Array.Empty<ulong>());
+        if (compatibilityError != null)
+        {
+            LogUtility.Warn($"Blocked AP campaign import: {compatibilityError}");
+            NotificationUtility.ShowRawText(compatibilityError);
+            return;
+        }
 
         ReadSaveResult<SerializableRun> read = SaveManager.Instance
             .LoadAndCanonicalizeMultiplayerRunSave(PlatformUtil.GetLocalPlayerId(GetVanillaPlatform()));

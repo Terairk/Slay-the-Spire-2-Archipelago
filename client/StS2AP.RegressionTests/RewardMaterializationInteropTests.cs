@@ -18,7 +18,6 @@ public sealed class RewardMaterializationInteropTests
 
         string result = policy.Match(
             () => "owner",
-            () => throw new InvalidOperationException("Unexpected restore handler."),
             () => throw new InvalidOperationException("Unexpected replicated handler."));
 
         Assert.Equal("owner", result);
@@ -26,6 +25,7 @@ public sealed class RewardMaterializationInteropTests
 
     [Theory]
     [InlineData("unknown", false, "used an unknown materialization strategy.")]
+    [InlineData("replica_native_v1", false, "used an unknown materialization strategy.")]
     [InlineData("ap_rng_owner_final_v1", true, "requested removed replica-native generation.")]
     public void AdapterMapsDomainErrorsToExistingExceptions(string strategy, bool replay, string message)
     {

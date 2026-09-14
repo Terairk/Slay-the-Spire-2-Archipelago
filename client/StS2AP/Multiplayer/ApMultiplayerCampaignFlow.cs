@@ -100,7 +100,7 @@ public static class ApMultiplayerCampaignFlow
         return false;
     }
 
-    internal static bool ValidateLoadLobbyRoster(
+    internal static bool ValidateLoadLobby(
         NMultiplayerLoadGameScreen screen,
         out string reason)
     {
@@ -109,6 +109,18 @@ public static class ApMultiplayerCampaignFlow
         {
             if (screen._runLobby is not LoadRunLobby lobby)
                 return true;
+
+            if (MultiplayerSupport.PendingDestination == ApPlayDestination.Multiplayer
+                && lobby.NetService.Type == NetGameType.Host)
+            {
+                string? compatibilityError = ApMultiplayerCampaignStore.GetActiveCompatibilityError(
+                    lobby.Run.Players.Select(player => player.NetId));
+                if (compatibilityError != null)
+                {
+                    reason = compatibilityError;
+                    return false;
+                }
+            }
 
             HashSet<ulong> connectedIds = BetaMainCompatibility
                 .GetConnectedRunPlayerNetIds(lobby)
@@ -121,10 +133,9 @@ public static class ApMultiplayerCampaignFlow
         }
         catch (Exception ex)
         {
-            // Compatibility guards fail open; the embedded AP identity check still prevents
-            // a mismatched local process from inheriting AP progress after launch.
-            LogUtility.Warn($"Could not inspect the saved-run lobby roster: {ex.Message}");
-            return true;
+            LogUtility.Warn($"Could not check the saved-run lobby campaign: {ex.Message}");
+            reason = "The saved campaign could not be checked. It was preserved. Return to the campaign picker and try again.";
+            return MultiplayerSupport.PendingDestination != ApPlayDestination.Multiplayer;
         }
     }
 }
