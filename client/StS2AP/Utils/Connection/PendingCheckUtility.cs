@@ -12,7 +12,6 @@ namespace StS2AP.Utils
     {
         private const string OutboxPrefix = "user://sts_ap_pending_checks_v2_";
         private static readonly object _stateLock = new();
-        private static readonly HashSet<string> _reportedLegacyPaths = new(StringComparer.Ordinal);
         private static BoundApSession? _boundSession;
 
         private sealed record BoundApSession(
@@ -42,7 +41,6 @@ namespace StS2AP.Utils
             lock (_stateLock)
             {
                 _boundSession = new BoundApSession(session, identity);
-                ReportLegacyOutboxIfPresent(roomSeed);
             }
 
             LogUtility.Debug($"Bound pending-check outbox to AP session {identity}");
@@ -457,29 +455,5 @@ namespace StS2AP.Utils
             };
             file.StoreString(JsonSerializer.Serialize(persisted));
         }
-
-        /// <summary>
-        /// Legacy files contain only location IDs and cannot prove their AP destination. Leave
-        /// them untouched and report them once instead of guessing and replaying them.
-        /// </summary>
-        private static void ReportLegacyOutboxIfPresent(string roomSeed)
-        {
-            if (string.IsNullOrWhiteSpace(ArchipelagoClient.PlayerName))
-                return;
-
-            string safeName = SanitizeLegacyFileNamePart(ArchipelagoClient.PlayerName);
-            string safeSeed = SanitizeLegacyFileNamePart(roomSeed);
-            string path = $"user://sts_ap_pending_checks_{safeName}_{safeSeed}.json";
-            if (!Godot.FileAccess.FileExists(path) || !_reportedLegacyPaths.Add(path))
-                return;
-
-            LogUtility.Warn(
-                $"Ignored legacy pending-check outbox '{path}' because it has no authenticated "
-                    + "AP identity. The file was left untouched."
-            );
-        }
-
-        private static string SanitizeLegacyFileNamePart(string value) =>
-            string.Join("_", value.Split(System.IO.Path.GetInvalidFileNameChars()));
     }
 }

@@ -5,8 +5,10 @@
 > at first reveal, runs native callbacks locally, and compares a receipt/card-offer digest in multiplayer.
 > It uses `ap_rng_replicated_card_v1` and an eight-integer SHA-256 digest. The lobby checks the
 > declared mod version for peer compatibility; live-message versions are removed and saved-data
-> schemas remain. It does not replay the effect records
-> described below. Current validation boundaries and the runtime matrix are in
+> schemas remain. The effect model, recorded-effect fields, menu-time generation flag, and
+> empty-strategy save default described below have since been removed. Saved cards require the
+> replicated-card strategy; owner-final materialization remains for potions. Current validation
+> boundaries and the runtime matrix are in
 > [the regression-test README](../../client/StS2AP.RegressionTests/README.md).
 
 Implemented 2026-09-06 on `multiplayer-squashed`. The initial strategy-only F# guard has

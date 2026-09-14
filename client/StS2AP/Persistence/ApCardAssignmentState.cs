@@ -21,7 +21,4 @@ public sealed class ApCardAssignmentState
 
     [JsonPropertyName("materialization_strategy_id")]
     public string MaterializationStrategyId { get; set; } = string.Empty;
-
-    [JsonPropertyName("applied_effects")]
-    public List<ApRewardEffectSpec> AppliedEffects { get; set; } = new();
 }

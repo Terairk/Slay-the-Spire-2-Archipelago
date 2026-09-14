@@ -15,7 +15,7 @@ internal static class ApCardRevealCodec
     internal static List<int> Encode(ApMirroredRewardSpec spec, bool firstReveal = true)
     {
         if (spec.Kind != ApMirroredRewardKind.Card || !spec.CardHasBeenRevealed
-            || spec.SerializedModels.Count == 0 || spec.AppliedEffects.Count != 0
+            || spec.SerializedModels.Count == 0
             || spec.MaterializationStrategyId != "ap_rng_replicated_card_v1")
             throw new InvalidOperationException("Cannot verify an unfinished or non-replicated AP card offer.");
         _ = MirroredRewardAdapter.Decode(spec, 3);

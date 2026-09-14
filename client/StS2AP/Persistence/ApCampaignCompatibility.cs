@@ -53,8 +53,8 @@ internal static class ApCampaignCompatibility
                         || !card.Value.TryGetProperty("materialization_strategy_id", out var strategy)
                         || strategy.ValueKind != JsonValueKind.String
                         || strategy.GetString() != "ap_rng_replicated_card_v1"
-                        || !card.Value.TryGetProperty("applied_effects", out var effects)
-                        || effects.ValueKind != JsonValueKind.Array || effects.GetArrayLength() != 0)
+                        || (card.Value.TryGetProperty("applied_effects", out var effects)
+                            && (effects.ValueKind != JsonValueKind.Array || effects.GetArrayLength() != 0)))
                     {
                         return Refusal;
                     }

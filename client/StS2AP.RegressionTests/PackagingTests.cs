@@ -35,7 +35,7 @@ public sealed class PackagingTests
                 object spec = JsonSerializer.Deserialize("""
                     {"ApSlotId":2,"ReceivedItemIndex":42,"OwnerNetId":1,
                      "Kind":0,"CardRewardActIndex":1,"CardHasBeenRevealed":true,
-                     "MaterializationStrategyId":"ap_rng_replicated_card_v1","RequiresNativeMaterialization":false,
+                     "MaterializationStrategyId":"ap_rng_replicated_card_v1",
                      "SerializedModels":["{\"id\":\"CARD.A\"}"]}
                     """, specType)!;
                 object reward = decode.Invoke(null, [spec, 3])!;

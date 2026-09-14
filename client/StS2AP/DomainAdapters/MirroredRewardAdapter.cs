@@ -13,12 +13,8 @@ internal static class MirroredRewardAdapter
         spec.ItemName, spec.SenderName, spec.FoundLocation);
 
     public static CardRewardConfiguration CardConfiguration(ApMirroredRewardSpec spec)
-    {
-        RejectReplicaGeneration(spec);
-        return Require(CardRewardConfiguration.Decode(spec.IsRareCardReward, spec.CardRewardActIndex,
-            spec.CardHasBeenRevealed, spec.CardCanReroll, spec.MaterializationStrategyId,
-            Effects(spec.AppliedEffects)), spec.GrantId.ToString());
-    }
+        => Require(CardRewardConfiguration.Decode(spec.IsRareCardReward, spec.CardRewardActIndex,
+            spec.CardHasBeenRevealed, spec.CardCanReroll, spec.MaterializationStrategyId), spec.GrantId.ToString());
 
     public static (RewardOrigin Origin, CardRewardData Card) DecodeSavedCardAssignment(
         int itemIndex, ApCardAssignmentState assignment, ulong ownerNetId)
@@ -32,10 +28,7 @@ internal static class MirroredRewardAdapter
             CardRewardActIndex = assignment.RewardActIndex,
             CardHasBeenRevealed = assignment.HasBeenRevealed,
             CardCanReroll = assignment.CanReroll,
-            // Preserve the existing save loader's default for pre-strategy card assignments.
-            MaterializationStrategyId = string.IsNullOrEmpty(assignment.MaterializationStrategyId)
-                ? "ap_rng_owner_final_v1" : assignment.MaterializationStrategyId,
-            AppliedEffects = assignment.AppliedEffects,
+            MaterializationStrategyId = assignment.MaterializationStrategyId,
             SerializedModels = assignment.SerializedCards,
         });
         return (input.Origin, Require(MirroredReward.DecodeCard(input), input.Origin.ReceiptIdentity));
@@ -48,7 +41,6 @@ internal static class MirroredRewardAdapter
     {
         if (spec == null)
             throw new InvalidOperationException("Invalid AP reward-menu entry.");
-        RejectReplicaGeneration(spec);
 
         // These are MegaCrit serialized objects. Parsing, including model restoration, stays in C#.
         // Preserve the exact strings for hashing and replica comparisons.
@@ -87,51 +79,10 @@ internal static class MirroredRewardAdapter
             Revealed = spec.CardHasBeenRevealed,
             CanReroll = spec.CardCanReroll,
             Strategy = spec.MaterializationStrategyId,
-            Effects = Effects(spec.AppliedEffects),
             Models = spec.SerializedModels?.ToArray()!,
             UnavailableReason = spec.UnavailableReason,
         };
     }
-
-    public static List<ApRewardEffectSpec> EncodeEffects(IEnumerable<RewardEffect> effects) => effects
-        .Select(effect => new ApRewardEffectSpec
-        {
-            EffectId = effect.EffectId,
-            BeforeValue = effect.BeforeValue,
-            AfterValue = effect.AfterValue,
-        }).ToList();
-
-    public static bool NeedsApplication(RewardEffect effect, int current, string receiptIdentity) =>
-        Require(effect.NeedsApplication(current), receiptIdentity);
-
-    // Receipt order no longer determines generation order: users can reveal any row first.
-    // Apply each relic's recorded transitions in counter order when restoring a whole menu.
-    public static IEnumerable<(RewardOrigin Origin, RewardEffect Effect)> OrderedEffects(
-        IEnumerable<MirroredReward> rewards) => rewards
-        .SelectMany(reward => reward.Effects.Select(effect => (reward.Origin, Effect: effect)))
-        .OrderBy(entry => entry.Effect.EffectId, StringComparer.Ordinal)
-        .ThenBy(entry => entry.Effect.BeforeValue);
-
-    public static RewardEffect ObserveSilkenTress(int before, int after, string receiptIdentity) =>
-        Require(RewardEffect.ObserveSilkenTress(before, after), receiptIdentity);
-
-    public static RewardEffect ObserveSilverCrucible(int before, int after, string receiptIdentity) =>
-        Require(RewardEffect.ObserveSilverCrucible(before, after), receiptIdentity);
-
-    // Keep the old wire flag only to reject unsupported generation rather than silently restore it.
-    private static void RejectReplicaGeneration(ApMirroredRewardSpec spec)
-    {
-        if (spec.RequiresNativeMaterialization)
-            throw new InvalidOperationException($"AP reward {spec.GrantId} requested removed replica-native generation.");
-    }
-
-    private static RewardEffectInput[] Effects(IEnumerable<ApRewardEffectSpec>? effects) => effects?
-        .Select(effect => effect == null ? null! : new RewardEffectInput
-        {
-            EffectId = effect.EffectId,
-            BeforeValue = effect.BeforeValue,
-            AfterValue = effect.AfterValue,
-        }).ToArray()!;
 
     private static T Require<T>(FSharpResult<T, RewardDecodeError> result, string identity)
     {

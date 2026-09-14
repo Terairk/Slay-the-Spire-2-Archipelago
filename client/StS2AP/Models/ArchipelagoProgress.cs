@@ -791,14 +791,6 @@ namespace StS2AP.Models
                         MaterializationStrategyId = kv.Value is ApMirroredRewardDispatcher.ApNativeCardReward materialized
                             ? materialized.MaterializationStrategyId
                             : string.Empty,
-                        AppliedEffects = kv.Value is ApMirroredRewardDispatcher.ApNativeCardReward effected
-                            ? effected.AppliedEffects.Select(effect => new ApRewardEffectSpec
-                            {
-                                EffectId = effect.EffectId,
-                                BeforeValue = effect.BeforeValue,
-                                AfterValue = effect.AfterValue,
-                            }).ToList()
-                            : new List<ApRewardEffectSpec>(),
                     }
                 ),
                 PotionAssignments = PotionAssignments.ToDictionary(

@@ -23,8 +23,8 @@ or files from the locally excluded admission harness. Each case is discoverable 
 | Session identity | Server-qualified destination versus run-slot equality, validated persisted identities, missing/invalid field rejection, and existing outbox JSON/file-key compatibility |
 | Participant interop | Existing wire kinds, missing/null inputs, and validated identities across C# mutation and fresh readiness checks; F# tests cover readiness and resume decisions |
 | Replica construction | Initialization, local counters, compensation, restore |
-| C# interop | Complete mirrored-reward decoding, actual wire/save DTO fixtures, immutable snapshots, save/reveal/effect preservation, and exception conversion |
-| Card offers | Deferred recipes, independent-offer digests, receipt/card-offer mismatch rejection, canonical JSON object order versus significant array order, refreshed models through save/progress deltas, and rejection of older protocols |
+| C# interop | Complete mirrored-reward decoding, actual wire/save DTO fixtures, immutable snapshots, save/reveal preservation and strict saved-card strategy rejection, and exception conversion |
+| Card offers | Deferred recipes, independent-offer digests, receipt/card-offer mismatch rejection, canonical JSON object order versus significant array order, refreshed models through save/progress deltas, and rejection of unsupported card contracts |
 | AP selection order | Delayed relic completion before reveal, invocation order rather than receipt order, repeated skips, per-player independence, failure blocking, and reopen waiting |
 | Progressive starters | Shared singleplayer/multiplayer tier transitions, initialization-only removal, recipe identity, strict state/payload decoding, applied-state ordering, and save round trips |
 
@@ -32,7 +32,6 @@ The rest-site hook calls the same `RestSitePolicy` compiled into these tests. Te
 option availability and arbitrary location IDs; they do not reimplement native Smith behavior,
 AP ID encoding, character resolution, or the Godot scene tree. The real hook still owns AP/guest
 eligibility, reads per-player progress, and calls `LocationData` to construct real check IDs.
-The persisted `ApRewardEffectSpec` is also linked from production, not replaced by a stub.
 
 Card-offer tests use opaque serialized card fixtures. They exercise the actual codec, domain
 validation, and persistence helpers; they do not execute MegaCrit's card factory, Egg hooks,
@@ -81,6 +80,7 @@ variant. Unit tests establish the behavior of our policies, not native callbacks
 | Two clients on 2.3.1: publish initial progress and a delta, claim a banked relic, and finish a treasure room | Renamed snapshot/delta, relic receipt, and treasure readiness routes reach their handlers; progress agrees and both players can proceed |
 | Connect a 2.3.0 client to a 2.3.1 host | Native lobby rejects the connection with `ModMismatch` before AP actions begin |
 | Continue a current campaign, then try an unsupported saved AP schema | Current campaign continues; unsupported campaign stays blocked with a clear refusal and its save preserved |
+| Continue a campaign with missing/owner-final card strategies or nonempty obsolete effect records | Campaign picker refuses before activation; log contains `Blocked AP campaign continue` and the saved campaign is preserved |
 | Rest unlocked/locked; Smith with/without an upgrade target; both locked; relic-provided action | Valid native actions survive; an exit exists when needed; taking an AP check is optional |
 | Campfire sanity off, vanilla guest, or unresolved AP progress | Native options remain unchanged |
 | `!collect`, then enter another rest site with two AP slots | Collected checks stay hidden on all replicas; another slot's checks remain available |
@@ -123,7 +123,10 @@ native checksums are not equivalent to the removed snapshot. Keeping the offer d
 a remote picker index from selecting a different card.
 Test with matching game/mod builds: the native lobby checks declared mod versions. Live messages
 have no schema field, routing keys have no numeric version suffix, and the digest has no version prefix.
-Saved-data schemas and campaign refusal checks remain. Client 2.3.1 separates this wire format from 2.3.0.
+Saved-data schemas and campaign refusal checks remain. Client 2.3.1 removes obsolete effect fields and
+the menu-time generation flag. Current saved card assignments require the replicated-card strategy;
+missing strategies are rejected without a default. Nonempty obsolete effect records are refused
+before campaign activation; an empty old field does not change an otherwise current contract.
 The original replicated-generation migration requires a new run; old execution protocols
 are not migrated. Crucible remains excluded by MegaCrit in multiplayer; its native behavior can
 only be checked in single-player or an explicitly forced diagnostic scenario.

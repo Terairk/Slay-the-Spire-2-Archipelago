@@ -49,18 +49,6 @@ public sealed class ApMirroredRewardSpec
     /// </summary>
     public string MaterializationStrategyId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Legacy wire guard only. True is rejected: the former menu-time generation is unsupported.
-    /// Menus carry final models or an empty, unrevealed card recipe and leave this false.
-    /// </summary>
-    public bool RequiresNativeMaterialization { get; set; }
-
-    /// <summary>
-    /// Legacy owner-final effect records. Replicated card offers require this to be empty:
-    /// each machine runs native callbacks instead of replaying recorded transitions.
-    /// </summary>
-    public List<ApRewardEffectSpec> AppliedEffects { get; set; } = new();
-
     // CONFIRM: the datatype of serialized models, why string?
     public List<string> SerializedModels { get; set; } = new();
 

@@ -35,105 +35,33 @@ type CardRecipe =
 [<RequireQualifiedAccess>]
 type CardRevealState = Unrevealed | Revealed
 
-module private RewardEffectWireIds =
-    [<Literal>]
-    let SilkenTress = "silken_tress_used_v1"
-    [<Literal>]
-    let SilverCrucible = "silver_crucible_times_used_v1"
-
-/// Absolute, validated transitions retain their identity across reopen and save/restore.
-type RewardEffect =
-    private
-    | SilkenTressUsed
-    | SilverCrucibleAdvanced of before: int
-
-    member this.EffectId =
-        match this with
-        | SilkenTressUsed -> RewardEffectWireIds.SilkenTress
-        | SilverCrucibleAdvanced _ -> RewardEffectWireIds.SilverCrucible
-
-    member this.BeforeValue = match this with SilkenTressUsed -> 0 | SilverCrucibleAdvanced before -> before
-    member this.AfterValue = this.BeforeValue + 1
-
-    member this.Match(silkenTress: Func<'T>, silverCrucible: Func<int, int, 'T>) =
-        match this with
-        | SilkenTressUsed -> silkenTress.Invoke()
-        | SilverCrucibleAdvanced before -> silverCrucible.Invoke(before, before + 1)
-
-    /// A later Crucible transition can already subsume an earlier persisted effect.
-    member this.NeedsApplication(current: int) =
-        let unexpected () =
-            Error (RewardDecodeError.Invalid $"effect '{this.EffectId}' expected {this.BeforeValue}, found {current}.")
-        match this with
-        | SilkenTressUsed ->
-            if current = 1 then Ok false
-            elif current = 0 then Ok true
-            else unexpected ()
-        | SilverCrucibleAdvanced before ->
-            if current > before then Ok false
-            elif current = before then Ok true
-            else unexpected ()
-
-    /// Validate the actual hook result rather than manufacturing the expected counter.
-    static member ObserveSilkenTress(before: int, after: int) =
-        if before = 0 && after = 1 then Ok SilkenTressUsed
-        else Error (RewardDecodeError.Invalid $"had invalid effect '{RewardEffectWireIds.SilkenTress}'.")
-
-    static member ObserveSilverCrucible(before: int, after: int) =
-        if before >= 0 && before < Int32.MaxValue && after = before + 1 then
-            Ok (SilverCrucibleAdvanced before)
-        else Error (RewardDecodeError.Invalid $"had invalid effect '{RewardEffectWireIds.SilverCrucible}'.")
-
-    static member Decode(effectId: string, before: int, after: int) =
-        match effectId with
-        | RewardEffectWireIds.SilkenTress -> RewardEffect.ObserveSilkenTress(before, after)
-        | RewardEffectWireIds.SilverCrucible -> RewardEffect.ObserveSilverCrucible(before, after)
-        | _ -> Error (RewardDecodeError.Invalid $"had invalid effect '{effectId}'.")
-
-/// Untrusted adapter input only; never retained by a validated reward.
-[<CLIMutable>]
-type RewardEffectInput = { EffectId: string; BeforeValue: int; AfterValue: int }
-
 module private RewardDecode =
     let freeze (items: seq<'T>) : IReadOnlyList<'T> = Array.AsReadOnly(Seq.toArray items)
     let invalid reason = Error (RewardDecodeError.Invalid reason)
-    let traverse decode items =
-        items |> Seq.fold (fun state item ->
-            state |> Result.bind (fun values -> decode item |> Result.map (fun value -> value :: values))) (Ok [])
-        |> Result.map List.rev
 
 /// Native card wrappers retain this value and replace it only on an explicit reveal transition.
 type CardRewardConfiguration private
-    (recipe: CardRecipe, reveal: CardRevealState, canReroll: bool,
-     policy: RewardMaterialization, effects: IReadOnlyList<RewardEffect>) =
+    (recipe: CardRecipe, reveal: CardRevealState, canReroll: bool, policy: RewardMaterialization) =
 
     member _.Recipe = recipe
     member _.Reveal = reveal
     member _.HasBeenRevealed = reveal = CardRevealState.Revealed
     member _.CanReroll = canReroll
     member _.Policy = policy
-    member _.Effects = effects
-    member _.WithRevealed() = CardRewardConfiguration(recipe, CardRevealState.Revealed, canReroll, policy, effects)
+    member _.WithRevealed() = CardRewardConfiguration(recipe, CardRevealState.Revealed, canReroll, policy)
 
-    static member Decode(isRare, actIndex, revealed, canReroll, strategy, effects: RewardEffectInput array) =
+    static member Decode(isRare, actIndex, revealed, canReroll, strategy) =
         CardRecipe.Decode(isRare, actIndex)
         |> Result.bind (fun recipe ->
             RewardMaterialization.Decode(strategy)
             |> Result.mapError RewardDecodeError.Materialization
             |> Result.bind (fun policy ->
-                if isNull effects || effects |> Array.exists (fun effect -> isNull (box effect)) then
-                    RewardDecode.invalid "had missing persistent effects."
-                elif (effects |> Array.distinctBy _.EffectId).Length <> effects.Length then
-                    RewardDecode.invalid "repeated a persistent effect."
-                elif effects.Length > 0 && not policy.AllowsPersistentEffects then
-                    RewardDecode.invalid "attached persistent effects to a non-owner-final card."
+                if policy.StrategyId <> "ap_rng_replicated_card_v1" then
+                    RewardDecode.invalid "had an unsupported card materialization strategy."
                 else
-                    effects
-                    |> RewardDecode.traverse (fun effect -> RewardEffect.Decode(effect.EffectId, effect.BeforeValue, effect.AfterValue))
-                    |> Result.map (fun validated ->
-                        CardRewardConfiguration(recipe,
-                            (if revealed then CardRevealState.Revealed else CardRevealState.Unrevealed),
-                            canReroll, policy, RewardDecode.freeze validated))))
+                    Ok (CardRewardConfiguration(recipe,
+                        (if revealed then CardRevealState.Revealed else CardRevealState.Unrevealed),
+                        canReroll, policy))))
 
 /// Receipt scope and presentation only. Network authentication stays in C#.
 type RewardOrigin(apSlotId: int, receivedItemIndex: int, ownerNetId: uint64,
@@ -170,7 +98,6 @@ type MirroredRewardInput =
       Revealed: bool
       CanReroll: bool
       Strategy: string
-      Effects: RewardEffectInput array
       Models: string array
       UnavailableReason: string }
 
@@ -186,11 +113,6 @@ type private RewardShape =
 type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
     member _.Origin = origin
     member _.IsRelic = match shape with Relic _ -> true | Card _ | Potion _ | AncientChoice _ | Unavailable _ | Bonus _ -> false
-    member _.Effects : IReadOnlyList<RewardEffect> =
-        match shape with
-        | Card card -> card.Configuration.Effects
-        | Potion _ | Relic _ | AncientChoice _ | Unavailable _ | Bonus _ -> RewardDecode.freeze Seq.empty
-
     member _.Match(card: Func<CardRewardData, 'T>, potion: Func<PotionRewardData, 'T>,
                    relic: Func<string, 'T>, ancient: Func<IReadOnlyList<string>, 'T>, unavailable: Func<string, 'T>, bonus: Func<string, 'T>) =
         match shape with
@@ -207,21 +129,19 @@ type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
         elif input.Origin.ReceivedItemIndex < 0 || input.Origin.ApSlotId < 0 then RewardDecode.invalid "had an invalid receipt identity."
         elif isNull input.Models || input.Models |> Array.exists String.IsNullOrWhiteSpace then
             RewardDecode.invalid "had missing serialized models."
-        elif isNull input.Effects || input.Effects |> Array.exists (fun effect -> isNull (box effect)) then
-            RewardDecode.invalid "had missing persistent effects."
         else Ok ()
 
     static member private DecodeCardData(input: MirroredRewardInput, allowDeferred: bool) =
         // Native hooks can change option count; do not hardcode three cards.
         let deferred = input.Models.Length = 0
         if deferred && not (allowDeferred && not input.Revealed && not input.CanReroll
-                            && input.Effects.Length = 0 && input.Strategy = "ap_rng_replicated_card_v1") then
+                            && input.Strategy = "ap_rng_replicated_card_v1") then
             RewardDecode.invalid "had invalid deferred card choices."
         elif not deferred && input.Strategy = "ap_rng_replicated_card_v1" && not input.Revealed then
             RewardDecode.invalid "had unrevealed replicated final cards."
         else
             CardRewardConfiguration.Decode(input.IsRare, input.ActIndex, input.Revealed, input.CanReroll,
-                                           input.Strategy, input.Effects)
+                                           input.Strategy)
             |> Result.map (fun config -> CardRewardData(config, RewardDecode.freeze input.Models))
 
     /// Shares the completed-card validation but exposes only card data to saved-card callers.
@@ -236,33 +156,28 @@ type MirroredReward private (origin: RewardOrigin, shape: RewardShape) =
     static member Decode(input: MirroredRewardInput, ancientChoiceCount: int) =
         MirroredReward.ValidateInput(input)
         |> Result.bind (fun () ->
-            let rejectNonCardEffects decode =
-                if input.Effects.Length > 0 then
-                    RewardDecode.invalid $"attached card/potion materialization data to {input.Kind}."
-                else decode ()
             let shape =
                 match input.Kind with
                 | RewardInputKind.Card -> MirroredReward.DecodeCardData(input, true) |> Result.map Card
                 | RewardInputKind.Potion ->
-                    if input.Models.Length <> 1 || input.Effects.Length > 0
-                       || input.Strategy = "ap_rng_replicated_card_v1" then
+                    if input.Models.Length <> 1 || input.Strategy = "ap_rng_replicated_card_v1" then
                         RewardDecode.invalid "had an invalid potion assignment."
                     else
                         RewardMaterialization.Decode(input.Strategy)
                         |> Result.mapError RewardDecodeError.Materialization
                         |> Result.map (fun policy -> Potion (PotionRewardData(policy, input.Models[0])))
-                | RewardInputKind.Relic -> rejectNonCardEffects (fun () ->
+                | RewardInputKind.Relic ->
                     if input.Models.Length = 1 then Ok (Relic input.Models[0])
-                    else RewardDecode.invalid "had an invalid Relic assignment.")
-                | RewardInputKind.Bonus -> rejectNonCardEffects (fun () ->
+                    else RewardDecode.invalid "had an invalid Relic assignment."
+                | RewardInputKind.Bonus ->
                     if input.Models.Length = 1 then Ok (Bonus input.Models[0])
-                    else RewardDecode.invalid "had an invalid Bonus assignment.")
-                | RewardInputKind.Ancient -> rejectNonCardEffects (fun () ->
+                    else RewardDecode.invalid "had an invalid Bonus assignment."
+                | RewardInputKind.Ancient ->
                     if ancientChoiceCount > 0 && input.Models.Length = ancientChoiceCount then
                         Ok (AncientChoice (RewardDecode.freeze input.Models))
-                    else RewardDecode.invalid "had an invalid Ancient assignment.")
-                | RewardInputKind.Unavailable -> rejectNonCardEffects (fun () ->
+                    else RewardDecode.invalid "had an invalid Ancient assignment."
+                | RewardInputKind.Unavailable ->
                     if input.Models.Length = 0 && not (String.IsNullOrWhiteSpace input.UnavailableReason) then
                         Ok (Unavailable input.UnavailableReason)
-                    else RewardDecode.invalid "had an invalid Unavailable assignment.")
+                    else RewardDecode.invalid "had an invalid Unavailable assignment."
             shape |> Result.map (fun value -> MirroredReward(input.Origin, value)))

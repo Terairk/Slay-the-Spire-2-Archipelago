@@ -13,7 +13,7 @@ public sealed class ApCampaignCompatibilityTests
             "1":{"SchemaVersion":9,"Progress":{"card_assignments":{}}},
             "2":{"SchemaVersion":9,"Progress":{"card_assignments":{"42":{
               "materialization_strategy_id":"ap_rng_replicated_card_v1",
-              "applied_effects":[],"has_been_revealed":true,
+              "has_been_revealed":true,
               "serialized_cards":["{\"id\":\"CARD.A\"}"]}}}}
           }}
         }}}}
@@ -90,8 +90,16 @@ public sealed class ApCampaignCompatibilityTests
     public void PreviousEffectReplayContractIsRefusedBeforeOpeningAPicker()
     {
         var save = Save();
-        Card(save)["applied_effects"]!.AsArray().Add(new JsonObject { ["EffectId"] = "silken_tress_used_v1" });
+        Card(save)["applied_effects"] = new JsonArray(new JsonObject { ["EffectId"] = "silken_tress_used_v1" });
         Assert.Equal(ApCampaignCompatibility.Refusal, Error(save));
+    }
+
+    [Fact]
+    public void PreviousEmptyEffectFieldDoesNotChangeTheActiveCardContract()
+    {
+        var save = Save();
+        Card(save)["applied_effects"] = new JsonArray();
+        Assert.Null(Error(save));
     }
 
     [Fact]

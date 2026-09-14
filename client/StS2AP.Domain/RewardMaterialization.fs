@@ -22,11 +22,6 @@ type RewardMaterialization =
         | ReplicatedCard -> "ap_rng_replicated_card_v1"
         | OwnerFinal -> "ap_rng_owner_final_v1"
 
-    member this.AllowsPersistentEffects =
-        match this with
-        | OwnerFinal -> true
-        | ReplicatedCard -> false
-
     member this.Match(ownerFinal: Func<'T>, replicatedCard: Func<'T>) : 'T =
         match this with
         | ReplicatedCard -> replicatedCard.Invoke()

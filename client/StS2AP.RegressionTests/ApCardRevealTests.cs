@@ -24,7 +24,7 @@ public sealed class ApCardRevealTests
     }
 
     [Fact]
-    public void TwelveUnopenedRewardsRoundTripAsRecipesWithoutAssignmentsOrEffects()
+    public void TwelveUnopenedRewardsRoundTripAsRecipesWithoutAssignments()
     {
         var menu = new ApRewardMenuSpec();
         for (int index = 0; index < 12; index++)
@@ -37,14 +37,13 @@ public sealed class ApCardRevealTests
         {
             var reward = MirroredRewardAdapter.Decode(spec, 3);
             Assert.True(reward.Match(card => card.IsDeferred, _ => false, _ => false, _ => false, _ => false, _ => false));
-            Assert.Empty(reward.Effects);
         }
         Assert.Throws<InvalidOperationException>(() =>
             MirroredRewardAdapter.DecodeSavedCardAssignment(42, new ApCardAssignmentState(), 123));
     }
 
     [Fact]
-    public void IndependentlyConstructedOffersAgreeWithoutCopyingCardsOrEffects()
+    public void IndependentlyConstructedOffersAgreeWithoutCopyingCards()
     {
         var owner = Final();
         var replica = Final();
@@ -54,7 +53,6 @@ public sealed class ApCardRevealTests
         var remote = ApCardRevealCodec.Encode(owner);
         ApCardRevealCodec.Verify(local, remote, "7:42");
         Assert.Equal(8, remote.Count); // SHA-256 only, no final-model transport.
-        Assert.Empty(replica.AppliedEffects);
     }
 
     [Theory]
@@ -100,9 +98,6 @@ public sealed class ApCardRevealTests
         var legacy = Final();
         legacy.MaterializationStrategyId = "ap_rng_owner_final_v1";
         Assert.Throws<InvalidOperationException>(() => ApCardRevealCodec.Encode(legacy));
-        var effects = Final();
-        effects.AppliedEffects.Add(new() { EffectId = "silken_tress_used_v1", BeforeValue = 0, AfterValue = 1 });
-        Assert.Throws<InvalidOperationException>(() => MirroredRewardAdapter.Decode(effects, 3));
         var digest = ApCardRevealCodec.Encode(Final());
         Assert.Throws<InvalidOperationException>(() => ApCardRevealCodec.Verify(digest, digest.Take(7).ToList(), "7:42"));
         var corrupted = digest.ToList();
@@ -141,7 +136,6 @@ public sealed class ApCardRevealTests
         var decoded = MirroredRewardAdapter.DecodeSavedCardAssignment(42, restored.CardAssignments[42], 123).Card;
         Assert.Equal(owner.SerializedModels, decoded.Models);
         Assert.True(decoded.Configuration.HasBeenRevealed);
-        Assert.Empty(decoded.Configuration.Effects);
         Assert.Equal("ap_rng_replicated_card_v1", decoded.Configuration.Policy.StrategyId);
         Assert.False(ApProgressDelta.Between(restored, newProgress).HasChanges);
     }

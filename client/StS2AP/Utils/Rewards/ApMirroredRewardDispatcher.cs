@@ -383,7 +383,6 @@ public static class ApMirroredRewardDispatcher
                     ?? RestoreCardReward(MirroredRewardAdapter.Origin(spec),
                         MirroredRewardAdapter.CardConfiguration(spec), player, existing.Cards);
                 spec.MaterializationStrategyId = reward.MaterializationStrategyId;
-                spec.AppliedEffects = CloneEffects(reward.AppliedEffects);
                 spec.CardHasBeenRevealed = reward.HasBeenRevealed;
                 reward.Configure(MirroredRewardAdapter.Origin(spec), MirroredRewardAdapter.CardConfiguration(spec));
                 ArchipelagoClient.Progress.CardAssignments[itemIndex] = reward;
@@ -730,16 +729,6 @@ public static class ApMirroredRewardDispatcher
             System.Text.Encoding.UTF8.GetBytes(value)
         ))[..16];
 
-    private static List<ApRewardEffectSpec> CloneEffects(
-        IEnumerable<ApRewardEffectSpec> effects) => effects
-        .Select(effect => new ApRewardEffectSpec
-        {
-            EffectId = effect.EffectId,
-            BeforeValue = effect.BeforeValue,
-            AfterValue = effect.AfterValue,
-        })
-        .ToList();
-
     private static Task HandleMenuSpec(
         RitsuLibSidecarSyncMessageContext<ApRewardMenuSpec> context)
     {
@@ -1065,7 +1054,6 @@ public static class ApMirroredRewardDispatcher
         internal int? RewardActIndex => _configuration.Recipe.ActIndex;
         internal bool HasBeenRevealed => _configuration.HasBeenRevealed;
         internal string MaterializationStrategyId => _configuration.Policy.StrategyId;
-        internal IReadOnlyList<ApRewardEffectSpec> AppliedEffects => MirroredRewardAdapter.EncodeEffects(_configuration.Effects);
 
         protected override string IconPath => IsRare
             ? ImageHelper.GetImagePath("ui/reward_screen/reward_icon_rare.png")
@@ -1107,8 +1095,6 @@ public static class ApMirroredRewardDispatcher
 
         protected override async Task PrepareCards()
         {
-            if (MaterializationStrategyId != ReplicatedCardStrategyId || AppliedEffects.Count != 0)
-                throw new InvalidOperationException("AP card offer uses a previous generation contract; start a new run.");
             bool hasAssignment = _cards.Count > 0;
             var run = Player.RunState;
             var spec = new ApMirroredRewardSpec
@@ -1125,7 +1111,6 @@ public static class ApMirroredRewardDispatcher
                 CardHasBeenRevealed = HasBeenRevealed,
                 CardCanReroll = CanReroll,
                 MaterializationStrategyId = MaterializationStrategyId,
-                AppliedEffects = CloneEffects(AppliedEffects),
                 SerializedModels = Cards.Select(SerializeCard).ToList(),
             };
             try

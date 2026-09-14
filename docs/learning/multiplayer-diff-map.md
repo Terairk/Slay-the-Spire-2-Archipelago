@@ -241,7 +241,7 @@ current card architecture. Follow the current symbol route in [README.md](README
 | A | [client/StS2AP/Models/Rewards/Specs/ApMenuGoldSpec.cs](<../../client/StS2AP/Models/Rewards/Specs/ApMenuGoldSpec.cs>) | Added path | Source | 11 / 0 |
 | A | [client/StS2AP/Models/Rewards/Specs/ApMirroredRewardKind.cs](<../../client/StS2AP/Models/Rewards/Specs/ApMirroredRewardKind.cs>) | Added path | Source | 13 / 0 |
 | A | [client/StS2AP/Models/Rewards/Specs/ApMirroredRewardSpec.cs](<../../client/StS2AP/Models/Rewards/Specs/ApMirroredRewardSpec.cs>) | Added path | Source | 70 / 0 |
-| A | [client/StS2AP/Models/Rewards/Specs/ApRewardEffectSpec.cs](<../../client/StS2AP/Models/Rewards/Specs/ApRewardEffectSpec.cs>) | Added path | Source | 12 / 0 |
+| A | [client/StS2AP/Models/Rewards/Specs/ApRewardEffectSpec.cs](https://github.com/Terairk/Slay-the-Spire-2-Archipelago/blob/0650885b5b30d6fe0167b6c76091409817a5d051/client/StS2AP/Models/Rewards/Specs/ApRewardEffectSpec.cs) | Added path | Source | 12 / 0 |
 | A | [client/StS2AP/Models/Rewards/Specs/ApRewardMenuSpec.cs](<../../client/StS2AP/Models/Rewards/Specs/ApRewardMenuSpec.cs>) | Added path | Source | 16 / 0 |
 | D | `client/StS2AP/Patches/Patches_APCardRewardUpgradeOdds.cs` (base only)<br>Same-named successor: [client/StS2AP/Patches/Rewards/Patches_APCardRewardUpgradeOdds.cs](<../../client/StS2AP/Patches/Rewards/Patches_APCardRewardUpgradeOdds.cs>) | Deleted path | Source | 0 / 57 |
 | A | [client/StS2AP/Patches/Rewards/Patches_APCardRewardUpgradeOdds.cs](<../../client/StS2AP/Patches/Rewards/Patches_APCardRewardUpgradeOdds.cs>) | Added path | Source | 423 / 0 |

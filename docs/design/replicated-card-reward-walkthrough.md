@@ -4,7 +4,9 @@
 > of the current branch. Current code has no live-message schema or reveal-version prefix;
 > the lobby's mod-version gate handles peer compatibility, while saved-data schemas remain.
 > An eight-integer SHA-256 digest verifies
-> only the receipt and ordered card offer, only in multiplayer. The before/after player snapshots
+> only the receipt and ordered card offer, only in multiplayer. The legacy effect types/fields and
+> menu-time generation flag shown below have since been removed; saved cards require the current
+> replicated-card strategy without a default. The before/after player snapshots
 > described in sections 6.3 and 9 were removed after their anonymous type failed with the game's
 > source-generated serializer. General state divergence remains with native checksums; offer
 > verification remains necessary before a remote picker index is applied. Use the
