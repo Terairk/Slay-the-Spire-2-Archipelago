@@ -374,10 +374,9 @@ namespace StS2AP.Patches
                     MultiplayerSupport.InvalidateRunClaims("Native treasure candidates differ from the host decision.");
                     throw new InvalidOperationException("Native treasure candidates differ from the host decision.");
                 }
-                // Every replica rolled every native candidate first, preserving RNG and bag order.
-                // Filter only by the immutable host mask, never by this peer's live AP history.
-                RelicReceiptMultiplayer.AgreeNativeCandidates(runState,
-                    ____currentRelics?.Select(relic => relic.Id.ToString()).ToList() ?? []);
+                // Every replica rolls every native candidate with MegaCrit's synchronized RNG and
+                // shared bag state. Filter only by the immutable host receipt mask, never by this
+                // peer's live AP history. Native multiplayer remains responsible for RNG agreement.
                 if (____currentRelics != null)
                     for (int i = generated.Count - 1; i >= 0; i--)
                         if (!generated[i].Keep) ____currentRelics.RemoveAt(i);

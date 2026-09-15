@@ -88,7 +88,7 @@ public sealed class RelicReceiptTests
         Assert.True(frozen.Candidates[1].ReceiptIndex == null && !frozen.Candidates[1].Keep);
     }
 
-    [Fact(DisplayName = "Save round trip preserves candidate identity, reservations and exact assignments")]
+    [Fact(DisplayName = "Save round trip preserves the frozen candidate mask, reservations and exact assignments")]
     public void SaveRoundTripPreservesCandidateIdentityReservationsAndExactAssignments()
     {
         var state = NewChest();
@@ -98,7 +98,6 @@ public sealed class RelicReceiptTests
         var restored = JsonSerializer.Deserialize<ApRelicReceiptState>(JsonSerializer.Serialize(state))!;
         Assert.True(restored.Find(11, 100)!.Consumed);
         Assert.True(restored.Find(22, 101)!.MenuRelicAssignment == "exact saved relic JSON");
-        Assert.True(restored.Chests["chest:0:7"].NativeRelicIds!.SequenceEqual(new[] { "A", "B", "C" }));
         Assert.True(restored.Chests["chest:0:7"].Candidates.Select(c => c.Keep).SequenceEqual(new[] { true, false, true, false }));
     }
 
@@ -163,9 +162,6 @@ public sealed class RelicReceiptTests
         var conflict = Decision();
         conflict.Candidates[0].ReceiptIndex = 101;
         Assert.Throws<InvalidOperationException>(() => state.AddChest(conflict));
-        conflict = Decision();
-        conflict.NativeRelicIds = new() { "different" };
-        Assert.Throws<InvalidOperationException>(() => state.AddChest(conflict));
         state.TryReserve(22, 101, ApRelicReceiptState.MenuDestination);
         state.AssignMenu(22, 101, "first");
         Assert.Throws<InvalidOperationException>(() => state.AssignMenu(22, 101, "reroll"));
@@ -181,7 +177,7 @@ public sealed class RelicReceiptTests
 
     private static ApRelicReceiptState.ChestDecision Decision() => new()
     {
-        RoomKey = "chest:0:7", NativeRelicIds = new() { "A", "B", "C" },
+        RoomKey = "chest:0:7",
         Candidates = new()
         {
             new() { PlayerNetId = 11, GeneratesRelic = true, ApGated = true, ReceiptIndex = 100, RewardNumber = 1 },

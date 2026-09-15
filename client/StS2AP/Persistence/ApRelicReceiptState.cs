@@ -23,7 +23,6 @@ public sealed class ApRelicReceiptState
     {
         public string RoomKey { get; set; } = string.Empty;
         public List<Candidate> Candidates { get; set; } = new();
-        public List<string>? NativeRelicIds { get; set; }
         public HashSet<ulong> SettledPlayers { get; set; } = new();
     }
 
@@ -63,10 +62,6 @@ public sealed class ApRelicReceiptState
         {
             if (!existing.Candidates.Select(Key).SequenceEqual(decision.Candidates.Select(Key)))
                 throw new InvalidOperationException($"Conflicting chest decision {decision.RoomKey}.");
-            if (existing.NativeRelicIds != null && decision.NativeRelicIds != null
-                && !existing.NativeRelicIds.SequenceEqual(decision.NativeRelicIds))
-                throw new InvalidOperationException($"Conflicting native relics for {decision.RoomKey}.");
-            existing.NativeRelicIds ??= decision.NativeRelicIds;
             return;
         }
         // Validate the complete decision before changing any reservation.

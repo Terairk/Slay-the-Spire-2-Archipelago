@@ -8,8 +8,8 @@ using STS2RitsuLib.Networking.Sidecar;
 namespace StS2AP.Multiplayer;
 
 /// <summary>
-/// Arbitrates chest funding and AP-menu assignments before native reward construction. Sidecar
-/// messages do not enter the native action queue: room entry may already be executing there.
+/// Arbitrates chest receipt assignments and AP-menu assignments before native reward construction.
+/// Sidecar messages do not enter the native action queue: room entry may already be executing there.
 /// </summary>
 public static class RelicReceiptMultiplayer
 {
@@ -219,26 +219,32 @@ public static class RelicReceiptMultiplayer
                 LogUtility.Info($"Treasure AP decision frozen: room={roomKey}, " + string.Join(", ",
                     decision.Candidates.Select(c => $"player={c.PlayerNetId}/keep={c.Keep}/receipt={c.ReceiptIndex}")));
             }
-            // The immediately following native BeginRelicPicking supplies the native IDs and
-            // publishes the completed decision. Clients wait without blocking the action queue.
+            // Publish the immutable receipt mask before the host enters native candidate generation.
+            // Every replica can then run MegaCrit's picker independently with the same RNG/bag state.
+            Publish(new Reply { RunId = ApRunData.GetSharedState(run).RunId, Chest = decision });
             return;
         }
 
         // An early broadcast can arrive before local room entry. Otherwise ask for the same
-        // immutable decision; a host still entering the room will publish it when its hook ends.
-        if (State(run).Chests.TryGetValue(roomKey, out var frozen) && frozen.NativeRelicIds != null) return;
+        // immutable decision; a host still entering the room publishes it before native generation.
+        if (State(run).Chests.ContainsKey(roomKey)) return;
         var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         PendingChests.Add(waitKey, pending);
         try
         {
-            if (!RitsuLibSidecarTypedMessageRegistry.SendToHost(RunManager.Instance.NetService,
-                RequestDescriptor, new Request
-                {
-                    RunId = ApRunData.GetSharedState(run).RunId,
-                    OwnerNetId = RunManager.Instance.NetService.NetId, RoomKey = roomKey,
-                }))
+            // The host's room-entry broadcast is the normal path. Ask directly only when that
+            // broadcast has not arrived promptly, covering late subscription/reconnect timing
+            // without adding a request/response trip to an ordinary chest entry.
+            if (await Task.WhenAny(pending.Task, Task.Delay(TimeSpan.FromSeconds(1))) != pending.Task
+                && !pending.Task.IsCompleted
+                && !RitsuLibSidecarTypedMessageRegistry.SendToHost(RunManager.Instance.NetService,
+                    RequestDescriptor, new Request
+                    {
+                        RunId = ApRunData.GetSharedState(run).RunId,
+                        OwnerNetId = RunManager.Instance.NetService.NetId, RoomKey = roomKey,
+                    }))
                 throw new InvalidOperationException("Could not request the host chest decision.");
-            await pending.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            await pending.Task.WaitAsync(TimeSpan.FromSeconds(29));
         }
         catch (Exception ex)
         {
@@ -257,8 +263,13 @@ public static class RelicReceiptMultiplayer
             return;
         if (request.RoomKey != null)
         {
-            if (State(run).Chests.TryGetValue(request.RoomKey, out var chest) && chest.NativeRelicIds != null)
-                Publish(new Reply { RunId = request.RunId, Chest = chest });
+            if (State(run).Chests.TryGetValue(request.RoomKey, out var chest)
+                && !RitsuLibSidecarTypedMessageRegistry.SendToPeer(
+                    RunManager.Instance.NetService,
+                    sender,
+                    ReplyDescriptor,
+                    new Reply { RunId = request.RunId, Chest = chest }))
+                throw new InvalidOperationException("Could not send the frozen chest decision to its requester.");
             return;
         }
         if (!ApRunData.TryGetPlayerState(run, sender, out var playerState)
@@ -317,24 +328,6 @@ public static class RelicReceiptMultiplayer
             : throw new InvalidOperationException("Native chest picker started without the host decision.");
 
     public static void MarkPickerReady(RunState run) => ReadyPickers.Add(WaitKey(run));
-
-    public static void AgreeNativeCandidates(RunState run, List<string> ids)
-    {
-        var decision = GetChest(run);
-        if (RunManager.Instance.NetService.Type == NetGameType.Host && decision.NativeRelicIds == null)
-        {
-            ApRunData.ModifyRelicReceipts(run, state => state.Chests[RoomKey(run)].NativeRelicIds = ids);
-            decision = GetChest(run);
-            Publish(new Reply { RunId = ApRunData.GetSharedState(run).RunId, Chest = decision });
-        }
-        if (decision.NativeRelicIds == null || !decision.NativeRelicIds.SequenceEqual(ids))
-        {
-            var error = new InvalidOperationException($"Native chest relic IDs differ from the host in {RoomKey(run)}: "
-                + $"expected=[{string.Join(",", decision.NativeRelicIds ?? [])}], actual=[{string.Join(",", ids)}].");
-            Fail(error);
-            throw error;
-        }
-    }
     public static bool IsPickerReady(RunState run) => ReadyPickers.Contains(WaitKey(run));
     public static bool MarkChestOpened(RunState run, ulong player)
     {
