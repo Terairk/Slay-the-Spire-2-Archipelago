@@ -14,7 +14,7 @@ The history matters here: `9fae442` on 5 September consolidated the earlier mult
 | 4, together | **3 — Settings/progress; 4 — lobby joining** | **19 Aug**, `55ebefd`: dedicated lobby contributions and shared/per-player run data | Full progress transport and deltas on 20 Aug; AP Guest relay removed on 28 Aug |
 | 5 | **Shops (added area)** | **21 Aug, 16:28**, `072ba20`: local owner shop construction plus synchronized gold loss | Direct-connection cleanup on 28 Aug; current separate AP page and hinting refinements in September |
 | 6 | **1 — Rest-site options** | **21 Aug, 17:35**, `a934604`: bespoke multiplayer campfire state/manifest protocol | **23 Aug**, `2a36f1d`: replaced by shared progress + native rest-site construction |
-| 7a | **6 — DeathLink** | **24 Aug, 11:01**, `d95193d` | Managed actions at 11:30; host authority on 26 Aug; per-recipient deduplication on 28 Aug; combat-only FIFO, native damage and owner-local outgoing sends on 15 Sep |
+| 7a | **6 — DeathLink** | **24 Aug, 11:01**, `d95193d` | Managed actions at 11:30; host authority on 26 Aug; per-recipient deduplication on 28 Aug; combat-only owner FIFO, native damage and owner-authored actions/sends on 15 Sep |
 | 7b | **6 — Progressive Starter** | **24 Aug, 14:01**, `4c651e1` | Same-day fixes; safe action admission; F# transition model on 6 Sep |
 | 8 | **10 — Universal buffs → gold** | **24 Aug, 21:18**, `83adfd9` | **29 Aug**, `38974b9`: divide five gold across configured characters |
 | 9 | **9 — Bonus Wax Relics** | **8 Sep**, `759a17b`: upstream wax feature; **9 Sep**, `64b01d3`: multiplayer integration | **10 Sep**, `cad9e17`: player-dependent random rankings |
@@ -296,29 +296,28 @@ Receipts for an inactive character remain banked for a later initialization. Thi
 
 ### DeathLink
 
-First code: **24 August, `d95193d` at 11:01**; `ad72a44` changed it to managed actions at 11:30. `3a384ad` on 25 August deferred damage to safe boundaries; `f3a5fae` on 26 August centralized host authorization; `044ecc6` on 28 August added per-recipient AP-event deduplication. The current 15 September design removed noncombat admission, retained distinct events in FIFO order, replaced direct HP assignment with the native damage pipeline and let each local AP owner report their own synchronized death.
+First code: **24 August, `d95193d` at 11:01**; `ad72a44` changed it to managed actions at 11:30. `3a384ad` on 25 August deferred damage to safe boundaries; `f3a5fae` on 26 August centralized host authorization; `044ecc6` on 28 August added per-recipient AP-event deduplication. The current 15 September design removed noncombat admission, retained distinct events in an owner-local FIFO, replaced direct HP assignment with the native damage pipeline and lets each AP owner submit incoming damage and report their own synchronized death.
 
 Inbound flow:
 
 1. The AP callback belongs to the local directly connected player and is deferred to the Godot main thread.
-2. That process relays the event to the fixed STS host.
-3. The host deduplicates using **recipient NetId + AP source + timestamp**, as well as transport event IDs. Two players sharing a slot do not consume each other’s delivery.
-4. Every distinct event remains in a FIFO queue. The host admits only the head event, and only when the native synchronizer is in `PlayPhase`, combat is neither starting nor ending, and the native action executor and queues are idle. An event received in a shop, event, map room, combat setup, enemy turn or combat teardown therefore waits for a later stable player-combat boundary. Completion of one managed action allows the next queued event to be considered on a later process frame.
-5. At admission, the host calculates raw damage from the recipient’s frozen percentage of Max HP. Every replica executes that host-authored amount through `CreatureCmd.Damage` with `Unblockable | Unpowered`, using the managed action’s queue-backed player-choice context. Block is bypassed, while normal HP-loss hooks still run: Buffer can prevent the loss, Intangible can cap it, death prevention can save the player, and the normal damage number, hit animation and screen feedback can appear.
+2. That owner deduplicates using **recipient NetId + AP source + timestamp** and appends every distinct event to its run-local FIFO. Two players sharing a slot do not consume each other’s delivery.
+3. The owner considers only the head event, and only when the native synchronizer is in `PlayPhase`, combat is neither starting nor ending, and the native action executor and queues are idle. An event received in a shop, event, map room, combat setup, enemy turn or combat teardown therefore waits for a later stable player-combat boundary. Completion of one managed action allows the next queued event to be considered on a later process frame.
+4. At admission, the owner calculates raw damage from its frozen percentage of Max HP and requests a `CombatPlayPhaseOnly` managed action under its own native player identity. MegaCrit sends a client-owned request to the host, which orders and broadcasts it with the ordinary action queue; the separate inbound DeathLink sidecar request is gone.
+5. Every replica validates and executes that owner-authored amount through `CreatureCmd.Damage` with `Unblockable | Unpowered`, using the managed action’s queue-backed player-choice context. Block is bypassed, while normal HP-loss hooks still run: Buffer can prevent the loss, Intangible can cap it, death prevention can save the player, and the normal damage number, hit animation and screen feedback can appear.
 
 Outbound flow: MegaCrit replicates the player death and every replica observes the post-prevention `InvokeDiedEvent` boundary. Only the process where `LocalContext.IsMe(deadPlayer)` is true continues, validates that it owns the corresponding AP slot, and sends through its own AP connection. This removes the host-to-owner authorization message and trusts MegaCrit to detect any native state divergence. Incoming lethal damage is marked on every replica so the owner suppresses a DeathLink echo; the ledger also retains a short fallback window for a delayed death callback.
 
-Current inbound action validation requires exactly **one target: the AP event recipient**. This is not a host packet that damages everyone simply because one callback arrived. Other connected recipients can receive and relay the same external AP event separately. Death Fragments are a separate feature, currently absent from the enabled multiplayer capability set.
+Current inbound action validation requires exactly **one target: the AP event recipient**. This is not a host-authored packet that damages everyone simply because one callback arrived. Other connected recipients can receive and queue the same external AP event separately. Death Fragments are a separate feature, currently absent from the enabled multiplayer capability set.
 
-The queue is run-local memory and is cleared by `EndRun`; it is not a persisted inbox across quitting or a crashed process. Deduplication happens before enqueue, so retransmitting the same AP source/timestamp for the same recipient does not create another hit, while two distinct DeathLinks received five seconds apart remain two FIFO entries. If the first kills the target, the later entry is consumed as already dead rather than transferred to another player or combat.
+Each owner’s queue is run-local memory and is cleared by `EndRun`; it is not a persisted inbox across quitting or a crashed process. Deduplication happens before enqueue, so retransmitting the same AP source/timestamp for the same recipient does not create another hit, while two distinct DeathLinks received five seconds apart remain two FIFO entries. If the first kills the target, the later entry is consumed as already dead rather than transferred to another player or combat.
 
 ```mermaid
 flowchart TD
     A[Starter receipt or new-run initialization] --> B[Owner captures and sends concrete starter recipe]
-    C[Incoming AP DeathLink] --> D[Owner relays external event]
-    D --> E[Host deduplicates and appends one FIFO entry]
+    C[Incoming AP DeathLink] --> D[Owner deduplicates and appends one FIFO entry]
     B --> F[Safe host-ordered native action]
-    E --> Q[Wait for stable combat PlayPhase]
+    D --> Q[Owner waits for stable combat PlayPhase]
     Q --> F
     F --> G[Every replica executes identical native commands]
     G --> H[Starter tier persisted / DeathLink echo suppressed]

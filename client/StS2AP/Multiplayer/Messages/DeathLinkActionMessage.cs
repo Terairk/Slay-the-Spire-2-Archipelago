@@ -1,7 +1,7 @@
 namespace StS2AP.Multiplayer.Messages;
 
 /// <summary>
-/// Host-authored damage recipe carried by the native multiplayer combat action queue.
+/// AP-owner-authored damage recipe carried by the native multiplayer combat action queue.
 /// </summary>
 public sealed class DeathLinkActionMessage
 {
