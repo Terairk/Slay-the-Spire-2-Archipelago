@@ -1,6 +1,6 @@
 # Multiplayer syncing: implementation history and current design
 
-Audited on **14 September 2026**, against `multiplayer-squashed` at `6c1b63b`. This is a source and Git-history audit, not an in-game certification. Dates below use **UTC+08:00**, matching the development timezone. “First implementation” means the earliest relevant code found in the available local Git history, including WIP commits; it does not mean the first working or released version.
+Audited on **14 September 2026** and extended on **15 September 2026**, against the current `multiplayer-squashed` working tree; the historical audit baseline is `3ae1677`. This is a source and Git-history audit, not an in-game certification. Dates below use **UTC+08:00**, matching the development timezone. “First implementation” means the earliest relevant code found in the available local Git history, including WIP commits; it does not mean the first working or released version.
 
 The history matters here: `9fae442` on 5 September consolidated the earlier multiplayer work onto upstream main. Reading only the current branch’s introduction commits would incorrectly date much of this work to September. This audit follows the preserved earlier history with `git log --all`, historical file reads, and diffs. Uncommitted experiments cannot be dated from that evidence.
 
@@ -12,17 +12,18 @@ The history matters here: `9fae442` on 5 September consolidated the earlier mult
 | 2, together | **2 — Potions; 7 — relic rewards; 8 — card rewards** | **18 Aug**, `058881c`: mirrored rewards and native selection machinery | Concrete relic/potion assignments on 19 Aug; relic RNG redesign on 23 Aug; card RNG redesign on 29 Aug and replica generation on 8 Sep |
 | 3 | **5 — Saving** | **18 Aug**, `058881c`: owner-local reward ledgers; **19 Aug**, `55ebefd`: canonical run-data scaffold | Full per-player AP progress in host snapshots on 20 Aug; multiple campaigns on 25 Aug; separate recovery/checkpoint saves on 28 Aug |
 | 4, together | **3 — Settings/progress; 4 — lobby joining** | **19 Aug**, `55ebefd`: dedicated lobby contributions and shared/per-player run data | Full progress transport and deltas on 20 Aug; AP Guest relay removed on 28 Aug |
-| 5 | **1 — Rest-site options** | **21 Aug**, `a934604`: bespoke multiplayer campfire state/manifest protocol | **23 Aug**, `2a36f1d`: replaced by shared progress + native rest-site construction |
-| 6a | **6 — DeathLink** | **24 Aug, 11:01**, `d95193d` | Managed actions at 11:30; host authority on 26 Aug; per-recipient deduplication on 28 Aug |
-| 6b | **6 — Progressive Starter** | **24 Aug, 14:01**, `4c651e1` | Same-day fixes; safe action admission; F# transition model on 6 Sep |
-| 7 | **10 — Universal buffs → gold** | **24 Aug, 21:18**, `83adfd9` | **29 Aug**, `38974b9`: divide five gold across configured characters |
-| 8 | **9 — Bonus Wax Relics** | **8 Sep**, `759a17b`: upstream wax feature; **9 Sep**, `64b01d3`: multiplayer integration | **10 Sep**, `cad9e17`: player-dependent random rankings |
+| 5 | **Shops (added area)** | **21 Aug, 16:28**, `072ba20`: local owner shop construction plus synchronized gold loss | Direct-connection cleanup on 28 Aug; current separate AP page and hinting refinements in September |
+| 6 | **1 — Rest-site options** | **21 Aug, 17:35**, `a934604`: bespoke multiplayer campfire state/manifest protocol | **23 Aug**, `2a36f1d`: replaced by shared progress + native rest-site construction |
+| 7a | **6 — DeathLink** | **24 Aug, 11:01**, `d95193d` | Managed actions at 11:30; host authority on 26 Aug; per-recipient deduplication on 28 Aug |
+| 7b | **6 — Progressive Starter** | **24 Aug, 14:01**, `4c651e1` | Same-day fixes; safe action admission; F# transition model on 6 Sep |
+| 8 | **10 — Universal buffs → gold** | **24 Aug, 21:18**, `83adfd9` | **29 Aug**, `38974b9`: divide five gold across configured characters |
+| 9 | **9 — Bonus Wax Relics** | **8 Sep**, `759a17b`: upstream wax feature; **9 Sep**, `64b01d3`: multiplayer integration | **10 Sep**, `cad9e17`: player-dependent random rankings |
 
 The gold spike already had native multiplayer entry scaffolding. The 19 August lobby date is the first dedicated **AP contribution/launch contract**, rather than the first appearance of a Join button. Similarly, saving has two beginnings: local reward bookkeeping on 18 August and the shared run-save architecture on 19–20 August.
 
 `759a17b` has an author date of 7 September in UTC−04:00, which is **8 September in UTC+08:00**. That explains the apparent one-day discrepancy in some logs.
 
-## The architecture that connects all ten areas
+## The architecture that connects all eleven areas
 
 Three distinct things travel through multiplayer:
 
@@ -31,6 +32,8 @@ Three distinct things travel through multiplayer:
 3. **Durability:** the fixed STS host saves a native run containing the shared and per-player AP payload. A successful live publication is not itself a disk checkpoint.
 
 “Replica” means one machine’s copy of the entire multiplayer run, including other players’ characters. The local UI can be private while backend reward objects must exist on every machine.
+
+A crucial boundary is **reward construction**, before anybody selects anything. `RewardsSet.GenerateRewardsFor` can replace a native `CardReward`, `GoldReward` or `PotionReward` with an `ArchipelagoReward`. Every replica must enter that hook with matching owner settings and replica-local attempt counters so its reward list has the same shape and order. MegaCrit can synchronize a later selection index only if that index already means the same reward everywhere. The same warning applies to effects such as The Hunt: if Additional Card Reward were re-enabled in multiplayer, the power and its extra `CardReward` would have to appear at the same construction boundary on every replica. It is currently converted to gold with the other universal combat buffs.
 
 ```mermaid
 flowchart TD
@@ -145,6 +148,10 @@ The settings snapshot includes applicable local overrides. In particular, the ru
 
 The host checks that the sender owns the record. Clients accept confirmed updates only from the host. New deltas require the exact baseline and `Revision == BaseRevision + 1`; stale duplicates do not reapply state. A gap is rejected, not automatically repaired. Godot-facing handling is scheduled on the main loop.
 
+Here, **“validate and rebroadcast” does not mean compare or resynchronize the full game state**. Validation is limited to AP protocol integrity: the run ID matches, the network sender owns the `OwnerNetId` record, and the delta is exactly the next revision. The host then stores that current per-player AP view and relays it. MegaCrit still owns synchronization of the concrete reward selection, gold change, relic obtain, HP command or other gameplay operation.
+
+Removing this transport wholesale would currently lose information that the base game cannot infer. Only the connected owner sees asynchronous AP receipt history, checked locations, used receipt indexes and stable AP reward assignments. Other replicas need some of those facts before they independently construct later rest options and native reward objects, while the host needs the current copy for its save. A cleaner base-game-first design can reduce the **breadth** of these deltas feature by feature: express an AP-derived gameplay transition as one native synchronized or managed action, and update the minimal corresponding AP state deterministically inside that action on every replica. Owner-to-host publication remains necessary for AP-server changes and reconnect reconciliation. Once no later constructor reads a broad field, that field can be removed from the rebroadcast payload.
+
 **29 August, `82a72fd`:** separated replica-local construction counters from owner progress. Otherwise, an owner could publish “I have already generated reward number N” while a slower replica still needed to execute that same generation step. Updating its counter from the publication would make it generate N+1 instead. This separation is a key syncing area beyond the initial settings/progress transport.
 
 ```mermaid
@@ -181,6 +188,13 @@ Current launch flow:
 5. The host re-evaluates the **current active roster and contributions** for readiness and again at launch. It requires the fixed host’s AP settings and Ascension contract.
 6. Native launch commits that merged run payload. Mid-run progress uses its own transport, not lobby staging.
 
+“Merged run data” is not one flattened settings object. RitsuLib attaches two AP sidecar records to MegaCrit’s normal run payload:
+
+- The **shared host record** contains the schema version, `RunId`, the host’s effective settings, host character offset, configured/current Ascensions, handled Ascension Down receipt indexes and shared standard-relic receipt/chest destinations.
+- Each **per-`NetId` record** contains participation kind; AP room/team/slot identity; that owner’s effective `SlotSettings` and Player Number; initial relic receipt indexes and progressive Ancient counts; receipt-source readiness; AP progress/revision; the saved construction baseline; progressive starter state; and wax cadence.
+
+Each AP owner contributes its own per-`NetId` record. The fixed host contributes one of those records for itself **and** the shared record. RitsuLib sends client contributions with native character-change traffic and flushes them before Ready; the host merges each record under the authenticated sender `NetId`. MegaCrit’s character selections, seed, decks, map and ordinary run topology remain native data around the AP sidecar.
+
 Continue-run joining additionally checks the selected saved roster and the returning player’s frozen AP identity. An AP-bound player does not silently become a vanilla guest after an AP disconnect.
 
 ```mermaid
@@ -197,7 +211,33 @@ flowchart TD
 
 Source: [StageLocalPlayer](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Multiplayer/ApRunData.cs:94), [host contribution validation](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Multiplayer/ApRunData.cs:288), [lobby entry/host gates](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Multiplayer/MultiplayerSupport.cs:523), [continue lobby validation](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Multiplayer/ApMultiplayerCampaignFlow.cs:103).
 
-## 5. Multiplayer saving
+## 5. Shops
+
+Shopsanity itself predates the multiplayer branch: `df2ec79` on 1 August introduced the feature. The first dedicated multiplayer implementation is **21 August, `072ba20`**. It changed shop settings and received unlock counts from process-global reads to the local player’s frozen AP state, restricted the AP check page to the local check writer, and synchronized the concrete gold loss through MegaCrit.
+
+The current shop is deliberately asymmetric and therefore simpler than reward menus:
+
+1. MegaCrit rolls the normal `MerchantInventory` once.
+2. The local AP owner reads their committed `SlotSettings` and received card/colourless/relic/potion slot unlock counts. These decide which ordinary shop positions remain stocked.
+3. For the separate AP page, the mod clones already-rolled merchant entries rather than rolling a second inventory. It replaces their visible models with fake AP check cards/relics/potions backed by the next unchecked `Shop Slot N` locations. The page and free hints are local to the AP check writer.
+4. Buying a fake entry does **not** grant the pictured native item. It validates local check ownership, spends gold with `PlayerCmd.LoseGold`, calls `RewardSynchronizer.SyncLocalGoldLost`, queues the AP location check and clears the fake so Courier cannot restock it.
+5. The owner’s pending/checked progress later reaches the host through the normal AP progress path. The wallet change already travelled through native synchronization and is present in the host run.
+
+This separation works because the private AP page changes only presentation and which AP location the owner sends. If a shop entry granted a real card, relic or potion, that concrete grant would need the same mirrored/native selection contract as the AP reward menu.
+
+```mermaid
+flowchart LR
+    A[Native shop rolls once] --> B[Local owner clones entries]
+    B --> C[Build local AP-check page]
+    C --> D[Buy fake entry]
+    D --> E[Native synchronized gold loss]
+    D --> F[Owner queues AP location]
+    F --> G[Owner progress reaches host]
+```
+
+Source: [shop construction and gating](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Rooms/Patches_ShopSanity.cs:497), [purchase interception](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Rooms/Patches_ShopSanity.cs:657), [local shop ownership rules](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Multiplayer/MultiplayerSupport.cs:225).
+
+## 6. Multiplayer saving
 
 Your recollection is right about **AP state** moving from player-local storage into the host checkpoint. MegaCrit’s canonical native multiplayer run was already host-owned; the transition was where AP recovery state lived.
 
@@ -217,7 +257,9 @@ The save contains the native run, shared AP settings/receipt decisions, and per-
 
 The store serializes overlapping save writes with a lock, writes the native snapshot, then associates its campaign copy and metadata. Every native floor save updates recovery; only eligible AP boundaries also update the AP checkpoint. Metadata keeps roster identity and snapshot SHA-256 values. Superseded snapshots are removed when no retained pointer needs them.
 
-On continue, the selected host snapshot supplies the native and AP run data together. `RestoreLocalProgress` replaces the returning owner’s process-local AP progress and restores its delta baseline; fresh AP history is then used to reconcile authoritative receipts/checks. Live state accepted after the last successful selected checkpoint is not guaranteed to survive a crash.
+On continue, the selected host snapshot supplies the **last exact shared baseline**: native run state plus the AP records that had reached the host when that snapshot succeeded. That AP record can be older than an owner’s server history. Each returning AP owner reconnects, refreshes from the SDK’s complete current received-item/check history, reconciles it against the checkpoint’s used indexes, stable assignments and pending checks, rebuilds derived entitlements such as gold and relic coupons, and republishes the cleaned current view. This prevents a newly delivered receipt from being lost while also preventing a saved consumed receipt from being replayed.
+
+The host therefore holds two time horizons, but not as two AP-only documents. During play, its active `RunState` contains the latest accepted per-owner AP copy in memory. On disk, `FloorRecovery` and `ApCheckpoint` point to retained **full native snapshots**, each with whatever AP payload was current at that save boundary. Live state accepted after the chosen successful checkpoint can disappear in a crash; the AP server can restore authoritative received/check history, but cannot reconstruct lost native RNG or necessarily reproduce a revealed, unsaved concrete reward assignment.
 
 No host migration or distributed save voting is implemented by this design. AP servers retain received/check history, but that alone cannot reconstruct an exact run, revealed card offer or native RNG state after losing the host save.
 
@@ -238,7 +280,7 @@ flowchart LR
 
 Source: [multiplayer save interception](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Lifecycle/Patches_SaveManagement.cs:33), [SaveHostSnapshot](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Multiplayer/ApMultiplayerCampaignStore.cs:336), [snapshot retention/update](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Multiplayer/ApMultiplayerCampaignStore.cs:473), [RestoreLocalProgress](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Multiplayer/ApRunData.cs:341).
 
-## 6. Progressive Starter and DeathLink
+## 7. Progressive Starter and DeathLink
 
 Their common structure is **external AP cause → concrete request → safe native action slot → execute on every replica**. They cannot simply mutate a deck/relic/HP on whichever machine received the callback.
 
@@ -268,6 +310,8 @@ Outbound flow: after native death prevention completes, only the **host** author
 
 Current inbound action validation requires exactly **one target: the AP event recipient**. This is not a host packet that damages everyone simply because one callback arrived. Other connected recipients can receive and relay the same external AP event separately. Death Fragments are a separate feature, currently absent from the enabled multiplayer capability set.
 
+There is an important untested noncombat edge. `NonCombatActionAdmission` proves only that the run is ready, loading/room transition is inactive, combat is absent, the native synchronizer is `NotInCombat`, and action execution/queues are idle. It does **not** exclude Shop or Event rooms. A 100% incoming DeathLink can therefore reach `CreatureCmd.SetCurrentHp(..., 0)` while a shop or event UI is active. Source inspection does not prove that MegaCrit then closes the screen and enters game-over correctly. Event logic that disables a player-selected lethal option does not protect an external HP command. Required runtime cases are: idle shop, idle event, event choice in flight, and delivery during room transition, with a second client observing the same death/game-over state.
+
 ```mermaid
 flowchart TD
     A[Starter receipt or new-run initialization] --> B[Owner captures and sends concrete starter recipe]
@@ -279,9 +323,9 @@ flowchart TD
     G --> H[Starter tier persisted / DeathLink echo suppressed]
 ```
 
-Source: [ProgressiveStarterMultiplayer](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Progression/ProgressiveStarterMultiplayer.cs:17), [starter operation application](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Progression/ProgressiveStarterMultiplayer.cs:555), [DeathLinkMultiplayer](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/DeathLink/DeathLinkMultiplayer.cs:17), [DeathLinkEventLedger](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/DeathLink/DeathLinkEventLedger.cs:8).
+Source: [ProgressiveStarterMultiplayer](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Progression/ProgressiveStarterMultiplayer.cs:17), [starter operation application](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Progression/ProgressiveStarterMultiplayer.cs:555), [DeathLinkMultiplayer](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/DeathLink/DeathLinkMultiplayer.cs:17), [noncombat admission gate](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Actions/NonCombatActionAdmission.cs:12), [DeathLinkEventLedger](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/DeathLink/DeathLinkEventLedger.cs:8).
 
-## 7. Relic rewards, Rewarding Elites, coupons and chests
+## 8. Relic rewards, Rewarding Elites, coupons and chests
 
 There are **two contracts**, not one global replacement of native relic RNG:
 
@@ -290,7 +334,7 @@ There are **two contracts**, not one global replacement of native relic RNG:
 
 ### Singleplayer foundation and first multiplayer implementation
 
-The Rewarding Elites/progressive relic system predates multiplayer: `934923a` on 11 August added the coupon counter; `e1bb3c2` on 13 August integrated Rewarding Elites. The current distinction is between the first configured **X** relic receipts available anytime and later receipts that must pair with an earned natural relic source. The first ten eligible sources produce numbered AP relic checks and an earned bank. A waiting gated receipt can keep the natural relic; an earned bank without a receipt waits for a later AP-menu pairing. Beyond the AP-controlled range, rewards remain native.
+The Rewarding Elites/progressive relic system predates multiplayer: `934923a` on 11 August added the coupon counter; `e1bb3c2` on 13 August integrated Rewarding Elites. The current distinction is between the first configured **X** relic receipts available anytime and later receipts that must pair with a relic coupon gained from a natural relic source. The first ten eligible sources produce numbered AP relic checks and a relic coupon. A waiting gated receipt can keep the natural relic; a coupon without a receipt waits for a later AP-menu pairing. Beyond the AP-controlled range, rewards remain native.
 
 **18 August, `058881c`:** first mirrored multiplayer relic rewards. **19 August, `9b1c64c`:** persist concrete assignments for preview and reuse. **23 August, `a188fe9`:** introduced `StandardRelicPool`, avoiding private advancement of native reward RNG during AP-menu assignment. **24 August, `cc9c77f`:** scarcity chest fix. **28 August, `044ecc6`:** host receipt arbitration and frozen chest decisions. **29 August, `4baf7a5`:** all-replica Proceed barrier.
 
@@ -306,27 +350,30 @@ This is existing receipt arbitration for relic destinations, not a generic rollb
 
 ### Natural Elite and Black Star rewards
 
-The client starts with a native reward already generated on each replica. `ProcessNativeRelicReward` records the numbered source and adds its AP check. If a waiting gated receipt can pay for it, the native relic survives and the receipt is consumed; otherwise the native relic is removed and the earned bank remains. Black Star’s appended relic is processed separately so the base Elite relic and extra relic have separate source numbers.
+The client starts with a native reward already generated on each replica. `ProcessNativeRelicReward` records the numbered source and adds its AP check. If a waiting gated receipt can pay for it, the native relic survives and the receipt is consumed; otherwise the native relic is removed and the player gains a relic coupon. Black Star’s appended relic is processed separately so the base Elite relic and extra relic have separate source numbers.
 
 ### Chest agreement and the fewer-relics-than-players problem
 
-1. After native room-entry hooks, the **host freezes** the chest’s candidate decision: player order, whether each player generates treasure, numbered source, AP gating and exact funding receipt.
-2. Clients await that decision before starting their picker. It travels outside the native action queue, because room entry may already be awaiting a hook inside that queue; inserting the needed reply behind it would risk a deadlock.
-3. Every replica generates **all native candidates first**. This preserves native RNG and bag order even for candidates AP later removes.
-4. Replicas verify the native IDs against the host’s list, then apply the immutable keep/remove mask. A newly arriving receipt does not rewrite this chest.
-5. Remaining candidates are a **shared prize pool**. A player can win a relic whose candidate was funded by another player’s receipt. Funding identity is not exclusive winner identity.
-6. Fewer candidates than players is valid. The scarcity patch changes controller focus from “holder at my player index” to the first visible relic, avoiding an out-of-range assumption.
-7. Opening/settling the chest records its AP source and consumes the frozen funding receipt once. An unfunded eligible source creates a bank instead.
-8. An empty chest completes through the native chest-open animation. Current code deliberately does **not** complete it during room entry as well, which would emit completion twice.
+1. After native room-entry hooks and immediately before `BeginRelicPicking`, the **host freezes** one candidate record per player in the run’s current `Players` order. “Generates treasure” is the result of `Hook.ShouldGenerateTreasure` for that player; Silver Crucible and similar effects can make it false. “Source number” is the next numbered AP Relic check. “AP gated” means that source is within the AP-controlled first ten. “Funding receipt” is the exact next unreserved Relic item index available at that moment.
+2. The host reserves that receipt to this room key. A relic receipt is otherwise reserved to the AP menu only when its owner opens the menu and asks for approval. `ApRelicReceiptState` serializes those two races: the same `NetId + received item index` cannot belong to both destinations. Late receipts do not rewrite an already-created chest decision.
+3. The host **immediately broadcasts the immutable receipt decision before its own `BeginRelicPicking` call**. A client already holding that decision can continue immediately; otherwise it pauses its room-entry hook until the broadcast arrives. This travels outside the native action queue, because room entry may already be awaiting a hook inside that queue; inserting the reply behind it would deadlock.
+4. The host and clients can now generate concurrently. Every replica generates **all native candidates first** in native player order, relying on MegaCrit’s multiplayer invariant that synchronized run RNG and equivalent relic bags produce the same ordered models. The ordered subset where `GeneratesRelic` is true maps positionally to MegaCrit’s `_currentRelics` list.
+5. Before filtering, each replica locally checks candidate count, saved Player order and `Hook.ShouldGenerateTreasure` shape against the frozen host record. AP no longer publishes or compares the concrete native relic IDs. MegaCrit owns model-list agreement; if native RNG or bag state has already diverged, this AP layer will not detect different models that happen to have the same shape.
+6. Replicas remove candidates whose AP-gated source had no frozen receipt. Those relics were already popped from their native bags and remain unavailable there. The player has earned the numbered Relic check and **gains a relic coupon**; a later receipt can spend that coupon through a new deterministic AP-menu relic assignment. This differs from merely hiding a still-available candidate.
+7. Remaining candidates form MegaCrit’s one **shared picker list**. The list is shared because the native multiplayer chest lets the players vote over the same remaining choices. A player can win a relic whose survival was funded by another player’s receipt; the funding owner is not an exclusive winner.
+8. Fewer candidates than players is valid. The scarcity patch changes controller focus from “holder at my player index” to the first visible relic, avoiding an out-of-range assumption.
+9. Opening/settling records each frozen numbered source once. If it has a reserved receipt, settlement marks that exact receipt used; otherwise it records the relic coupon. An empty chest completes through the native chest-open animation once.
 
-The candidate decision has a 30-second client wait limit; menu approval/reservation waits use 15 seconds. These are timeout ceilings, not intentional fixed delays. The chest button ignores early presses while the picker is not ready.
+The candidate decision keeps a 30-second total client wait ceiling; menu approval/reservation waits use 15 seconds. These are timeout ceilings, not intentional fixed delays. The normal chest-entry path is now one host broadcast of the small frozen decision. A client sends a direct recovery request only if that broadcast has not arrived within one second; an already-frozen host decision is sent only to that requester. Early chest clicks are still ignored until the local mask exists. This removes the earlier serialized sequence of host native generation, native-ID broadcast and client verification from the pre-open critical path.
+
+This optimization deliberately moves one responsibility back to the base game. It preserves AP’s authoritative receipt allocation and structural checks, while trusting MegaCrit for the same native RNG/relic-bag invariant its shared vote-index protocol already requires. The tradeoff is reduced early divergence detection: the removed relic-ID sentinel could report different concrete candidates before a vote, while the new shape check cannot. C# compilation and state regression tests can validate the protocol change, but only two-client runtime tests with matching and deliberately stressed relic-bag state can validate that trust boundary.
 
 ```mermaid
 flowchart TD
     A[Native treasure room-entry hooks] --> B[Host freezes player candidates and funding receipts]
-    B --> C[Clients receive immutable chest decision]
-    C --> D[Every replica rolls all native relic candidates]
-    D --> E[Verify native IDs against host]
+    B --> C[Host broadcasts immutable receipt decision before rolling]
+    C --> D[Every replica rolls all native relic candidates concurrently]
+    D --> E[Validate local count, player order and treasure shape]
     E --> F[Apply identical AP receipt keep mask]
     F --> G[Shared native picker: possibly fewer prizes than players]
     G --> H[Open and settle frozen sources once]
@@ -337,15 +384,15 @@ flowchart TD
 
 ### Why AP menu opening is blocked until everyone finishes
 
-The precise rule is stronger than “everyone has clicked the chest”: every replica reports readiness **after its `OpenChest` task finishes**, and the host broadcasts all-ready only after the entire run roster has reported it.
+The precise rule is stronger than “everyone has clicked the chest”: every replica reports readiness **after its `OpenChest` task finishes**, and the host broadcasts all-ready only after the entire run roster has reported it. This barrier does not keep the vote open and does not wait for the AP server. It covers the chest animation/selection completion and `DoExtraRewardsIfNeeded`, which can construct one native `RewardsSet` per player at different times on different machines.
 
 Treasure extra rewards can construct native `RewardsSet`s at different times on different replicas. If one machine inserts an AP set before completing that native sequence while another inserts it afterward, the same native reward-set number can identify different sets. Sending an index for “the same overall effect” cannot fix that mismatch. Current UI guards also reject opening during another card/relic choice, combat or travel, and recheck after awaits.
 
 Two freezes solve different problems: **run settings** keep receipt availability rules stable; **chest decisions** keep this chest’s funding stable. The **Proceed barrier** keeps native reward-set construction order stable.
 
-Source: [RelicRewardUtility](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Rewards/RelicRewardUtility.cs:37), [StandardRelicPool](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Rewards/StandardRelicPool.cs:28), [receipt destination state](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Persistence/ApRelicReceiptState.cs:120), [FreezeChest](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Multiplayer/RelicReceiptMultiplayer.cs:236), [native candidate filtering](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Rewards/Patches_InjectAPRewards.cs:357), [scarcity focus](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Rooms/Patches_TreasureRoomRelicScarcity.cs:20), [AP menu chest guard](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/UI/ArchipelagoRewardUI.cs:367).
+Source: [RelicRewardUtility](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Rewards/RelicRewardUtility.cs:37), [StandardRelicPool](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Rewards/StandardRelicPool.cs:28), [receipt destination state](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Persistence/ApRelicReceiptState.cs:59), [menu approval](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Persistence/ApRelicReceiptState.cs:98), [freeze and pre-generation broadcast](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Multiplayer/RelicReceiptMultiplayer.cs:196), [native candidate filtering](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Rewards/Patches_InjectAPRewards.cs:357), [beta native picker](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/Spire2-Beta-Decompiled%202/MegaCrit/sts2/Core/Multiplayer/Game/TreasureRoomRelicSynchronizer.cs:89), [scarcity focus](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Rooms/Patches_TreasureRoomRelicScarcity.cs:20), [AP menu chest guard](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/UI/ArchipelagoRewardUI.cs:367).
 
-## 8. AP card rewards: the longer history
+## 9. AP card rewards: the longer history
 
 ### What the history confirms
 
@@ -443,11 +490,11 @@ The deterministic AP stream described here is specifically the first-materializa
 
 Source: [CreateApRewardRng / GenerateCardChoices](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Rewards/ApMirroredRewardDispatcher.cs:609), [rarity and RNG patches](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Rewards/Patches_APCardRewardUpgradeOdds.cs:168), [PrepareCards and claim](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Rewards/ApMirroredRewardDispatcher.cs:1097), [digest codec](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/DomainAdapters/ApCardRevealCodec.cs:15), [selection ordering](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Rewards/Patches_APRewardSelectionOrder.cs:15), [reopen lifecycle](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Rewards/ApCardRewardLifecycle.cs:15), [Wing Charm exclusion](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Rewards/Patches_WingCharmMultiplayer.cs:15).
 
-## 9. Bonus Wax Relics
+## 10. Bonus Wax Relics
 
 **8 September local time, `759a17b`:** upstream added bonus-item definitions and wax rewards. **9 September, `64b01d3`:** integrated them with multiplayer mirrored rewards. **10 September, `cad9e17`:** salted random rankings by native player slot.
 
-Why this is easier than standard relics: bonus wax receipts do not need to compete with a natural Elite/chest source. There is no coupon-bank or chest-destination arbitration.
+Why this is easier than standard relics: bonus wax receipts do not need to compete with a natural Elite/chest source. There is no relic-coupon or chest-destination arbitration.
 
 `BonusRewardUtility.GetOrAssign` first reuses a saved assignment. Otherwise it counts earlier same-item receipts to determine the bonus definition ordinal, reads that player’s frozen bonus settings, and resolves an explicit relic or ranks eligible configured-pool candidates deterministically. Pickup-effect relics are rejected by the resolver used here.
 
@@ -475,7 +522,7 @@ flowchart LR
 
 Source: [BonusRewardUtility](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Rewards/BonusRewardUtility.cs:18), [BonusRewardSelectionKey](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Rewards/BonusRewardSelectionKey.cs:10), [wax cadence patches](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Rewards/Patches_WaxRelics.cs:27).
 
-## 10. Universal buffs converted to gold
+## 11. Universal buffs converted to gold
 
 **24 August, `83adfd9`:** converted multiplayer universal combat buffs to five raw AP gold **for every configured character**, rather than implementing their combat effects. **29 August, `38974b9`:** corrected the multiplication: each buff contributes five to a cumulative total divided equally across the configured characters.
 
@@ -514,9 +561,9 @@ Source: [UniversalBuffGold](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-S
 
 ## Validation and limits
 
-**Performed:** current-source tracing; historical source/diff inspection; author-time comparison; inspection of preserved pre-squash history; current API-target check (`0.107.1` and `0.111.0`); artifact source-link and commit validation; `git diff --check` and final working-tree inspection.
+**Performed:** current-source tracing; historical source/diff inspection; author-time comparison; inspection of preserved pre-squash history; current API-target check; relic-receipt regression suite (**289 passed, 3 packaging tests skipped**); DLL-only Release compilation for both supported targets (`0.107.1` and `0.111.0`); artifact source-link validation; `git diff --check` and final working-tree inspection.
 
-**Not run:** C# builds, APWorld generation/tests, loader verification, singleplayer gameplay, two-client gameplay or reconnect/crash reproduction. No runtime code changed. Historical “working” messages are attributed to the developer/commit and are not fresh proof from this audit.
+**Not run:** APWorld generation/tests, loader verification, singleplayer gameplay, two-client gameplay or reconnect/crash reproduction. The chest protocol changed at runtime, so the successful state tests and C# builds do not prove that two native clients retain matching relic RNG/bag state. Historical “working” messages are attributed to the developer/commit and are not fresh proof from this audit.
 
 Only `Spire2-Beta-Decompiled 2/` was available as a local decompiled reference. Its Pael’s Wing, Tress, Crucible, card-factory and rest/chest lifecycle code was used as **beta static evidence**. There was no matching public decompilation here; beta source is not proof of public runtime behavior. The supported project targets were checked separately.
 
@@ -526,6 +573,7 @@ A compact in-game follow-up matrix would be:
 | --- | --- |
 | Rest sites with different players’ unlock/check state | Correct owner-specific action lists; one writer per AP check; `Applied AP rest-site options for player ...` |
 | Gold and full potion inventory | Matching wallets; potion remains assigned/claimable until a slot exists |
+| AP shop page on a non-host owner | Only that owner sees and writes its checks; buying a fake entry synchronizes the gold loss and Courier does not restock it |
 | Two direct connections to one AP slot | Independent NetId consumption and correct numbered-player item ownership |
 | Delayed AP progress and room entry | No replica construction counter skips; wrong-baseline delta is rejected rather than applied |
 | Chest with zero, one, or fewer prizes than players | Native empty completion once; valid shared selection and controller focus; `Treasure AP decision frozen ...` |
@@ -535,5 +583,6 @@ A compact in-game follow-up matrix would be:
 | Egg acquired after an offer was revealed | Eligible assigned choices refresh without rerolling or replaying one-shot generation effects |
 | Save/rejoin with revealed offers, coupons, starters and wax | Restore the selected host snapshot’s native/AP state, exact offers and per-player cadence |
 | Duplicate DeathLink during phase transitions | One admitted event per recipient; deferred safe application; no outbound lethal echo |
+| 100% DeathLink in an idle shop and idle event | Native death/game-over closes each screen coherently on both clients; repeat with an event choice in flight |
 
 To inspect a historical entry locally, use `git show <hash>` or `git show <hash>:<historical-path>`. Files moved between `Utils/`, `Multiplayer/`, `Persistence/` and feature folders over this history, so a current-path-only log is insufficient.
