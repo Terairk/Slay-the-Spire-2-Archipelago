@@ -9,20 +9,20 @@ using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.ValueProps;
 using STS2RitsuLib.Networking.ManagedActions;
 using STS2RitsuLib.Networking.Sidecar;
 
 namespace StS2AP.Utils;
 
 /// <summary>
-/// Relays external DeathLinks to the native host, admits them one at a time at an idle native
-/// action boundary, and makes the host the sole authority for outgoing multiplayer DeathLinks.
+/// Relays external DeathLinks to the native host, retains every distinct event until a stable
+/// combat play-phase boundary, and makes the host the sole authority for outgoing DeathLinks.
 /// </summary>
 public static class DeathLinkMultiplayer
 {
     private const string InboundRequestMessageKey = "death_link_inbound_request";
     private const string CombatActionKey = "death_link_combat_damage";
-    private const string NonCombatActionKey = "death_link_noncombat_damage";
     private const string OutboundInstructionMessageKey = "death_link_outbound_instruction";
     private static readonly object StateLock = new();
 
@@ -62,16 +62,6 @@ public static class DeathLinkMultiplayer
             Execute: ExecuteDamageAction,
             ActionType: GameActionType.CombatPlayPhaseOnly
         );
-    private static readonly RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage>
-        NonCombatActionDescriptor = new(
-            ModuleId: ModEntry.ModId,
-            ActionKey: NonCombatActionKey,
-            Serialize: static message => JsonSerializer.SerializeToUtf8Bytes(message),
-            Deserialize: DeserializeActionMessage,
-            Execute: ExecuteDamageAction,
-            ActionType: GameActionType.NonCombat
-        );
-
     private static IDisposable? _inboundRequestSubscription;
     private static IDisposable? _outboundInstructionSubscription;
     private static SceneTree? _sceneTree;
@@ -94,7 +84,6 @@ public static class DeathLinkMultiplayer
             OnOutboundInstructionReceived
         );
         RitsuLibManagedNetActions.Register(CombatActionDescriptor);
-        RitsuLibManagedNetActions.Register(NonCombatActionDescriptor);
     }
 
     public static void EndRun()
@@ -385,10 +374,7 @@ public static class DeathLinkMultiplayer
             return;
         }
 
-        if (!TryGetSafeActionDescriptor(
-                out RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage> descriptor,
-                out string blockedReason
-            ))
+        if (!CanAdmitCombatAction(out string blockedReason))
         {
             LogAdmissionBlocked(request.EventId, blockedReason);
             return;
@@ -413,7 +399,7 @@ public static class DeathLinkMultiplayer
         {
             requested = RitsuLibManagedNetActions.Request(
                 RunManager.Instance,
-                descriptor,
+                CombatActionDescriptor,
                 message,
                 RunManager.Instance.NetService.NetId
             );
@@ -446,16 +432,13 @@ public static class DeathLinkMultiplayer
         ClearAdmissionBlocker(request.EventId);
 
         LogUtility.Info(
-            $"Host admitted incoming DeathLink {request.EventId} as a "
-                + $"{descriptor.ActionType} action; {DescribeAdmissionState()}."
+            $"Host admitted queued DeathLink {request.EventId} as a combat action; "
+                + $"{DescribeAdmissionState()}."
         );
     }
 
-    private static bool TryGetSafeActionDescriptor(
-        out RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage> descriptor,
-        out string blockedReason)
+    private static bool CanAdmitCombatAction(out string blockedReason)
     {
-        descriptor = null!;
         blockedReason = string.Empty;
         CombatManager combat = CombatManager.Instance;
         if (combat.IsStarting)
@@ -491,26 +474,12 @@ public static class DeathLinkMultiplayer
                 ActionSynchronizerCombatState.PlayPhase))
         {
             // PlayPhase is the native synchronizer's authoritative indication that it is safe to
-            // enqueue a CombatPlayPhaseOnly action. Rechecking CombatManager.IsInProgress here can
-            // observe a different transition snapshot and incorrectly defer until NonCombat.
-            descriptor = CombatActionDescriptor;
-            return true;
-        }
-        if (!combat.IsInProgress
-            && BetaMainCompatibility.IsActionSynchronizerCombatState(
-                synchronizerState,
-                ActionSynchronizerCombatState.NotInCombat))
-        {
-            if (NonCombatActionAdmission.CaptureState().BlockedReason is string reason)
-            {
-                blockedReason = reason;
-                return false;
-            }
-            descriptor = NonCombatActionDescriptor;
+            // enqueue a CombatPlayPhaseOnly action. A DeathLink received anywhere else stays at
+            // the head of the FIFO until this phase is stable and the native queues are empty.
             return true;
         }
 
-        blockedReason = "no descriptor matches the current phase "
+        blockedReason = "DeathLinks wait for the combat play phase "
             + $"(combatInProgress={combat.IsInProgress}, synchronizer={synchronizerState})";
         return false;
     }
@@ -569,9 +538,7 @@ public static class DeathLinkMultiplayer
             new()
             {
                 NetId = slotOwner.NetId,
-                NewHp = slotOwner.Creature.IsDead
-                    ? 0
-                    : Math.Max(0, slotOwner.Creature.CurrentHp - damage),
+                Damage = slotOwner.Creature.IsDead ? 0 : damage,
             },
         };
     }
@@ -611,7 +578,7 @@ public static class DeathLinkMultiplayer
                     return;
             }
 
-            var plans = new List<(Player Target, int NewHp)>();
+            var plans = new List<(Player Target, int Damage)>();
             foreach (DeathLinkActionMessage.TargetPlan plan in message.Targets.OrderBy(
                          target => target.NetId
                      ))
@@ -632,16 +599,12 @@ public static class DeathLinkMultiplayer
                 int localExpectedDamage = Mathf.RoundToInt(
                     target.Creature.MaxHp * (message.DamagePercent / 100.0f)
                 );
-                int localExpectedHp = Math.Max(
-                    0,
-                    target.Creature.CurrentHp - localExpectedDamage
-                );
-                if (localExpectedHp != plan.NewHp)
+                if (localExpectedDamage != plan.Damage)
                 {
                     LogUtility.Warn(
-                        $"DeathLink {message.EventId} observed pre-application HP divergence for "
-                            + $"{target.NetId}: host={plan.NewHp}, local={localExpectedHp}; applying "
-                            + "the host value."
+                        $"DeathLink {message.EventId} observed raw-damage divergence for "
+                            + $"{target.NetId}: host={plan.Damage}, local={localExpectedDamage}; "
+                            + "applying the host amount."
                     );
                 }
 
@@ -654,35 +617,54 @@ public static class DeathLinkMultiplayer
                     }
                     catch (Exception ex)
                     {
-                        // Presentation is secondary to the host-authored HP mutation.
+                        // Presentation is secondary to the host-authored damage action.
                         LogUtility.Error(
                             $"Could not show DeathLink {message.EventId} notification: "
                                 + ex.Message
                         );
                     }
                 }
-                plans.Add((target, plan.NewHp));
+                plans.Add((target, plan.Damage));
             }
 
             // Mark every target before changing the first one. A death callback can synchronously
             // affect another target, and all deaths caused by this incoming event must be silent.
             lock (StateLock)
             {
-                foreach ((Player target, int newHp) in plans)
+                foreach ((Player target, int damage) in plans)
                 {
-                    EventLedger.BeginDamage(target.NetId, newHp == 0, DateTime.UtcNow);
+                    EventLedger.BeginDamage(
+                        target.NetId,
+                        lethal: damage >= target.Creature.CurrentHp,
+                        DateTime.UtcNow
+                    );
                 }
             }
 
             try
             {
-                foreach ((Player target, int newHp) in plans)
+                foreach ((Player target, int damage) in plans)
                 {
+                    int hpBefore = target.Creature.CurrentHp;
                     LogUtility.Info(
                         $"Applying host-ordered DeathLink {message.EventId} to {target.NetId}: "
-                            + $"{target.Creature.CurrentHp}->{newHp} HP."
+                            + $"{damage} raw unblockable damage at {hpBefore} HP."
                     );
-                    await CreatureCmd.SetCurrentHp(target.Creature, newHp);
+                    if (damage > 0)
+                    {
+                        await CreatureCmd.Damage(
+                            context.PlayerChoiceContext,
+                            target.Creature,
+                            damage,
+                            ValueProp.Unblockable | ValueProp.Unpowered,
+                            null,
+                            null
+                        );
+                    }
+                    LogUtility.Info(
+                        $"Completed DeathLink {message.EventId} for {target.NetId}: "
+                            + $"{hpBefore}->{target.Creature.CurrentHp} HP after damage hooks."
+                    );
                 }
             }
             finally
@@ -786,7 +768,7 @@ public static class DeathLinkMultiplayer
         foreach (DeathLinkActionMessage.TargetPlan plan in message.Targets)
         {
             Player? target = current.GetPlayer(plan.NetId);
-            if (target == null || plan.NewHp < 0 || plan.NewHp > target.Creature.MaxHp)
+            if (target == null || plan.Damage < 0 || plan.Damage > target.Creature.MaxHp)
                 return false;
         }
 

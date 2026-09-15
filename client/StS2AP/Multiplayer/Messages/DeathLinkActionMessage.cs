@@ -1,15 +1,14 @@
 namespace StS2AP.Multiplayer.Messages;
 
 /// <summary>
-/// Host-authored HP recipe carried by the native multiplayer action queue. Combat and non-combat
-/// descriptors share this payload but admit it only at their corresponding safe boundary.
+/// Host-authored damage recipe carried by the native multiplayer combat action queue.
 /// </summary>
 public sealed class DeathLinkActionMessage
 {
     public sealed class TargetPlan
     {
         public ulong NetId { get; set; }
-        public int NewHp { get; set; }
+        public int Damage { get; set; }
     }
 
     public Guid RunId { get; set; }
