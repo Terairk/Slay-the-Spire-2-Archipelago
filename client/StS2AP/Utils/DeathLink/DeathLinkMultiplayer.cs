@@ -17,20 +17,18 @@ namespace StS2AP.Utils;
 
 /// <summary>
 /// Relays external DeathLinks to the native host, retains every distinct event until a stable
-/// combat play-phase boundary, and makes the host the sole authority for outgoing DeathLinks.
+/// combat play-phase boundary, and lets each local AP owner report their own synchronized death.
 /// </summary>
 public static class DeathLinkMultiplayer
 {
     private const string InboundRequestMessageKey = "death_link_inbound_request";
     private const string CombatActionKey = "death_link_combat_damage";
-    private const string OutboundInstructionMessageKey = "death_link_outbound_instruction";
     private static readonly object StateLock = new();
 
     private static readonly Queue<DeathLinkInboundRequestMessage> PendingInbound = new();
     private static readonly HashSet<Guid> AcceptedInboundEvents = new();
     private static readonly DeathLinkEventLedger EventLedger = new();
     private static readonly HashSet<Guid> HandledInboundEvents = new();
-    private static readonly HashSet<Guid> HandledOutboundInstructions = new();
 
     private static readonly RitsuLibSidecarJsonSerializer<DeathLinkInboundRequestMessage>
         InboundRequestSerializer = new();
@@ -42,17 +40,6 @@ public static class DeathLinkMultiplayer
             InboundRequestSerializer.Deserialize,
             Required: true
         );
-    private static readonly RitsuLibSidecarJsonSerializer<DeathLinkSendInstructionMessage>
-        OutboundInstructionSerializer = new();
-    private static readonly RitsuLibSidecarMessageDescriptor<DeathLinkSendInstructionMessage>
-        OutboundInstructionDescriptor = new(
-            ModEntry.ModId,
-            OutboundInstructionMessageKey,
-            OutboundInstructionSerializer.Serialize,
-            OutboundInstructionSerializer.Deserialize,
-            Required: true
-        );
-
     private static readonly RitsuLibManagedNetActionDescriptor<DeathLinkActionMessage>
         CombatActionDescriptor = new(
             ModuleId: ModEntry.ModId,
@@ -63,7 +50,6 @@ public static class DeathLinkMultiplayer
             ActionType: GameActionType.CombatPlayPhaseOnly
         );
     private static IDisposable? _inboundRequestSubscription;
-    private static IDisposable? _outboundInstructionSubscription;
     private static SceneTree? _sceneTree;
     private static bool _processFrameHooked;
     private static Guid? _inboundActionInFlight;
@@ -79,10 +65,6 @@ public static class DeathLinkMultiplayer
             InboundRequestDescriptor,
             OnInboundRequested
         );
-        _outboundInstructionSubscription = RitsuLibSidecarTypedMessageRegistry.Subscribe(
-            OutboundInstructionDescriptor,
-            OnOutboundInstructionReceived
-        );
         RitsuLibManagedNetActions.Register(CombatActionDescriptor);
     }
 
@@ -93,7 +75,6 @@ public static class DeathLinkMultiplayer
             PendingInbound.Clear();
             AcceptedInboundEvents.Clear();
             HandledInboundEvents.Clear();
-            HandledOutboundInstructions.Clear();
             EventLedger.Clear();
             _inboundActionInFlight = null;
             _lastBlockedInboundEvent = null;
@@ -121,24 +102,22 @@ public static class DeathLinkMultiplayer
 
     /// <summary>
     /// Observes a death only after base-game death prevention has completed. Every replica sees
-    /// this callback, but only the native host is allowed to authorize an AP-side send.
+    /// this callback, but only the process that owns the dead player and their AP connection sends.
     /// </summary>
     public static void PlayerDied(Player player)
     {
         if (!MultiplayerSupport.IsRealMultiplayerRun
             || !MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.DeathLink)
-            || RunManager.Instance.NetService.Type != NetGameType.Host
-            || player.RunState is not RunState runState
-            || runState.CurrentRoom?.IsVictoryRoom == true
-            || !ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-            || shared.RunId == Guid.Empty
-            || !ApRunData.TryGetPlayerState(runState, player.NetId, out ApPlayerRunState playerState)
-            || playerState.Participation == ApParticipationKind.VanillaGuest
-            || !ApPlayerContextResolver.TryGetRewardSettings(
-                player,
-                out ArchipelagoSettings settings
+            || !LocalContext.IsMe(player)
+            || !TryGetLocalOwnSlotContext(
+                out RunState runState,
+                out _,
+                out Player localOwner,
+                out _
             )
-            || !settings.IsDeathLinkEnabled)
+            || localOwner.NetId != player.NetId
+            || runState.CurrentRoom?.IsVictoryRoom == true
+        )
         {
             return;
         }
@@ -153,58 +132,7 @@ public static class DeathLinkMultiplayer
 
         string floorCause = $"Act {runState.CurrentActIndex + 1} Floor {runState.ActFloor}";
         string characterName = player.Character.Id.Entry;
-        Guid eventId = Guid.NewGuid();
-        ulong hostNetId = RunManager.Instance.NetService.NetId;
-
-        if (player.NetId == hostNetId)
-        {
-            SendLocalAuthorizedDeathLink(
-                eventId,
-                player.NetId,
-                characterName,
-                floorCause
-            );
-            return;
-        }
-
-        var instruction = new DeathLinkSendInstructionMessage
-        {
-            RunId = shared.RunId,
-            EventId = eventId,
-            OwnerNetId = player.NetId,
-            CharacterName = characterName,
-            FloorCause = floorCause,
-        };
-
-        bool sent;
-        try
-        {
-            sent = RitsuLibSidecarTypedMessageRegistry.SendToPeer(
-                RunManager.Instance.NetService,
-                player.NetId,
-                OutboundInstructionDescriptor,
-                instruction
-            );
-        }
-        catch (Exception ex)
-        {
-            LogUtility.Error(
-                $"Discarded host-authorized DeathLink {eventId} for AP owner "
-                    + $"{player.NetId}: {ex.Message}"
-            );
-            return;
-        }
-
-        if (!sent)
-        {
-            LogUtility.Warn(
-                $"Discarded host-authorized DeathLink {eventId} for unavailable AP owner "
-                    + $"{player.NetId}."
-            );
-            return;
-        }
-
-        LogUtility.Info($"Host authorized DeathLink {eventId} for AP owner {player.NetId}.");
+        SendLocalDeathLink(Guid.NewGuid(), player.NetId, characterName, floorCause);
     }
 
     private static void SubmitInboundOnMainThread(
@@ -813,76 +741,7 @@ public static class DeathLinkMultiplayer
         return true;
     }
 
-    private static void OnOutboundInstructionReceived(
-        RitsuLibSidecarTypedDispatchContext<DeathLinkSendInstructionMessage> context)
-    {
-        bool posted = RitsuLibSidecarGodotMainLoopScheduling.TryPostToMainLoop(
-            () => ExecuteOutboundInstruction(context.Message, context.SenderNetId)
-        );
-        if (!posted)
-        {
-            LogUtility.Error(
-                $"Discarded host-authorized DeathLink {context.Message.EventId}; the local "
-                    + "main loop was unavailable."
-            );
-        }
-    }
-
-    private static void ExecuteOutboundInstruction(
-        DeathLinkSendInstructionMessage message,
-        ulong senderNetId)
-    {
-        if (!TryValidateOutboundInstruction(message, senderNetId))
-        {
-            LogUtility.Warn(
-                $"Rejected host-authorized DeathLink instruction {message.EventId} from "
-                    + $"{senderNetId}."
-            );
-            return;
-        }
-
-        lock (StateLock)
-        {
-            if (!HandledOutboundInstructions.Add(message.EventId))
-                return;
-        }
-
-        SendLocalAuthorizedDeathLink(
-            message.EventId,
-            message.OwnerNetId,
-            message.CharacterName,
-            message.FloorCause
-        );
-    }
-
-    private static bool TryValidateOutboundInstruction(
-        DeathLinkSendInstructionMessage message,
-        ulong senderNetId)
-    {
-        INetGameService netService = RunManager.Instance.NetService;
-        return netService.Type == NetGameType.Client
-            && BetaMainCompatibility.TryGetHostNetId(netService, out ulong hostNetId)
-            && senderNetId == hostNetId
-            && message.RunId != Guid.Empty
-            && message.EventId != Guid.Empty
-            && message.OwnerNetId == netService.NetId
-            && !string.IsNullOrEmpty(message.CharacterName)
-            && message.CharacterName.Length <= 1024
-            && !string.IsNullOrEmpty(message.FloorCause)
-            && message.FloorCause.Length <= 1024
-            && RunManager.Instance.DebugOnlyGetState() is RunState runState
-            && ApRunData.TryGetSharedState(runState, out ApRunSharedState shared)
-            && shared.RunId == message.RunId
-            && ApRunData.TryGetPlayerState(
-                runState,
-                message.OwnerNetId,
-                out ApPlayerRunState ownerState
-            )
-            && ownerState.Participation == ApParticipationKind.OwnApSlot
-            && ownerState.SlotSettings?.IsDeathLinkEnabled == true;
-    }
-
-    private static void SendLocalAuthorizedDeathLink(
+    private static void SendLocalDeathLink(
         Guid eventId,
         ulong playerNetId,
         string characterName,
@@ -892,7 +751,7 @@ public static class DeathLinkMultiplayer
         if (!ArchipelagoClient.IsConnected || deathLinkController == null)
         {
             LogUtility.Warn(
-                $"Discarded host-authorized DeathLink {eventId} for {playerNetId}; that AP "
+                $"Discarded local-owner DeathLink {eventId} for {playerNetId}; that AP "
                     + "connection is unavailable."
             );
             return;
@@ -911,13 +770,13 @@ public static class DeathLinkMultiplayer
                 EventLedger.RecordSent(deathLink.Source, wireTimestampTicks);
             deathLinkController.SendDeathLink(deathLink);
             LogUtility.Info(
-                $"Sent host-authorized DeathLink {eventId} for player {playerNetId}."
+                $"Sent local-owner DeathLink {eventId} for player {playerNetId}."
             );
         }
         catch (Exception ex)
         {
             LogUtility.Error(
-                $"Discarded host-authorized DeathLink {eventId} for {playerNetId}: "
+                $"Discarded local-owner DeathLink {eventId} for {playerNetId}: "
                     + ex.Message
             );
         }

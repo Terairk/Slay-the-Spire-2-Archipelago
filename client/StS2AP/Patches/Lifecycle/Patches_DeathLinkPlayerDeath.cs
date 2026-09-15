@@ -6,8 +6,8 @@ namespace StS2AP.Patches;
 
 /// <summary>
 /// Observes the exact point at which death prevention has finished and a player is truly dead.
-/// Every replica sees this callback; DeathLinkMultiplayer permits only the native host to
-/// authorize an AP-side send.
+/// Every replica sees this callback; DeathLinkMultiplayer permits only the dead player's local
+/// AP-owning process to send.
 /// </summary>
 [HarmonyPatch(typeof(Creature), nameof(Creature.InvokeDiedEvent))]
 public static class Patches_DeathLinkPlayerDeath
