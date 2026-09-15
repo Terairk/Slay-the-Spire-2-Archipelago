@@ -13,6 +13,25 @@ on:
         required: true
         type: string
 
+    # These names must be declared for the reusable workflow.
+    # Their actual values come from the `workshop` environment below,
+    # after its protection rules have been satisfied.
+    secrets:
+      STEAM_USERNAME:
+        required: false
+
+      STEAM_CONFIG_VDF:
+        required: false
+
+  # Allows retrying ONLY the Steam publication after the GitHub Release
+  # has already been successfully created.
+  workflow_dispatch:
+    inputs:
+      client_version:
+        description: "Existing GitHub Release version to publish to Steam"
+        required: true
+        type: string
+
 permissions:
   contents: read
 
@@ -22,12 +41,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    # This is the approval/security boundary.
+    # This remains the security boundary for BOTH automatic and manual runs.
+    # The job waits for approval before these environment secrets are exposed.
     environment: workshop
 
     steps:
       - name: Validate Workshop configuration
         env:
+          EVENT_NAME: ${{ github.event_name }}
           ARTIFACT_NAME: ${{ inputs.artifact_name }}
           CLIENT_VERSION: ${{ inputs.client_version }}
           STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
@@ -36,11 +57,24 @@ jobs:
         shell: bash
         run: |
           missing=()
-          [[ -n "$ARTIFACT_NAME" ]] || missing+=("workflow input artifact_name")
-          [[ -n "$CLIENT_VERSION" ]] || missing+=("workflow input client_version")
-          [[ -n "$STEAM_USERNAME" ]] || missing+=("workshop secret STEAM_USERNAME")
-          [[ -n "$STEAM_CONFIG_VDF" ]] || missing+=("workshop secret STEAM_CONFIG_VDF")
-          [[ -n "$WORKSHOP_ITEM_ID" ]] || missing+=("workshop variable WORKSHOP_ITEM_ID")
+
+          [[ -n "$CLIENT_VERSION" ]] ||
+            missing+=("client_version")
+
+          [[ -n "$STEAM_USERNAME" ]] ||
+            missing+=("workshop secret STEAM_USERNAME")
+
+          [[ -n "$STEAM_CONFIG_VDF" ]] ||
+            missing+=("workshop secret STEAM_CONFIG_VDF")
+
+          [[ -n "$WORKSHOP_ITEM_ID" ]] ||
+            missing+=("workshop variable WORKSHOP_ITEM_ID")
+
+          # artifact_name is only needed when called by release.yml.
+          if [[ "$EVENT_NAME" == "workflow_call" ]]; then
+            [[ -n "$ARTIFACT_NAME" ]] ||
+              missing+=("workflow input artifact_name")
+          fi
 
           if (( ${#missing[@]} > 0 )); then
             printf '::error::Missing required Workshop configuration: %s\n' \
@@ -53,17 +87,48 @@ jobs:
             exit 1
           fi
 
+      # Normal release.yml path:
+      # use the artifact produced by this release run.
       - name: Download release package
+        if: github.event_name == 'workflow_call'
         uses: actions/download-artifact@v6
         with:
           name: ${{ inputs.artifact_name }}
           path: release-assets
 
+      # Manual retry path:
+      # use Archipelago.zip already attached to the GitHub Release.
+      - name: Download package from GitHub Release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLIENT_VERSION: ${{ inputs.client_version }}
+        shell: bash
+        run: |
+          mkdir -p release-assets
+
+          if ! gh release view "$CLIENT_VERSION" > /dev/null 2>&1; then
+            echo "::error::GitHub Release $CLIENT_VERSION does not exist."
+            exit 1
+          fi
+
+          gh release download "$CLIENT_VERSION" \
+            --pattern "Archipelago.zip" \
+            --dir release-assets
+
+          if [[ ! -f release-assets/Archipelago.zip ]]; then
+            echo "::error::Release $CLIENT_VERSION does not contain Archipelago.zip."
+            exit 1
+          fi
+
       - name: Prepare Workshop content
         shell: bash
         run: |
-          mkdir -p workshop-content
+          set -euo pipefail
+
           test -f release-assets/Archipelago.zip
+
+          mkdir -p workshop-content
           unzip -q release-assets/Archipelago.zip -d workshop-content
 
           for required_file in \
@@ -71,11 +136,18 @@ jobs:
             Archipelago.pck \
             Archipelago.json \
             spire2.apworld; do
+
             if [[ ! -f "workshop-content/$required_file" ]]; then
               echo "::error::Archipelago.zip is missing required root file $required_file."
               exit 1
             fi
           done
+
+          # Defense in depth.
+          if find workshop-content -type d -name .git | grep -q .; then
+            echo "::error::Refusing to publish content containing a .git directory."
+            exit 1
+          fi
 
           echo "Workshop upload contents:"
           find workshop-content -type f -print | sort
@@ -89,14 +161,25 @@ jobs:
           publishedFileId: ${{ vars.WORKSHOP_ITEM_ID }}
           path: workshop-content
           changeNote: "Archipelago Client ${{ inputs.client_version }}"
+          useBuiltinDeployIgnore: true
 
       - name: Write Workshop summary
+        env:
+          CLIENT_VERSION: ${{ inputs.client_version }}
+          WORKSHOP_ITEM_ID: ${{ vars.WORKSHOP_ITEM_ID }}
         shell: bash
         run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            source_description="GitHub Release (manual retry)"
+          else
+            source_description="Release workflow artifact"
+          fi
+
           {
             echo "## Steam Workshop Published"
             echo ""
-            echo "- Client: ${{ inputs.client_version }}"
-            echo "- Workshop Item: ${{ vars.WORKSHOP_ITEM_ID }}"
-            echo "- Content source: \`Archipelago.zip\`"
+            echo "- Client: $CLIENT_VERSION"
+            echo "- Workshop Item: $WORKSHOP_ITEM_ID"
+            echo "- Content source: $source_description"
+            echo "- Package: \`Archipelago.zip\`"
           } >> "$GITHUB_STEP_SUMMARY"
