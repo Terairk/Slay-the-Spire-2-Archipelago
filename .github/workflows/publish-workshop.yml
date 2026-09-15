@@ -102,6 +102,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           CLIENT_VERSION: ${{ inputs.client_version }}
         shell: bash
         run: |
