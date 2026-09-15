@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.0" />
+    <PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.1" />
     <Compile Include="..\StS2AP\Data\ArchipelagoIdCodec.cs" Link="Data\ArchipelagoIdCodec.cs" />
     <Compile Include="..\StS2AP\Utils\CoopGoalPolicy.cs" Link="Utils\CoopGoalPolicy.cs" />
     <Compile Include="..\StS2AP\Utils\CoopPlayerSelection.cs" Link="Utils\CoopPlayerSelection.cs" />
