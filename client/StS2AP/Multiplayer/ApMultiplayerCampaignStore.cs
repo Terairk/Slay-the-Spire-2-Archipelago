@@ -103,6 +103,8 @@ public static class ApMultiplayerCampaignStore
         public bool IsUsable => Metadata != null && Error == null;
     }
 
+    internal sealed record DeleteAllResult(int CampaignDirectories, bool ActiveApSaveDeleted);
+
     public static void BeginNewCampaign()
     {
         _selectedCampaignId = null;
@@ -226,6 +228,34 @@ public static class ApMultiplayerCampaignStore
             DeleteCanonicalSaveIfPresent();
             _selectedCampaignId = null;
         }
+    }
+
+    internal static DeleteAllResult DeleteAllLocalCampaignsForCurrentProfile()
+    {
+        if (GameUtility.IsInRun || MultiplayerSupport.IsMultiplayerScope)
+            throw new InvalidOperationException(
+                "Local AP multiplayer campaigns cannot be deleted during a run or multiplayer setup."
+            );
+
+        string activeSavePath = GetActiveSavePath();
+        bool deleteActiveSave = File.Exists(activeSavePath)
+            && LocalApSaveDeletion.ContainsArchipelagoRunData(
+                File.ReadAllText(activeSavePath),
+                ModEntry.ModId
+            );
+        string root = GetCampaignRoot();
+        int campaignDirectories = Directory.Exists(root)
+            ? Directory.EnumerateDirectories(root).Count()
+            : 0;
+
+        if (Directory.Exists(root))
+            Directory.Delete(root, recursive: true);
+        if (deleteActiveSave)
+            DeleteCanonicalSaveIfPresent();
+
+        _selectedCampaignId = null;
+        IsStartingNewCampaign = false;
+        return new DeleteAllResult(campaignDirectories, deleteActiveSave);
     }
 
     /// <summary>Imports the pre-feature canonical host save once so it is not stranded.</summary>

@@ -39,6 +39,10 @@ public static class ModSettingsRegistration
     // Cloud saves
     private const string CloudSaves_EnableId = "enable_remote_singleplayer_saves";
 
+    // Local saves
+    private const string LocalSaves_DeleteSingleplayerId = "delete_local_singleplayer_saves";
+    private const string LocalSaves_DeleteMultiplayerId = "delete_local_multiplayer_saves";
+
     #endregion
 
     #region Handle Hotkeys
@@ -122,6 +126,7 @@ public static class ModSettingsRegistration
                     .AddSection("notifications", ConfigureNotificationsSection)
                     .AddSection("multiplayer", ConfigureMultiplayerSection)
                     .AddSection("cloud_saves", ConfigureCloudSavesSection)
+                    .AddSection("local_saves", ConfigureLocalSavesSection)
                     .AddSection("relic_rewards", ConfigureRelicRewardsSection)
                     .AddSection("ancient_rewards", ConfigureAncientRewardsSection)
                     .AddSection("deathlink", ConfigureDeathLinkSection)
@@ -418,6 +423,38 @@ public static class ModSettingsRegistration
                 ModSettingsText.Literal(
                     "Uploads the latest eligible singleplayer checkpoint per character and enables Load Remote Save. Disabled by default."))
             .ConfigureEntryMenu(CloudSaves_EnableId, ModSettingsMenuCapabilities.None);
+    }
+
+    private static void ConfigureLocalSavesSection(ModSettingsSectionBuilder section)
+    {
+        section.WithTitle(ModSettingsText.Literal("Local Save Management"))
+            .WithDescription(ModSettingsText.Literal(
+                "Permanently remove Archipelago checkpoints stored on this machine for the current STS profile."))
+            .WithMenuCapabilities(ModSettingsMenuCapabilities.None)
+            .AddButton(
+                LocalSaves_DeleteSingleplayerId,
+                ModSettingsText.Literal("Singleplayer AP checkpoints"),
+                ModSettingsText.Literal("Delete All"),
+                host => LocalSaveManagement.ShowDeleteConfirmation(
+                    multiplayer: false,
+                    host.RequestRefresh
+                ),
+                description: ModSettingsText.Literal(
+                    "Deletes every local AP singleplayer checkpoint for this profile. AP server cloud backups are unaffected."))
+            .ConfigureEntryMenu(LocalSaves_DeleteSingleplayerId, ModSettingsMenuCapabilities.None)
+            .WithEntryEnabledWhen(LocalSaves_DeleteSingleplayerId, LocalSaveManagement.CanDelete)
+            .AddButton(
+                LocalSaves_DeleteMultiplayerId,
+                ModSettingsText.Literal("Multiplayer AP campaigns"),
+                ModSettingsText.Literal("Delete All"),
+                host => LocalSaveManagement.ShowDeleteConfirmation(
+                    multiplayer: true,
+                    host.RequestRefresh
+                ),
+                description: ModSettingsText.Literal(
+                    "Deletes every active, completed, and archived local AP multiplayer campaign for this profile. Non-AP multiplayer saves are preserved."))
+            .ConfigureEntryMenu(LocalSaves_DeleteMultiplayerId, ModSettingsMenuCapabilities.None)
+            .WithEntryEnabledWhen(LocalSaves_DeleteMultiplayerId, LocalSaveManagement.CanDelete);
     }
 
     private static bool CanChangePlayerNumber() => GetPlayerNumberLockReason() == null;

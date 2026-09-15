@@ -117,4 +117,18 @@ public sealed class ApCampaignCompatibilityTests
     public void MissingOrMalformedAPDataGetsAClearRefusal(string json) =>
         Assert.Equal(ApCampaignCompatibility.Refusal,
             ApCampaignCompatibility.GetError(json, "Archipelago", 9, [1UL]));
+
+    [Fact]
+    public void SaveDeletionRecognizesAnArchipelagoMultiplayerSaveAcrossSchemaVersions() =>
+        Assert.True(LocalApSaveDeletion.ContainsArchipelagoRunData(
+            """{"_ritsulib":{"run_saved_data":{"Archipelago":{"schema":1}}}}""",
+            "Archipelago"
+        ));
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("broken")]
+    [InlineData("{\"_ritsulib\":{\"run_saved_data\":{\"AnotherMod\":{}}}}")]
+    public void SaveDeletionPreservesUnknownOrNonArchipelagoMultiplayerSaves(string json) =>
+        Assert.False(LocalApSaveDeletion.ContainsArchipelagoRunData(json, "Archipelago"));
 }
