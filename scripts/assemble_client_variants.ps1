@@ -125,7 +125,7 @@ try {
         }
     }
 
-    $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $stageRoot "archipelago-variants.json") -Encoding utf8
+    $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $stageRoot "archipelago-variants.manifest") -Encoding utf8
 
     if (Test-Path -LiteralPath $modsOutputPath) {
         Remove-Item -LiteralPath $modsOutputPath -Recurse -Force

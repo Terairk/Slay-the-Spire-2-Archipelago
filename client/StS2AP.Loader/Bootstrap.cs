@@ -15,7 +15,7 @@ namespace StS2AP.Loader;
 [ModInitializer(nameof(Initialize))]
 public static class Bootstrap
 {
-    private const string VariantManifestName = "archipelago-variants.json";
+    private const string VariantManifestName = "archipelago-variants.manifest";
     private const string VariantEntryType = "StS2AP.ModEntry";
     private const string VariantEntryMethod = "Initialize";
     private const string RitsuLibAssemblyName = "STS2-RitsuLib";
