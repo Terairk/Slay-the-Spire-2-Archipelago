@@ -38,6 +38,7 @@ SUPPORTED_STS2_API_COMPATS = ("0.107.1", "0.111.0")
 EXPECTED_MOD_ID = "Archipelago"
 EXPECTED_WORLD_GAME = "Slay the Spire II"
 EXCLUDED_CLIENT_FILES = {"0Harmony.dll", "GodotSharp.dll", "sts2.dll"}
+RITSULIB_ASSEMBLY_PREFIXES = ("sts2.ritsulib", "sts2-ritsulib")
 REQUIRED_CLIENT_FILES = {
     "Archipelago.json",
     "Archipelago.dll",
@@ -511,9 +512,15 @@ def include_client_file(path: Path) -> bool:
         return False
     if path.name.endswith(".deps.json"):
         return False
-    if path.name.startswith("STS2.RitsuLib") and path.suffix.lower() == ".dll":
+    if is_ritsulib_assembly(path):
         return False
     return True
+
+
+def is_ritsulib_assembly(path: Path) -> bool:
+    return path.suffix.lower() == ".dll" and path.name.casefold().startswith(
+        RITSULIB_ASSEMBLY_PREFIXES
+    )
 
 
 def create_client_archive(
@@ -630,7 +637,7 @@ def include_client_archive_name(name: str) -> bool:
         return False
     if path.name.endswith(".deps.json"):
         return False
-    if path.name.startswith("STS2.RitsuLib") and path.suffix.lower() == ".dll":
+    if is_ritsulib_assembly(path):
         return False
     return True
 

@@ -162,15 +162,27 @@ class ClientArchiveTests(unittest.TestCase):
                 release.verify_client_archive(archive_path)
 
     def test_rejects_forbidden_build_artifacts(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            archive_path = root / "Archipelago.zip"
-            release.create_client_archive(self.make_valid_entries(root), archive_path)
-            with zipfile.ZipFile(archive_path, "a") as archive:
-                archive.writestr("sts2.dll", b"test")
+        for forbidden_name in (
+            "sts2.dll",
+            "STS2.RitsuLib.dll",
+            "STS2-RitsuLib.dll",
+            "STS2-RitsuLib.Runtime.dll",
+            "STS2-RitsuLib.Shared.dll",
+            "STS2-RitsuLib.Ui.dll",
+            "STS2-RitsuLib.Settings.dll",
+        ):
+            with (
+                self.subTest(forbidden_name=forbidden_name),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                archive_path = root / "Archipelago.zip"
+                release.create_client_archive(self.make_valid_entries(root), archive_path)
+                with zipfile.ZipFile(archive_path, "a") as archive:
+                    archive.writestr(forbidden_name, b"test")
 
-            with self.assertRaisesRegex(release.ReleaseError, "forbidden files"):
-                release.verify_client_archive(archive_path)
+                with self.assertRaisesRegex(release.ReleaseError, "forbidden files"):
+                    release.verify_client_archive(archive_path)
 
     def test_rejects_different_bundled_and_standalone_apworlds(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
