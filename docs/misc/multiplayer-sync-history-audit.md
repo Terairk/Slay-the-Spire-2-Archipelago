@@ -14,7 +14,7 @@ The history matters here: `9fae442` on 5 September consolidated the earlier mult
 | 4, together | **3 — Settings/progress; 4 — lobby joining** | **19 Aug**, `55ebefd`: dedicated lobby contributions and shared/per-player run data | Full progress transport and deltas on 20 Aug; AP Guest relay removed on 28 Aug |
 | 5 | **Shops (added area)** | **21 Aug, 16:28**, `072ba20`: local owner shop construction plus synchronized gold loss | Direct-connection cleanup on 28 Aug; current separate AP page and hinting refinements in September |
 | 6 | **1 — Rest-site options** | **21 Aug, 17:35**, `a934604`: bespoke multiplayer campfire state/manifest protocol | **23 Aug**, `2a36f1d`: replaced by shared progress + native rest-site construction |
-| 7a | **6 — DeathLink** | **24 Aug, 11:01**, `d95193d` | Managed actions at 11:30; host authority on 26 Aug; per-recipient deduplication on 28 Aug |
+| 7a | **6 — DeathLink** | **24 Aug, 11:01**, `d95193d` | Managed actions at 11:30; host authority on 26 Aug; per-recipient deduplication on 28 Aug; combat-only FIFO, native damage and owner-local outgoing sends on 15 Sep |
 | 7b | **6 — Progressive Starter** | **24 Aug, 14:01**, `4c651e1` | Same-day fixes; safe action admission; F# transition model on 6 Sep |
 | 8 | **10 — Universal buffs → gold** | **24 Aug, 21:18**, `83adfd9` | **29 Aug**, `38974b9`: divide five gold across configured characters |
 | 9 | **9 — Bonus Wax Relics** | **8 Sep**, `759a17b`: upstream wax feature; **9 Sep**, `64b01d3`: multiplayer integration | **10 Sep**, `cad9e17`: player-dependent random rankings |
@@ -296,34 +296,35 @@ Receipts for an inactive character remain banked for a later initialization. Thi
 
 ### DeathLink
 
-First code: **24 August, `d95193d` at 11:01**; `ad72a44` changed it to managed actions at 11:30. `3a384ad` on 25 August deferred damage to safe boundaries; `f3a5fae` on 26 August centralized host authorization; `044ecc6` on 28 August added per-recipient AP-event deduplication.
+First code: **24 August, `d95193d` at 11:01**; `ad72a44` changed it to managed actions at 11:30. `3a384ad` on 25 August deferred damage to safe boundaries; `f3a5fae` on 26 August centralized host authorization; `044ecc6` on 28 August added per-recipient AP-event deduplication. The current 15 September design removed noncombat admission, retained distinct events in FIFO order, replaced direct HP assignment with the native damage pipeline and let each local AP owner report their own synchronized death.
 
 Inbound flow:
 
 1. The AP callback belongs to the local directly connected player and is deferred to the Godot main thread.
 2. That process relays the event to the fixed STS host.
 3. The host deduplicates using **recipient NetId + AP source + timestamp**, as well as transport event IDs. Two players sharing a slot do not consume each other’s delivery.
-4. The host admits one event at a time, selecting a `CombatPlayPhaseOnly` or `NonCombat` descriptor when native execution is idle and the phase is safe.
-5. It calculates concrete target HP from the recipient’s frozen damage percentage. Every replica executes `CreatureCmd.SetCurrentHp` to the same host-authored value.
+4. Every distinct event remains in a FIFO queue. The host admits only the head event, and only when the native synchronizer is in `PlayPhase`, combat is neither starting nor ending, and the native action executor and queues are idle. An event received in a shop, event, map room, combat setup, enemy turn or combat teardown therefore waits for a later stable player-combat boundary. Completion of one managed action allows the next queued event to be considered on a later process frame.
+5. At admission, the host calculates raw damage from the recipient’s frozen percentage of Max HP. Every replica executes that host-authored amount through `CreatureCmd.Damage` with `Unblockable | Unpowered`, using the managed action’s queue-backed player-choice context. Block is bypassed, while normal HP-loss hooks still run: Buffer can prevent the loss, Intangible can cap it, death prevention can save the player, and the normal damage number, hit animation and screen feedback can appear.
 
-Outbound flow: after native death prevention completes, only the **host** authorizes a send. It sends an instruction to the dead player’s AP connection owner, who sends once through the AP SDK. Incoming lethal damage is marked to suppress a DeathLink echo; the source also has a short fallback echo window.
+Outbound flow: MegaCrit replicates the player death and every replica observes the post-prevention `InvokeDiedEvent` boundary. Only the process where `LocalContext.IsMe(deadPlayer)` is true continues, validates that it owns the corresponding AP slot, and sends through its own AP connection. This removes the host-to-owner authorization message and trusts MegaCrit to detect any native state divergence. Incoming lethal damage is marked on every replica so the owner suppresses a DeathLink echo; the ledger also retains a short fallback window for a delayed death callback.
 
 Current inbound action validation requires exactly **one target: the AP event recipient**. This is not a host packet that damages everyone simply because one callback arrived. Other connected recipients can receive and relay the same external AP event separately. Death Fragments are a separate feature, currently absent from the enabled multiplayer capability set.
 
-There is an important untested noncombat edge. `NonCombatActionAdmission` proves only that the run is ready, loading/room transition is inactive, combat is absent, the native synchronizer is `NotInCombat`, and action execution/queues are idle. It does **not** exclude Shop or Event rooms. A 100% incoming DeathLink can therefore reach `CreatureCmd.SetCurrentHp(..., 0)` while a shop or event UI is active. Source inspection does not prove that MegaCrit then closes the screen and enters game-over correctly. Event logic that disables a player-selected lethal option does not protect an external HP command. Required runtime cases are: idle shop, idle event, event choice in flight, and delivery during room transition, with a second client observing the same death/game-over state.
+The queue is run-local memory and is cleared by `EndRun`; it is not a persisted inbox across quitting or a crashed process. Deduplication happens before enqueue, so retransmitting the same AP source/timestamp for the same recipient does not create another hit, while two distinct DeathLinks received five seconds apart remain two FIFO entries. If the first kills the target, the later entry is consumed as already dead rather than transferred to another player or combat.
 
 ```mermaid
 flowchart TD
     A[Starter receipt or new-run initialization] --> B[Owner captures and sends concrete starter recipe]
     C[Incoming AP DeathLink] --> D[Owner relays external event]
-    D --> E[Host deduplicates and computes target HP]
+    D --> E[Host deduplicates and appends one FIFO entry]
     B --> F[Safe host-ordered native action]
-    E --> F
+    E --> Q[Wait for stable combat PlayPhase]
+    Q --> F
     F --> G[Every replica executes identical native commands]
     G --> H[Starter tier persisted / DeathLink echo suppressed]
 ```
 
-Source: [ProgressiveStarterMultiplayer](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Progression/ProgressiveStarterMultiplayer.cs:17), [starter operation application](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Progression/ProgressiveStarterMultiplayer.cs:555), [DeathLinkMultiplayer](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/DeathLink/DeathLinkMultiplayer.cs:17), [noncombat admission gate](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Actions/NonCombatActionAdmission.cs:12), [DeathLinkEventLedger](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/DeathLink/DeathLinkEventLedger.cs:8).
+Source: [ProgressiveStarterMultiplayer](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Progression/ProgressiveStarterMultiplayer.cs:17), [starter operation application](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/Progression/ProgressiveStarterMultiplayer.cs:555), [DeathLink queue, admission and owner send](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/DeathLink/DeathLinkMultiplayer.cs:90), [replicated player-death observer](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Patches/Lifecycle/Patches_DeathLinkPlayerDeath.cs:12), [DeathLinkEventLedger](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/client/StS2AP/Utils/DeathLink/DeathLinkEventLedger.cs:8), [beta native damage pipeline](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-Spire-2-Archipelago/Spire2-Beta-Decompiled%202/MegaCrit/sts2/Core/Commands/CreatureCmd.cs:258).
 
 ## 8. Relic rewards, Rewarding Elites, coupons and chests
 
@@ -561,11 +562,11 @@ Source: [UniversalBuffGold](/Users/jamsari/PersonalProj/ParallelTasks/Slay-the-S
 
 ## Validation and limits
 
-**Performed:** current-source tracing; historical source/diff inspection; author-time comparison; inspection of preserved pre-squash history; current API-target check; relic-receipt regression suite (**289 passed, 3 packaging tests skipped**); DLL-only Release compilation for both supported targets (`0.107.1` and `0.111.0`); artifact source-link validation; `git diff --check` and final working-tree inspection.
+**Performed:** current-source tracing; historical source/diff inspection; author-time comparison; inspection of preserved pre-squash history; current API-target check; client regression suite (**289 passed, 3 packaging tests skipped**); DLL-only Release compilation for both supported targets (`0.107.1` and `0.111.0`); artifact source-link validation; `git diff --check` and final working-tree inspection.
 
-**Not run:** APWorld generation/tests, loader verification, singleplayer gameplay, two-client gameplay or reconnect/crash reproduction. The chest protocol changed at runtime, so the successful state tests and C# builds do not prove that two native clients retain matching relic RNG/bag state. Historical “working” messages are attributed to the developer/commit and are not fresh proof from this audit.
+**Not run:** APWorld generation/tests, loader verification, singleplayer gameplay, two-client gameplay or reconnect/crash reproduction. The chest and DeathLink protocols changed at runtime, so successful state tests and C# builds do not prove matching native relic state, FIFO delivery timing, mitigation behavior or lethal echo suppression between two live clients. Historical “working” messages are attributed to the developer/commit and are not fresh proof from this audit.
 
-Only `Spire2-Beta-Decompiled 2/` was available as a local decompiled reference. Its Pael’s Wing, Tress, Crucible, card-factory and rest/chest lifecycle code was used as **beta static evidence**. There was no matching public decompilation here; beta source is not proof of public runtime behavior. The supported project targets were checked separately.
+Only `Spire2-Beta-Decompiled 2/` was available as a local decompiled reference. Its Pael’s Wing, Tress, Crucible, card-factory, damage pipeline and rest/chest lifecycle code was used as **beta static evidence**. There was no matching public decompilation here; beta source is not proof of public runtime behavior. The supported project targets were checked separately.
 
 A compact in-game follow-up matrix would be:
 
@@ -582,7 +583,9 @@ A compact in-game follow-up matrix would be:
 | Pael’s Wing sacrifice | Matching sacrifice counter/native relic grant and one consumed AP reward, even with no selected card |
 | Egg acquired after an offer was revealed | Eligible assigned choices refresh without rerolling or replaying one-shot generation effects |
 | Save/rejoin with revealed offers, coupons, starters and wax | Restore the selected host snapshot’s native/AP state, exact offers and per-player cadence |
-| Duplicate DeathLink during phase transitions | One admitted event per recipient; deferred safe application; no outbound lethal echo |
-| 100% DeathLink in an idle shop and idle event | Native death/game-over closes each screen coherently on both clients; repeat with an event choice in flight |
+| DeathLink in a shop, event, map room or combat transition | No immediate HP change; event remains queued until a stable combat player phase |
+| Two DeathLinks queued five seconds apart | Two ordered managed actions and two damage attempts; no coalescing or duplicate outward echo |
+| DeathLink with Block, Buffer, Intangible and death prevention | Block is bypassed; Buffer/Intangible/death prevention modify the result identically on both clients; native damage feedback plays |
+| Ordinary host and client deaths | Each dead player’s local process sends exactly one AP DeathLink after native death prevention; other replicas remain silent |
 
 To inspect a historical entry locally, use `git show <hash>` or `git show <hash>:<historical-path>`. Files moved between `Utils/`, `Multiplayer/`, `Persistence/` and feature folders over this history, so a current-path-only log is insufficient.
