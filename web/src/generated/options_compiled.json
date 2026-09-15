@@ -4,11 +4,11 @@
   "sources": {
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "46d8799dc080c867fa9bc7c965221c545feea1519405c0f51909c33550579fbd"
+      "sha256": "219755f34cfa8874018a90e4fb51fc7b623c31ce41e717278c9253642eeb9d96"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
-      "sha256": "29be0d14d9afa1dd388b3a68005f7277660aafe2b0d80e5e6fc35f187db2e6b8"
+      "sha256": "3bc4ad644e642a88312fe747a898ab194b41aa4d203be5a6db29127512351198"
     }
   },
   "option_order": [
@@ -514,7 +514,7 @@
       "module": "worlds.spire2.options",
       "kind": "range",
       "display_name": "Player Count",
-      "description": "Number of co-op players sharing this AP slot, each with separate items, checks and goals.\nThe final character roster must contain at least this many characters.\nRandom locks give distinct seeded starts. Fixed locks give Player 1 the configured start\nand the other players distinct seeded starts. Unlocked makes every character available to everyone.\nEach client must select its own player number before connecting.",
+      "description": "Number of co-op players sharing this AP slot, each with separate items, checks and goals.\nEach player independently rolls their own character roster. Random locks choose one seeded start per player.\nFixed locks give Player 1 the configured start and choose a seeded random start for every other player.\nUnlocked makes every character in each player's roster available immediately.\nEach client must select its own player number before connecting.",
       "default": 1,
       "raw_default": 1,
       "visibility": {
@@ -603,7 +603,7 @@
       "module": "worlds.spire2.options",
       "kind": "range",
       "display_name": "Pick Number of Characters",
-      "description": "Randomly select from the configured characters this many characters to generate for.\n0 disables.\nFor example, if \"character\" is configured to be:\n    characters:\n        - Ironclad\n        - Silent\n        - Defect\nand pick_num_characters is 2, one possible generated set is Ironclad and Defect.",
+      "description": "Randomly select from the configured characters this many characters for each player to generate for.\nEach player's selection is rolled independently, and selections may overlap.\n0 gives every player all configured characters.\nFor example, if \"character\" is configured to be:\n    characters:\n        - Ironclad\n        - Silent\n        - Defect\nand pick_num_characters is 2, one possible generated set is Ironclad and Defect.",
       "default": 0,
       "raw_default": 0,
       "visibility": {
@@ -655,7 +655,7 @@
       "module": "worlds.spire2.options",
       "kind": "choice",
       "display_name": "Lock Characters",
-      "description": "Whether in a multi character run \"Unlock [Char]\" items should be shuffled in.\nlocked_fixed means the unlocked_character option is used to determine which character to start with\nlocked_random means which character you start with is randomized\nunlocked means you start with all characters available",
+      "description": "Whether in a multi character run \"Unlock [Char]\" items should be shuffled in.\nlocked_fixed uses unlocked_character for Player 1 and randomizes the starting character for other players.\nlocked_random independently randomizes which character each player starts with.\nunlocked makes every character in each player's roster available.",
       "default": "locked_random",
       "raw_default": 1,
       "visibility": {
@@ -696,7 +696,7 @@
       "module": "worlds.spire2.options",
       "kind": "text_choice",
       "display_name": "Unlocked Character",
-      "description": "Which character to start unlocked, if lock_characters is set to locked_fixed.\nCan also enter a character name for modded characters.",
+      "description": "Which character Player 1 starts with, if lock_characters is set to locked_fixed.\nCan also enter a character name for modded characters.",
       "default": "ironclad",
       "raw_default": 0,
       "visibility": {

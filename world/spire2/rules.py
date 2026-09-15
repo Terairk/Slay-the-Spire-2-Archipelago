@@ -156,10 +156,10 @@ def set_rules(world: 'SlayTheSpire2World') -> None:
     for config in world.all_player_characters:
         _set_rules(world, config)
 
-    num_goals = len(world.characters) if world.options.num_chars_goal.value == 0 else world.options.num_chars_goal.value
-    assert num_goals > 0
     completion = True_()
     for configs in world.player_characters.values():
+        num_goals = len(configs) if world.options.num_chars_goal.value == 0 else world.options.num_chars_goal.value
+        assert num_goals > 0
         completion = completion & HasFromListUnique(*[f"{config.ap_name} Victory" for config in configs],
                                                     count=num_goals)
     world.set_completion_rule(completion)

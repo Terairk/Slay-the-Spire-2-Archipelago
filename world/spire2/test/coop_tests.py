@@ -58,51 +58,82 @@ class TestCoopGeneration(unittest.TestCase):
         with self.assertRaisesRegex(OptionError, "Player 1"):
             self.generate(4, bonus_items=bonuses)
 
-    def test_starts_are_seeded_distinct_and_fixed_start_is_preserved(self):
+    def test_starts_are_seeded_per_player_and_fixed_start_is_preserved_for_player_one(self):
         for mode in (1, 2):
-            worlds = [self.generate(lock_characters=mode, unlocked_character="Silent").worlds[1] for _ in range(2)]
+            worlds = [self.generate(characters=[*self.roster, "Necrobinder"], pick_num_characters=2,
+                                    lock_characters=mode, unlocked_character="Silent").worlds[1]
+                      for _ in range(2)]
             starts = [[next(c.name for c in configs if not c.locked)
                        for configs in world.player_characters.values()] for world in worlds]
             self.assertEqual(starts[0], starts[1])
-            self.assertEqual(4, len(set(starts[0])))
+            self.assertTrue(all(sum(not config.locked for config in configs) == 1
+                                for configs in worlds[0].player_characters.values()))
             if mode == 2:
                 self.assertEqual("Silent", starts[0][0])
+                self.assertIn("Silent", [config.name for config in worlds[0].player_characters[1]])
+
+    def test_each_player_rolls_an_independent_roster(self):
+        options = {
+            "characters": [*self.roster, "Necrobinder"],
+            "pick_num_characters": 2,
+            "lock_characters": 1,
+        }
+        worlds = [self.generate(seed=42, **options).worlds[1] for _ in range(2)]
+        rosters = [[tuple(config.option_name for config in configs)
+                    for configs in world.player_characters.values()] for world in worlds]
+        self.assertEqual(rosters[0], rosters[1])
+        self.assertTrue(all(len(roster) == 2 for roster in rosters[0]))
+        self.assertGreater(len(set(rosters[0])), 1)
+        self.assertTrue(all(sum(not config.locked for config in configs) == 1
+                            for configs in worlds[0].player_characters.values()))
 
     def test_unlocked_and_advanced_rosters(self):
         mw = self.generate(lock_characters=0, use_advanced_characters=1,
-                           advanced_characters={name: {"ascension": [1]} for name in self.roster})
+                           advanced_characters={name: {"ascension": [1]} for name in self.roster},
+                           pick_num_characters=2)
         self.assertTrue(all(not c.locked for c in mw.worlds[1].all_player_characters))
         self.assertFalse(any("Press Start" in loc.name for loc in mw.get_locations(1)))
+        rosters = [tuple(config.option_name for config in configs)
+                   for configs in mw.worlds[1].player_characters.values()]
+        self.assertTrue(all(len(roster) == 2 for roster in rosters))
+        self.assertGreater(len(set(rosters)), 1)
 
-    def test_insufficient_roster_or_pick_count_fails(self):
-        for options in ({"characters": ["Ironclad"]}, {"pick_num_characters": 3}):
-            with self.subTest(options=options), self.assertRaises(OptionError):
-                self.generate(**options)
+    def test_roster_size_does_not_limit_player_count(self):
+        for mode in (0, 1, 2):
+            with self.subTest(mode=mode):
+                mw = self.generate(characters=["Ironclad"], pick_num_characters=1,
+                                   lock_characters=mode, unlocked_character="Ironclad")
+                self.assertEqual(4, len(mw.worlds[1].player_characters))
+                for configs in mw.worlds[1].player_characters.values():
+                    self.assertEqual(["Ironclad"], [config.name for config in configs])
+                    self.assertFalse(configs[0].locked)
 
     def test_logic_is_independent_and_all_players_must_goal(self):
         mw = self.generate(num_chars_goal=1, lock_characters=2, unlocked_character="Ironclad")
         world = mw.worlds[1]
         state = CollectionState(mw)
         self.assertTrue(world.get_entrance("Ironclad Early Act 1").can_reach(state))
-        self.assertFalse(world.get_entrance("P2 Ironclad Early Act 1").can_reach(state))
-        state.collect(world.create_item("P2 Ironclad Unlock"), prevent_sweep=True)
-        self.assertTrue(world.get_entrance("P2 Ironclad Early Act 1").can_reach(state))
+        p2_locked = next(config for config in world.player_characters[2] if config.locked)
+        self.assertFalse(world.get_entrance(f"{p2_locked.ap_name} Early Act 1").can_reach(state))
+        state.collect(world.create_item(f"{p2_locked.ap_name} Unlock"), prevent_sweep=True)
+        self.assertTrue(world.get_entrance(f"{p2_locked.ap_name} Early Act 1").can_reach(state))
         for _ in range(3):
             state.collect(world.create_item("Ironclad Relic"), prevent_sweep=True)
         self.assertEqual(4.5, state.power_level[1][1])
-        self.assertEqual(0, state.power_level[1][101])
-        state.collect(world.create_item("P2 Ironclad Relic"), prevent_sweep=True)
-        self.assertEqual(1.5, state.power_level[1][101])
-        state.remove(world.create_item("P2 Ironclad Relic"))
-        self.assertEqual(0, state.power_level[1][101])
+        self.assertEqual(0, state.power_level[1][p2_locked.power_key])
+        state.collect(world.create_item(f"{p2_locked.ap_name} Relic"), prevent_sweep=True)
+        self.assertEqual(1.5, state.power_level[1][p2_locked.power_key])
+        state.remove(world.create_item(f"{p2_locked.ap_name} Relic"))
+        self.assertEqual(0, state.power_level[1][p2_locked.power_key])
         for number in range(1, 5):
             self.assertFalse(mw.completion_condition[1](state))
             state.collect(world.create_item(player_name("Ironclad Victory", number)), prevent_sweep=True)
         self.assertTrue(mw.completion_condition[1](state))
 
     def test_tracker_regeneration_keeps_player_rosters_and_checks(self):
-        mw = self.generate(pick_num_characters=4)
+        mw = self.generate(pick_num_characters=2)
         slot_data = mw.worlds[1].fill_slot_data()
+        self.assertEqual(slot_data['characters'], slot_data['players']['1'])
         regenerated = setup_solo_multiworld(SlayTheSpire2World, steps=())
         regenerated.re_gen_passthrough = {SlayTheSpire2World.game: slot_data}
         for step in ("generate_early", "create_regions", "create_items", "set_rules"):
@@ -110,6 +141,24 @@ class TestCoopGeneration(unittest.TestCase):
         self.assertEqual({(loc.name, loc.address) for loc in mw.get_locations(1)},
                          {(loc.name, loc.address) for loc in regenerated.get_locations(1)})
         self.assertEqual(slot_data['players'], regenerated.worlds[1].fill_slot_data()['players'])
+
+    def test_tracker_regeneration_uses_each_players_modded_character_aliases(self):
+        mw = self.generate(characters=["Ironclad", "Silent"],
+                           modded_characters=["ModA", "ModB", "ModC"],
+                           pick_num_characters=2)
+        slot_data = mw.worlds[1].fill_slot_data()
+        regenerated = setup_solo_multiworld(SlayTheSpire2World, steps=())
+        regenerated.re_gen_passthrough = {SlayTheSpire2World.game: slot_data}
+        for step in ("generate_early", "create_regions"):
+            call_all(regenerated, step)
+        world = regenerated.worlds[1]
+        for configs in world.player_characters.values():
+            for config in configs:
+                if config.mod_num == 0:
+                    continue
+                location = world.get_location(f"{config.ap_name} Reached Floor 1")
+                expected = player_name(f"{config.official_name} Reached Floor 1", config.player_number)
+                self.assertEqual(expected, world.location_id_to_alias[location.address])
 
     def test_full_inventory_reaches_every_player(self):
         mw = self.generate(shop_sanity=1, campfire_sanity=1, gold_sanity=1, potion_sanity=1,

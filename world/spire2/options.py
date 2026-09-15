@@ -12,9 +12,9 @@ from .constants import NUM_CUSTOM, ASCENSIONS
 
 class PlayerCount(Range):
     """Number of co-op players sharing this AP slot, each with separate items, checks and goals.
-    The final character roster must contain at least this many characters.
-    Random locks give distinct seeded starts. Fixed locks give Player 1 the configured start
-    and the other players distinct seeded starts. Unlocked makes every character available to everyone.
+    Each player independently rolls their own character roster. Random locks choose one seeded start per player.
+    Fixed locks give Player 1 the configured start and choose a seeded random start for every other player.
+    Unlocked makes every character in each player's roster available immediately.
     Each client must select its own player number before connecting."""
     display_name = "Player Count"
     range_start = 1
@@ -58,8 +58,9 @@ class GoalNumChar(Range):
     default = 0
 
 class PickNumberCharacters(Range):
-    """Randomly select from the configured characters this many characters to generate for.
-    0 disables.
+    """Randomly select from the configured characters this many characters for each player to generate for.
+    Each player's selection is rolled independently, and selections may overlap.
+    0 gives every player all configured characters.
     For example, if "character" is configured to be:
         characters:
             - Ironclad
@@ -74,9 +75,9 @@ class PickNumberCharacters(Range):
 
 class LockCharacters(Choice):
     """Whether in a multi character run "Unlock [Char]" items should be shuffled in.
-    locked_fixed means the unlocked_character option is used to determine which character to start with
-    locked_random means which character you start with is randomized
-    unlocked means you start with all characters available"""
+    locked_fixed uses unlocked_character for Player 1 and randomizes the starting character for other players.
+    locked_random independently randomizes which character each player starts with.
+    unlocked makes every character in each player's roster available."""
     display_name = "Lock Characters"
     option_unlocked = 0
     option_locked_random = 1
@@ -84,7 +85,7 @@ class LockCharacters(Choice):
     default = 1
 
 class UnlockedCharacter(TextChoice):
-    """Which character to start unlocked, if lock_characters is set to locked_fixed.
+    """Which character Player 1 starts with, if lock_characters is set to locked_fixed.
     Can also enter a character name for modded characters."""
     default = 0
     option_ironclad = 0
