@@ -32,7 +32,7 @@
     <AssemblyName>$(ModName)</AssemblyName>
 
     <!-- Client Release Version -->
-    <Version>2.3.1</Version>
+    <Version>2.4.0</Version>
 
     <!-- Build/deploy paths on the Windows build machine. -->
     <ModsOutputDir Condition="'$(ModsOutputDir)' == ''"
