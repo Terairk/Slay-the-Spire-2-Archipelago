@@ -910,6 +910,11 @@ namespace StS2AP
             ArchipelagoConnectionUI.SetConnectButtonEnabled(true);
             ArchipelagoConnectionUI.SetCloseButtonEnabled(true);
             ArchipelagoConnectionUI.SetStatus(reason);
+            NotificationUtility.ShowRawText(
+                reason,
+                timeout: 8.0,
+                priority: NotificationUtility.NotificationPriority.High
+            );
         }
 
         /// <summary>

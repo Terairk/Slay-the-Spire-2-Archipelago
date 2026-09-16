@@ -606,7 +606,9 @@ namespace StS2AP.UI
             // We failed to connect
             else if (state == ConnectionState.Disconnected)
             {
-                SetStatus("Failed to connect. Please check your details and try again.");
+                if (_statusLabel == null || !IsInstanceValid(_statusLabel)
+                    || _statusLabel.Text == "Connecting...")
+                    SetStatus("Failed to connect. Please check your details and try again.");
                 SetConnectButtonEnabled(true);
                 SetCloseButtonEnabled(true);
             }
