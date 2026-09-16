@@ -307,7 +307,7 @@ public static class MultiplayerSupport
         reason = string.Empty;
         var candidate = ApSessionIdentity.Create(
             ArchipelagoClient.ServerAddress, roomSeed, apTeamId, apSlotId,
-            ArchipelagoClient.LocalSettings.Value.MultiplayerPlayerNumber);
+            CoopSlot.PlayerNumber);
         if (_preparedSessionIdentity is { } expected
             && expected != candidate)
         {
@@ -530,6 +530,12 @@ public static class MultiplayerSupport
         if (!ArchipelagoClient.IsConnected)
         {
             reason = "This AP-bound player must reconnect before opening the multiplayer lobby.";
+            return false;
+        }
+
+        if (ArchipelagoClient.Settings?.IsLegacySingleplayerSlot == true)
+        {
+            reason = "This APWorld supports AP Singleplayer only. Use a shared-slot APWorld for AP Multiplayer.";
             return false;
         }
 
