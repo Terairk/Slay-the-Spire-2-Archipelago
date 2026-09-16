@@ -3,6 +3,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
+using StS2AP.Data;
 using StS2AP.Utils;
 
 namespace StS2AP.Patches
@@ -74,9 +75,7 @@ namespace StS2AP.Patches
                     // IMPORTANT: Multiplayer has one fewer physical floor in every act. Keep the
                     // APWorld's singleplayer-compatible 17/16/15 layout by offsetting later acts,
                     // then emit the missing boss-arena milestone when the boss room is entered.
-                    QueueFloorCheck(player, normalizedFloor);
-                    if (isMultiplayerBossBoundary)
-                        QueueFloorCheck(player, normalizedFloor + 1);
+                    QueueFloorChecks(player, normalizedFloor + (isMultiplayerBossBoundary ? 1 : 0));
                 }
 
                 if (isMultiplayerBossBoundary)
@@ -88,11 +87,14 @@ namespace StS2AP.Patches
             }
         }
 
-        private static void QueueFloorCheck(Player player, int floor)
+        private static void QueueFloorChecks(Player player, int floor)
         {
-            string locationName = $"{player.APName()} Reached Floor {floor}";
-            LogUtility.Debug($"Attempting to record floor check: {locationName}");
-            MultiplayerLocationChecks.QueueCheck(player, locationName);
+            int lastFloor = Math.Clamp(floor, 0, LocationData.MaxFloor);
+            var ids = Enumerable.Range(1, lastFloor)
+                .Select(number => LocationData.GetFloorLocation(player, number));
+            LocationCheckSendResult result = GameUtility.QueueChecks(ids);
+            if (result.AcceptedCount > 0)
+                LogUtility.Info($"Recorded {result.AcceptedCount} floor check(s) through floor {floor}");
         }
 
         private static void ApplyMultiplayerBossCompensation(
@@ -115,7 +117,8 @@ namespace StS2AP.Patches
                     {
                         MultiplayerLocationChecks.QueueCheck(
                             player,
-                            $"{player.APName()} Combat Gold {goldNumber}"
+                            $"{player.APName()} Combat Gold {goldNumber}",
+                            LocationData.GetCombatGoldLocation(player, goldNumber)
                         );
                     }
                 }
@@ -127,7 +130,8 @@ namespace StS2AP.Patches
                     {
                         MultiplayerLocationChecks.QueueCheck(
                             player,
-                            $"{player.APName()} Potion Drop {potionNumber}"
+                            $"{player.APName()} Potion Drop {potionNumber}",
+                            LocationData.GetPotionDropLocation(player, potionNumber)
                         );
                     }
                 }
@@ -143,7 +147,8 @@ namespace StS2AP.Patches
                 // RelicRewardsAttempted or BankedRelicRewards.
                 MultiplayerLocationChecks.QueueCheck(
                     player,
-                    $"{player.APName()} Relic {ArchipelagoProgress._maxRelicRewards}"
+                    $"{player.APName()} Relic {ArchipelagoProgress._maxRelicRewards}",
+                    LocationData.GetRelicLocation(player, ArchipelagoProgress._maxRelicRewards)
                 );
             }
         }
@@ -166,7 +171,8 @@ namespace StS2AP.Patches
             {
                 MultiplayerLocationChecks.QueueCheck(
                     player,
-                    $"{player.APName()} Card Reward {rewardNumber}"
+                    $"{player.APName()} Card Reward {rewardNumber}",
+                    LocationData.GetCardRewardLocation(player, rewardNumber)
                 );
             }
         }

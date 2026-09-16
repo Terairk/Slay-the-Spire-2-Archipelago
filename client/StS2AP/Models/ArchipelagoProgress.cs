@@ -57,11 +57,6 @@ namespace StS2AP.Models
         public const int _maxShopRemoves = 3;
 
         /// <summary>
-        /// The number of floor rewards in floorsanity
-        /// </summary>
-        public const int _maxFloorRewards = 47;
-
-        /// <summary>
         /// Maximum possible number of Campfire Rewards that a player could find.
         /// </summary>
         public const int _maxCampfireChecks = 6;

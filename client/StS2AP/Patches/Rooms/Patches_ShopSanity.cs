@@ -17,6 +17,7 @@ using MegaCrit.Sts2.Core.Nodes.Potions;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
+using StS2AP.Data;
 using StS2AP.Utils;
 
 namespace StS2AP.Patches
@@ -108,7 +109,9 @@ namespace StS2AP.Patches
 
                     try
                     {
-                        long locationId = ResolveLocationId(checkName);
+                        long locationId = LocationData.GetShopLocation(player, slot);
+                        if (!ArchipelagoClient.SlotLocationIds.Contains(locationId))
+                            continue;
                         if (isChecked || ArchipelagoClient.CheckedLocations.Contains(locationId))
                         {
                             continue;
@@ -128,33 +131,6 @@ namespace StS2AP.Patches
             /// <summary>Pops the next unclaimed location ID off the queue</summary>
             public ShopCheckTarget GetNext() => _missing.Dequeue();
 
-            private static long ResolveLocationId(string checkName)
-            {
-                checkName = CoopSlot.Name(checkName);
-                if (ArchipelagoClient.Session != null)
-                {
-                    return ArchipelagoClient.Session.Locations.GetLocationIdFromName(
-                        "Slay the Spire II",
-                        checkName
-                    );
-                }
-
-                foreach ((long locationId, ScoutedItemInfo info) in
-                    ArchipelagoClient.ScoutedLocations)
-                {
-                    if (string.Equals(
-                        info.LocationName,
-                        checkName,
-                        StringComparison.Ordinal))
-                    {
-                        return locationId;
-                    }
-                }
-
-                throw new InvalidOperationException(
-                    $"No cached location identity exists for {checkName}."
-                );
-            }
         }
 
         #endregion
@@ -681,17 +657,16 @@ namespace StS2AP.Patches
             return true;
         }
 
-        private static void SendShopCheck(
+        private static bool SendShopCheck(
             Player player,
             ShopCheckTarget target)
         {
             if (!MultiplayerSupport.IsRealMultiplayerRun)
             {
-                GameUtility.QueueCheck(target.LocationId);
-                return;
+                return GameUtility.QueueCheck(target.LocationId).WasRecorded;
             }
 
-            MultiplayerLocationChecks.QueueCheck(player, target.LocationName, target.LocationId);
+            return MultiplayerLocationChecks.QueueCheck(player, target.LocationName, target.LocationId);
         }
 
         /// <summary>
@@ -768,8 +743,10 @@ namespace StS2AP.Patches
                 }
 
                 LogUtility.Info($"ShopSanity: sending check for location {target.LocationId}");
-                SendShopCheck(player, target);
-                MarkShopSlotChecked(target);
+                if (SendShopCheck(player, target))
+                    MarkShopSlotChecked(target);
+                else
+                    LogUtility.Error($"ShopSanity: could not record purchased location {target.LocationId}");
 
                 // AP checks are single-use even when The Courier would refill vanilla entries.
                 ClearApEntry(entry);

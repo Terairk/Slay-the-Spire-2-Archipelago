@@ -7,16 +7,16 @@
 
 # Mod Information
 
-- Client version: **{{MOD_VERSION}}**
-- APWorld version included in this release: **{{APWORLD_VERSION}}**
+- Client version: **{{CLIENT_VERSION}}**
+- APWorld version included in this release: **{{WORLD_VERSION}}**
 
 ## Pre-Requisites
 
 - **Your Slay the Spire II client must be running on Windows**. The debug terminal we use uses Win32 APIs.
   - This will not be a requirement long-term, but for early Alpha development it's necessary.
 - **Your host MUST use Archipelago Client v0.6.7+**.
-- This mod contains exact client variants for Slay the Spire II **public v0.107.1**
-  and **public-beta v0.111.0**.
+- This mod contains exact client variants for Slay the Spire II **public v{{STS2_PUBLIC_VERSION}}**
+  and **public-beta v{{STS2_BETA_VERSION}}**.
   - Later patch releases on either version line use the newest compatible build
     from that line and produce a warning in the log.
   - The loader refuses unreadable versions, earlier patches, and new major/minor

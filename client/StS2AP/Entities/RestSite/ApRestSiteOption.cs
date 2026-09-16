@@ -61,13 +61,14 @@ public sealed class ApRestSiteOption : RestSiteOption
         // check mutates the AP slot; all replicas report native success for the same option index.
         if (!MultiplayerSupport.IsRealMultiplayerRun)
         {
+            if (!GameUtility.QueueCheck(_locationId).WasRecorded)
+                return Task.FromResult(false);
             ArchipelagoClient.Progress.CheckedCampfireLocationIds.Add(_locationId);
-            GameUtility.QueueCheck(_locationId);
         }
         else if (MultiplayerLocationChecks.IsCheckWriter(Owner))
         {
-            ArchipelagoClient.Progress.CheckedCampfireLocationIds.Add(_locationId);
-            MultiplayerLocationChecks.QueueCheck(Owner, _locationName, _locationId);
+            if (MultiplayerLocationChecks.QueueCheck(Owner, _locationName, _locationId))
+                ArchipelagoClient.Progress.CheckedCampfireLocationIds.Add(_locationId);
             if (!MultiplayerLocationChecks.PublishEffectiveCheckProgress(Owner))
             {
                 LogUtility.Error(

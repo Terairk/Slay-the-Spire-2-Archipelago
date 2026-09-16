@@ -10,9 +10,9 @@ using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Managers;
 
-#if STS2_0_107_1 && STS2_0_111_0
+#if STS_PUBLIC && STS_BETA
 #error Only one exact STS2 target constant may be defined.
-#elif !STS2_0_107_1 && !STS2_0_111_0
+#elif !STS_PUBLIC && !STS_BETA
 #error One exact STS2 target constant must be defined.
 #endif
 
@@ -59,9 +59,9 @@ public static class BetaMainCompatibility
 
     public static string GetRunSavePath(int profileId, string fileName)
     {
-#if STS2_0_107_1
+#if STS_PUBLIC
         return RunSaveManager.GetRunSavePath(profileId, fileName);
-#elif STS2_0_111_0
+#elif STS_BETA
         return RunSaveManager.GetRunSavePath(profileId, fileName, null);
 #else
 #error BetaMainCompatibility requires one exact STS2 target constant.
@@ -101,27 +101,27 @@ public static class BetaMainCompatibility
 
     public static IReadOnlyList<ulong> GetConnectedRunPlayerNetIds(RunLobby lobby)
     {
-#if STS2_0_107_1
+#if STS_PUBLIC
         return lobby.ConnectedPlayerIds.ToArray();
-#elif STS2_0_111_0
+#elif STS_BETA
         return lobby.PlayerIds.ToArray();
 #endif
     }
 
     public static IReadOnlyList<ulong> GetConnectedRunPlayerNetIds(LoadRunLobby lobby)
     {
-#if STS2_0_107_1
+#if STS_PUBLIC
         return lobby.ConnectedPlayerIds.ToArray();
-#elif STS2_0_111_0
+#elif STS_BETA
         return lobby.PlayerIds.ToArray();
 #endif
     }
 
     public static CardCreationOptions WithCombatRewardCompatibility(CardCreationOptions options)
     {
-#if STS2_0_107_1
+#if STS_PUBLIC
         return options;
-#elif STS2_0_111_0
+#elif STS_BETA
         return options.WithFlags(CardCreationFlags.IsFromCombat);
 #endif
     }

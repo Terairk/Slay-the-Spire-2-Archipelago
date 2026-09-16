@@ -73,10 +73,8 @@ namespace StS2AP.Patches
 
             string locationName = $"{characterName} Ancient Act {currentAct}";
 
-            if (!MultiplayerSupport.IsRealMultiplayerRun)
-                GameUtility.QueueCheck(locationName);
-            else
-                MultiplayerLocationChecks.QueueCheck(player, locationName);
+            MultiplayerLocationChecks.QueueCheck(
+                player, locationName, LocationData.GetAncientLocation(player, currentAct));
         }
 
     }

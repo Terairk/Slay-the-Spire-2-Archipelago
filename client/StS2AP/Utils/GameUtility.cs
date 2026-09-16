@@ -438,7 +438,7 @@ namespace StS2AP.Utils
                     // Goal progress is independent from whether victory releases this character's checks.
                     if (settings.ReleaseOnVictory)
                     {
-                        await TryReleaseAllCharacterChecks(player.APName());
+                        TryReleaseAllCharacterChecks(player);
                         if (!ReferenceEquals(session, ArchipelagoClient.Session)) return;
                     }
                     else
@@ -470,38 +470,17 @@ namespace StS2AP.Utils
         /// This function should be called upon clearing a run with that character.
         /// </summary>
 
-        public static async Task TryReleaseAllCharacterChecks(string charName)
+        private static void TryReleaseAllCharacterChecks(Player player)
         {
-            charName = CoopSlot.Name(charName);
-            // Location names begin with the AP character name (for example, "Ironclad").
-            var characterLocations = ArchipelagoClient.ScoutedLocations
-                .Where(kvp => kvp.Value.LocationName.StartsWith(
-                    $"{charName} ",
-                    StringComparison.OrdinalIgnoreCase
-                ))
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            // It shouldn't be possible, but if somehow we get here, write this problem to the log.
-            if (characterLocations.Count == 0)
-            {
-                LogUtility.Warn($"TryReleaseAllCharacterChecks(): No locations found containing '{charName}'");
+            long? characterNumber = player.GetAPCharacterNumber();
+            if (!characterNumber.HasValue)
                 return;
-            }
-
-            LogUtility.Info($"TryReleaseAllCharacterChecks: Releasing {characterLocations.Count} checks for '{charName}'");
-
-            // Send every unchecked location for this character
-            foreach (var locationId in characterLocations)
-            {
-                if (!ArchipelagoClient.CheckedLocations.Contains(locationId) && locationId != -1 && ArchipelagoClient.ScoutedLocations.ContainsKey(locationId))
-                {
-                    // Check the location off and let the server know
-                    QueueCheck(locationId);
-                }
-            }
-
-            await Task.CompletedTask;
+            long blockStart = (characterNumber.Value - 1) * ArchipelagoIdCodec.BlockSize;
+            var locations = ArchipelagoClient.SlotLocationIds.Where(id =>
+                CoopSlot.Owns(id)
+                && ArchipelagoIdCodec.WithoutPlayer(id) >= blockStart
+                && ArchipelagoIdCodec.WithoutPlayer(id) < blockStart + ArchipelagoIdCodec.BlockSize);
+            QueueChecks(locations);
         }
 
         public static void TrySendPressStartCheck()
@@ -522,39 +501,43 @@ namespace StS2AP.Utils
             QueueCheck(locationId);
         }
 
-        public static void QueueCheck(string checkName)
-        {
-            if (MultiplayerSupport.IsMultiplayerScope
-                && !MultiplayerSupport.IsLocalOwnApSlot)
-            {
-                return;
-            }
-            ArchipelagoSession? session = ArchipelagoClient.Session;
-            if (session == null)
-            {
-                LogUtility.Warn($"Cannot send location '{checkName}' without an active AP session.");
-                return;
-            }
-            var locationId = session.Locations.GetLocationIdFromName("Slay the Spire II", CoopSlot.Name(checkName));
-            QueueCheck(locationId);
-        }
+        internal static LocationCheckSendResult QueueCheck(long locationId) =>
+            QueueChecks(new[] { locationId });
 
-        public static void QueueCheck(long locationId)
+        internal static LocationCheckSendResult QueueChecks(IEnumerable<long> locationIds)
         {
-            if (!CoopSlot.Owns(locationId))
-                return;
-            if (MultiplayerSupport.IsMultiplayerScope
-                && !MultiplayerSupport.IsLocalOwnApSlot)
+            long[] requested = locationIds.Distinct().ToArray();
+            if (!ArchipelagoClient.HasAuthenticatedSlot
+                || (MultiplayerSupport.IsMultiplayerScope && !MultiplayerSupport.IsLocalOwnApSlot))
             {
-                return;
+                return new(LocationCheckSendResult.DispatchStatus.NoAuthenticatedSlot,
+                    requested.Length, 0, 0, 0);
             }
-            if (!ArchipelagoClient.CheckedLocations.Contains(locationId) && locationId != -1 && ArchipelagoClient.ScoutedLocations.ContainsKey(locationId))
+
+            int alreadyChecked = 0;
+            int notInSlot = 0;
+            var pending = new List<long>();
+            foreach (long id in requested)
             {
-                // Record the location durably before attempting the socket write. If the
-                // connection is timing out, it will be replayed after the next login.
-                ArchipelagoClient.CheckedLocations.Add(locationId);
-                PendingCheckUtility.RecordAndSend(locationId);
+                if (id < 0 || !CoopSlot.Owns(id) || !ArchipelagoClient.SlotLocationIds.Contains(id))
+                    notInSlot++;
+                else if (ArchipelagoClient.CheckedLocations.Contains(id))
+                    alreadyChecked++;
+                else
+                    pending.Add(id);
             }
+
+            var dispatch = PendingCheckUtility.RecordAndSend(pending);
+            int accepted = 0;
+            if (dispatch is LocationCheckSendResult.DispatchStatus.Queued
+                or LocationCheckSendResult.DispatchStatus.Submitted)
+            {
+                accepted = pending.Count;
+                foreach (long id in pending)
+                    if (!ArchipelagoClient.CheckedLocations.Contains(id))
+                        ArchipelagoClient.CheckedLocations.Add(id);
+            }
+            return new(dispatch, requested.Length, accepted, alreadyChecked, notInSlot);
         }
 
         /// <summary>Local checkpoints survive a disconnect; arbitrary recovery would bypass Ancient gates.</summary>

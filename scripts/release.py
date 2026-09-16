@@ -806,6 +806,10 @@ def render_release_notes(repo: Path, versions: Versions, destination: Path) -> N
         template.replace("{{VERSION}}", str(versions.mod))
         .replace("{{MOD_VERSION}}", str(versions.mod))
         .replace("{{APWORLD_VERSION}}", str(versions.apworld))
+        .replace("{{CLIENT_VERSION}}", str(versions.mod))
+        .replace("{{WORLD_VERSION}}", str(versions.apworld))
+        .replace("{{STS2_PUBLIC_VERSION}}", SUPPORTED_STS2_API_COMPATS[0])
+        .replace("{{STS2_BETA_VERSION}}", SUPPORTED_STS2_API_COMPATS[1])
     )
     destination.write_text(content, encoding="utf-8")
 

@@ -233,6 +233,14 @@ namespace StS2AP
         // The SDK may publish its initial checked locations before login preparation runs.
         public static List<long> CheckedLocations { get; set; } = new();
 
+        /// <summary>
+        /// Location IDs belonging to the authenticated AP slot. Unlike scouting data, this
+        /// remains available while a live run waits for an automatic reconnect.
+        /// </summary>
+        internal static IReadOnlySet<long> SlotLocationIds { get; private set; } = new HashSet<long>();
+
+        internal static bool HasAuthenticatedSlot => PendingCheckUtility.HasAuthenticatedSlot;
+
         #endregion
 
         /// <summary>
@@ -445,6 +453,7 @@ namespace StS2AP
             Settings = null;
             SlotData = new();
             CheckedLocations = new();
+            SlotLocationIds = new HashSet<long>();
             ScoutedLocations = new();
             Seed = string.Empty;
             PendingCheckUtility.ClearSlotBinding();
@@ -1009,6 +1018,8 @@ namespace StS2AP
             int apTeamId = session.ConnectionInfo.Team;
             int apSlotId = session.ConnectionInfo.Slot;
             MultiplayerSupport.NoteApSessionConnected(Seed, apTeamId, apSlotId);
+
+            SlotLocationIds = new HashSet<long>(session.Locations.AllLocations.Where(CoopSlot.Owns));
 
             // Bind durable external effects only after login has authenticated the exact room,
             // team, and slot represented by this session.

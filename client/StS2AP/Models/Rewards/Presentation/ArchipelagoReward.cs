@@ -44,28 +44,27 @@ public sealed class ArchipelagoReward : ModCustomReward
             RewardStem,
             (_, player, json) =>
             {
-                string? locationName = string.IsNullOrWhiteSpace(json)
-                    ? null
-                    : JsonSerializer.Deserialize<string>(json);
-                return new ArchipelagoReward(
-                    player,
-                    locationName ?? "Unknown Archipelago Location"
-                );
+                if (string.IsNullOrWhiteSpace(json))
+                    throw new InvalidDataException("Missing AP location reward data.");
+                var location = JsonSerializer.Deserialize<LocationRewardData>(json)
+                    ?? throw new InvalidDataException("Missing AP location reward data.");
+                return new ArchipelagoReward(player, location.LocationId, location.LocationName);
             }
         );
         _registeredRewardType = definition.RewardType;
         _initialized = true;
     }
 
-    public ArchipelagoReward(Player player, string locationName) : base(player)
+    internal ArchipelagoReward(Player player, long locationId, string locationName) : base(player)
     {
         _locationName = locationName;
-        _locationId = MultiplayerLocationChecks.ResolveLocationId(player, locationName);
+        _locationId = locationId;
         _isChecked = MultiplayerLocationChecks.IsChecked(player, _locationId);
         _descriptionKey = BuildDescriptionKey(player.NetId, locationName);
 
         string displayName = locationName;
-        if (_locationId != -1
+        if (MultiplayerLocationChecks.IsCheckWriter(player)
+            && _locationId != -1
             && ArchipelagoClient.ScoutedLocations.TryGetValue(_locationId, out var location))
         {
             displayName = $"{location.ItemDisplayName} for {location.Player.Name}";
@@ -75,7 +74,10 @@ public sealed class ArchipelagoReward : ModCustomReward
         TextUtility.RegisterLocString(_descriptionKey, displayName, "ap");
     }
 
-    public override string ToModRewardJson() => JsonSerializer.Serialize(_locationName);
+    public override string ToModRewardJson() =>
+        JsonSerializer.Serialize(new LocationRewardData(_locationId, _locationName));
+
+    private sealed record LocationRewardData(long LocationId, string LocationName);
 
     public override Control? CreateIcon()
     {
@@ -107,8 +109,9 @@ public sealed class ArchipelagoReward : ModCustomReward
 
     protected override Task<bool> OnSelect()
     {
-        MultiplayerLocationChecks.QueueCheck(Player, _locationName, _locationId);
-        return Task.FromResult(true);
+        bool recorded = MultiplayerLocationChecks.QueueCheck(Player, _locationName, _locationId);
+        // Replicas must agree on native selection; the writer's pending checks are separate AP state.
+        return Task.FromResult(MultiplayerSupport.IsRealMultiplayerRun || recorded);
     }
 
     public override void MarkContentAsSeen()

@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.Extensions;
+using StS2AP.Data;
 using StS2AP.Utils;
 using static MegaCrit.Sts2.Core.Multiplayer.Game.TreasureRoomRelicSynchronizer;
 
@@ -38,6 +39,7 @@ namespace StS2AP.Patches
 
             rewards.Add(new ArchipelagoReward(
                 player,
+                LocationData.GetRelicLocation(player, rewardNumber),
                 $"{player.APName()} Relic {rewardNumber}"
             ));
 
@@ -94,6 +96,7 @@ namespace StS2AP.Patches
                             __result.Remove(cardReward);
                             __result.Add(new ArchipelagoReward(
                                 player,
+                                LocationData.GetRareCardRewardLocation(player, rewardNumber),
                                 $"{name} Rare Card Reward {rewardNumber}"
                             ));
                         }
@@ -114,6 +117,7 @@ namespace StS2AP.Patches
                                 __result.Remove(cardReward);
                                 __result.Add(new ArchipelagoReward(
                                     player,
+                                    LocationData.GetCardRewardLocation(player, rewardNumber),
                                     $"{name} Card Reward {rewardNumber}"
                                 ));
                             }
@@ -134,6 +138,7 @@ namespace StS2AP.Patches
                             __result.Remove(goldReward);
                             __result.Add(new ArchipelagoReward(
                                 player,
+                                LocationData.GetBossGoldLocation(player, actNumber),
                                 $"{name} Boss Gold {actNumber}"
                             ));
                         }
@@ -149,6 +154,7 @@ namespace StS2AP.Patches
                                 __result.Remove(goldReward);
                                 __result.Add(new ArchipelagoReward(
                                     player,
+                                    LocationData.GetCombatGoldLocation(player, rewardNumber),
                                     $"{name} Combat Gold {rewardNumber}"
                                 ));
                             }
@@ -166,6 +172,7 @@ namespace StS2AP.Patches
                             __result.Remove(potionReward);
                             __result.Add(new ArchipelagoReward(
                                 player,
+                                LocationData.GetPotionDropLocation(player, rewardNumber),
                                 $"{name} Potion Drop {rewardNumber}"
                             ));
                         }
@@ -222,7 +229,10 @@ namespace StS2AP.Patches
                         return;
                     RelicRewardUtility.RecordFrozenChestReward(player, candidate.RewardNumber);
                     if (!candidate.ApGated) return;
-                    MultiplayerLocationChecks.QueueCheck(player, $"{player.APName()} Relic {candidate.RewardNumber}");
+                    MultiplayerLocationChecks.QueueCheck(
+                        player,
+                        $"{player.APName()} Relic {candidate.RewardNumber}",
+                        LocationData.GetRelicLocation(player, candidate.RewardNumber));
                     if (candidate.ReceiptIndex is int receiptIndex)
                     {
                         if (!RelicRewardUtility.TryConsumeWaitingReceiptForNaturalReward(player, receiptIndex))
@@ -257,7 +267,8 @@ namespace StS2AP.Patches
                 // things out so what's 3 more.
                 MultiplayerLocationChecks.QueueCheck(
                     player,
-                    $"{player.APName()} Relic {rewardNumber}"
+                    $"{player.APName()} Relic {rewardNumber}",
+                    LocationData.GetRelicLocation(player, rewardNumber)
                 );
 
                 var relicPicker = RunManager.Instance.TreasureRoomRelicSynchronizer;

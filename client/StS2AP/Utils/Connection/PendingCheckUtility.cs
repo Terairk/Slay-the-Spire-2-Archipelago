@@ -13,6 +13,7 @@ namespace StS2AP.Utils
         private const string OutboxPrefix = "user://sts_ap_pending_checks_v2_";
         private static readonly object _stateLock = new();
         private static BoundApSession? _boundSession;
+        internal static bool HasAuthenticatedSlot => GetBoundSession() != null;
 
         private sealed record BoundApSession(
             ArchipelagoSession Session,
@@ -82,47 +83,26 @@ namespace StS2AP.Utils
             }
         }
 
-        /// <summary>
-        /// Adds a newly earned location to the durable outbox, then attempts to send it
-        /// immediately when the same authenticated Archipelago session is still connected.
-        /// Checks already present in the outbox are not submitted a second time here; the
-        /// reconnect reconciliation path is responsible for retrying them.
-        /// </summary>
-        /// <param name="locationId">The Archipelago location ID earned by the player.</param>
-        public static void RecordAndSend(long locationId)
+        internal static LocationCheckSendResult.DispatchStatus RecordAndSend(IEnumerable<long> locationIds)
         {
-            if (!CoopSlot.Owns(locationId))
-            {
-                LogUtility.Error($"Refusing to send another co-op player's location {locationId}.");
-                return;
-            }
+            long[] requested = locationIds.Distinct().ToArray();
+            if (requested.Length == 0)
+                return LocationCheckSendResult.DispatchStatus.None;
+            if (requested.Any(id => id < 0 || !CoopSlot.Owns(id)))
+                return LocationCheckSendResult.DispatchStatus.NoAuthenticatedSlot;
             if (MultiplayerSupport.IsMultiplayerScope)
-            {
-                RecordAndSendMultiplayer(locationId);
-                return;
-            }
+                return RecordAndSendMultiplayer(requested);
 
             BoundApSession? bound = GetBoundSession();
             if (bound == null)
-            {
-                LogUtility.Error(
-                    $"Could not persist location check {locationId}: no authenticated AP identity is bound"
-                );
-                return;
-            }
+                return LocationCheckSendResult.DispatchStatus.NoAuthenticatedSlot;
+            if (!TryRecord(bound.Identity, requested, out long[] newlyRecorded))
+                return LocationCheckSendResult.DispatchStatus.PersistenceFailed;
+            if (!IsCurrentConnectedSession(bound) || newlyRecorded.Length == 0)
+                return LocationCheckSendResult.DispatchStatus.Queued;
 
-            if (!TryRecord(bound.Identity, locationId))
-                return;
-
-            if (!IsCurrentConnectedSession(bound))
-            {
-                LogUtility.Warn(
-                    $"Queued location check {locationId} until its Archipelago session reconnects"
-                );
-                return;
-            }
-
-            _ = SendAsync(bound, new[] { locationId }, replaying: false);
+            _ = SendAsync(bound, newlyRecorded, replaying: false);
+            return LocationCheckSendResult.DispatchStatus.Submitted;
         }
 
         /// <summary>
@@ -194,25 +174,22 @@ namespace StS2AP.Utils
             _ = SendAsync(bound, recognized.ToArray(), replaying: true);
         }
 
-        // EXPLAIN: the RecordAndSendMultiplayer vs ReconcileAndSendMultiplayer
-        private static void RecordAndSendMultiplayer(long locationId)
+        private static LocationCheckSendResult.DispatchStatus RecordAndSendMultiplayer(long[] locationIds)
         {
-            // Only this player's direct AP connection submits their checks.
             if (!MultiplayerSupport.IsLocalOwnApSlot)
-                return;
+                return LocationCheckSendResult.DispatchStatus.NoAuthenticatedSlot;
 
-            if (!ArchipelagoClient.Progress.PendingLocationChecks.Add(locationId))
-                return;
-            if (GameUtility.CurrentPlayer is { } player)
+            long[] newlyRecorded = locationIds
+                .Where(ArchipelagoClient.Progress.PendingLocationChecks.Add).ToArray();
+            if (newlyRecorded.Length > 0 && GameUtility.CurrentPlayer is { } player)
                 ApRunData.PublishLocalProgress(player);
 
             BoundApSession? bound = GetBoundSession();
-            if (bound == null || !IsCurrentConnectedSession(bound))
-            {
-                LogUtility.Warn($"Queued multiplayer location check {locationId} until AP reconnects");
-                return;
-            }
-            _ = SendAsync(bound, new[] { locationId }, replaying: false);
+            if (newlyRecorded.Length == 0 || bound == null || !IsCurrentConnectedSession(bound))
+                return LocationCheckSendResult.DispatchStatus.Queued;
+
+            _ = SendAsync(bound, newlyRecorded, replaying: false);
+            return LocationCheckSendResult.DispatchStatus.Submitted;
         }
 
         private static void ReconcileAndSendMultiplayer()
@@ -255,35 +232,26 @@ namespace StS2AP.Utils
             _ = SendAsync(bound, recognized.ToArray(), replaying: true);
         }
 
-        /// <summary>
-        /// Attempts to add a location to the identity-specific outbox on disk.
-        /// </summary>
-        /// <returns>
-        /// <see langword="true"/> when the caller should attempt an immediate network send.
-        /// <see langword="false"/> when the location was already present or could not be
-        /// associated with the supplied authenticated identity.
-        /// </returns>
-        private static bool TryRecord(ApSessionIdentity identity, long locationId)
+        private static bool TryRecord(
+            ApSessionIdentity identity, IEnumerable<long> locationIds, out long[] newlyRecorded)
         {
+            newlyRecorded = Array.Empty<long>();
             try
             {
                 lock (_stateLock)
                 {
                     string path = GetPendingCheckPath(identity);
                     PendingCheckOutbox outbox = Load(path, identity);
-                    if (!outbox.LocationIds.Add(locationId))
-                        return false;
-
-                    Save(path, outbox);
+                    newlyRecorded = locationIds.Where(outbox.LocationIds.Add).ToArray();
+                    if (newlyRecorded.Length > 0)
+                        Save(path, outbox);
                     return true;
                 }
             }
             catch (Exception ex)
             {
-                LogUtility.Error($"Failed to persist location check {locationId}: {ex}");
-                // The currently authenticated session is still the correct destination. Preserve
-                // the previous best-effort behavior rather than silently dropping the check.
-                return true;
+                LogUtility.Error($"Failed to persist location checks: {ex}");
+                return false;
             }
         }
 
@@ -315,7 +283,7 @@ namespace StS2AP.Utils
                 LogUtility.Info(
                     replaying
                         ? $"Resubmitted {locationIds.Length} pending location check(s)"
-                        : $"Submitted location check: {locationIds[0]}"
+                        : $"Submitted {locationIds.Length} location check(s)"
                 );
             }
             catch (Exception ex)

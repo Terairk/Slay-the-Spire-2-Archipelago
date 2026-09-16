@@ -1,0 +1,138 @@
+name: Publish Steam Workshop
+
+on:
+  workflow_dispatch:
+    inputs:
+      client_version:
+        description: "Existing GitHub Release version to publish to Steam"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  workshop-upload:
+    name: Publish to Steam Workshop
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # The Workshop environment protects the manual publication.
+    # The job waits for approval before these environment secrets are exposed.
+    environment: workshop
+
+    steps:
+      - name: Validate Workshop configuration
+        env:
+          CLIENT_VERSION: ${{ inputs.client_version }}
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+          WORKSHOP_ITEM_ID: ${{ vars.WORKSHOP_ITEM_ID }}
+        shell: bash
+        run: |
+          missing=()
+
+          [[ -n "$CLIENT_VERSION" ]] ||
+            missing+=("client_version")
+
+          [[ -n "$STEAM_USERNAME" ]] ||
+            missing+=("workshop secret STEAM_USERNAME")
+
+          [[ -n "$STEAM_CONFIG_VDF" ]] ||
+            missing+=("workshop secret STEAM_CONFIG_VDF")
+
+          [[ -n "$WORKSHOP_ITEM_ID" ]] ||
+            missing+=("workshop variable WORKSHOP_ITEM_ID")
+
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing required Workshop configuration: %s\n' \
+              "$(IFS=', '; echo "${missing[*]}")"
+            exit 1
+          fi
+
+          if [[ ! "$WORKSHOP_ITEM_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::workshop variable WORKSHOP_ITEM_ID must contain only digits."
+            exit 1
+          fi
+
+      - name: Download package from GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CLIENT_VERSION: ${{ inputs.client_version }}
+        shell: bash
+        run: |
+          mkdir -p release-assets
+
+          if ! gh release view "$CLIENT_VERSION" > /dev/null 2>&1; then
+            echo "::error::GitHub Release $CLIENT_VERSION does not exist."
+            exit 1
+          fi
+
+          gh release download "$CLIENT_VERSION" \
+            --pattern "Archipelago.zip" \
+            --dir release-assets
+
+          if [[ ! -f release-assets/Archipelago.zip ]]; then
+            echo "::error::Release $CLIENT_VERSION does not contain Archipelago.zip."
+            exit 1
+          fi
+
+      - name: Prepare Workshop content
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f release-assets/Archipelago.zip
+
+          mkdir -p workshop-content
+          unzip -q release-assets/Archipelago.zip -d workshop-content
+
+          for required_file in \
+            Archipelago.dll \
+            Archipelago.pck \
+            Archipelago.json \
+            spire2.apworld; do
+
+            if [[ ! -f "workshop-content/$required_file" ]]; then
+              echo "::error::Archipelago.zip is missing required root file $required_file."
+              exit 1
+            fi
+          done
+
+          # Defense in depth.
+          if find workshop-content -type d -name .git | grep -q .; then
+            echo "::error::Refusing to publish content containing a .git directory."
+            exit 1
+          fi
+
+          echo "Workshop upload contents:"
+          find workshop-content -type f -print | sort
+
+      - name: Upload to Steam Workshop
+        uses: m00nl1ght-dev/steam-workshop-deploy@913f0844e2153d798189397036918f4ceb0911e0 # v4
+        with:
+          username: ${{ secrets.STEAM_USERNAME }}
+          configVdf: ${{ secrets.STEAM_CONFIG_VDF }}
+          appId: "2868840"
+          publishedFileId: ${{ vars.WORKSHOP_ITEM_ID }}
+          path: workshop-content
+          changeNote: "Archipelago Client ${{ inputs.client_version }}"
+          useBuiltinDeployIgnore: true
+
+      - name: Write Workshop summary
+        env:
+          CLIENT_VERSION: ${{ inputs.client_version }}
+          WORKSHOP_ITEM_ID: ${{ vars.WORKSHOP_ITEM_ID }}
+        shell: bash
+        run: |
+          source_description="GitHub Release (manual publication)"
+
+          {
+            echo "## Steam Workshop Published"
+            echo ""
+            echo "- Client: $CLIENT_VERSION"
+            echo "- Workshop Item: $WORKSHOP_ITEM_ID"
+            echo "- Content source: $source_description"
+            echo "- Package: \`Archipelago.zip\`"
+          } >> "$GITHUB_STEP_SUMMARY"

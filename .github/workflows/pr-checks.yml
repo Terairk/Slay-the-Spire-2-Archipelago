@@ -1,0 +1,56 @@
+name: Validate Mod
+
+on:
+  pull_request:
+    branches:
+      - main
+      - multiplayer-squashed
+
+permissions:
+  contents: read
+
+# If someone pushes 3 commits rapidly, don't waste time finishing the obsolete builds for commits 1 and 2
+concurrency:
+  group: validate-mod-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  release-scripts:
+    name: Run Release Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Run release automation tests
+        run: python -m unittest discover -s scripts/tests -p "test_*.py"
+
+  # Grab the StS2 Versions we want to validate against
+  versions:
+    uses: ./.github/workflows/get-sts2-versions.yml
+
+  apworld:
+    name: Build APWorld
+    uses: ./.github/workflows/build-apworld.yml
+    with:
+      upload_artifact: false
+
+  client:
+    name: Build C# Client - StS2 v${{ matrix.sts2-version }}
+    needs: versions
+
+    strategy:
+      fail-fast: false
+      matrix:
+        sts2-version: ${{ fromJSON(needs.versions.outputs.matrix) }}
+
+    uses: ./.github/workflows/build-client.yml
+    with:
+      build_mode: CompileOnly
+      sts2_api_compat: ${{ matrix.sts2-version }}

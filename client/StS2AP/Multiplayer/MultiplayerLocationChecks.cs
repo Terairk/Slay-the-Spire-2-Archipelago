@@ -1,4 +1,3 @@
-using Archipelago.MultiClient.Net;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Runs;
@@ -241,32 +240,6 @@ public static class MultiplayerLocationChecks
             && IsLocalProgressOwner(player);
     }
 
-    public static long ResolveLocationId(Player player, string locationName)
-    {
-        if (!IsCheckWriter(player))
-            return -1;
-
-        ArchipelagoSession? session = ArchipelagoClient.Session;
-        if (session == null)
-        {
-            LogUtility.Warn($"Could not resolve AP location '{locationName}': no active AP session");
-            return -1;
-        }
-
-        try
-        {
-            return session.Locations.GetLocationIdFromName(
-                "Slay the Spire II",
-                CoopSlot.Name(locationName)
-            );
-        }
-        catch (Exception ex)
-        {
-            LogUtility.Warn($"Could not resolve AP location '{locationName}': {ex.Message}");
-            return -1;
-        }
-    }
-
     public static bool IsChecked(Player player, long locationId) =>
         locationId != -1
         && IsCheckWriter(player)
@@ -276,30 +249,22 @@ public static class MultiplayerLocationChecks
     /// Records the exact location in the owning AP slot's existing durable multiplayer outbox.
     /// Non-writer replicas still complete the native reward selection.
     /// </summary>
-    public static bool QueueCheck(Player player, string locationName, long locationId = -1)
+    internal static bool QueueCheck(Player player, string locationName, long locationId)
     {
         if (!IsCheckWriter(player))
             return false;
 
         if (locationId == -1)
-            locationId = ResolveLocationId(player, locationName);
-        if (locationId == -1)
         {
             LogUtility.Warn($"Location '{locationName}' not found in the owning Archipelago slot");
             return false;
         }
-        if (!CoopSlot.Owns(locationId))
-        {
-            LogUtility.Error($"Refusing location {locationId} belonging to another co-op player.");
-            return false;
-        }
-        if (ArchipelagoClient.CheckedLocations.Contains(locationId))
-            return false;
-
-        ArchipelagoClient.CheckedLocations.Add(locationId);
-        PendingCheckUtility.RecordAndSend(locationId);
-        LogUtility.Success($"Recorded location check: {locationName} ({locationId})");
-        return true;
+        LocationCheckSendResult result = GameUtility.QueueCheck(locationId);
+        if (result.AcceptedCount > 0)
+            LogUtility.Success($"Recorded location check: {locationName} ({locationId})");
+        else if (!result.WasRecorded)
+            LogUtility.Error($"Could not record location {locationId}: {result.Dispatch}, not-in-slot={result.NotInSlotCount}");
+        return result.WasRecorded;
     }
 
     private enum Counter
