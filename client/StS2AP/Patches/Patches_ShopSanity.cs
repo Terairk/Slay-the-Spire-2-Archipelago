@@ -101,6 +101,9 @@ namespace StS2AP.Patches
         /// </summary>
         private static void HintApInventory(MerchantInventory apInventory)
         {
+            if (!ArchipelagoClient.IsConnected || ArchipelagoClient.Session == null)
+                return;
+
             long[] locationIds = apInventory.AllEntries
                 .Select(entry => TryGetApLocationId(entry, out long locationId) ? locationId : -1)
                 .Where(locationId => locationId != -1)
@@ -141,25 +144,27 @@ namespace StS2AP.Patches
                 {
                     string checkName = $"{player.APName()} Shop Slot {slot}";
 
-                    // ShopSlotsChecked covers checks made this session (written
-                    // immediately on purchase) ArchipelagoClient.CheckedLocations is a
-                    // snapshot taken at connect time (Session.Locations.AllLocationsChecked)
+                    // ShopSlotsChecked tracks the named UI state while CheckedLocations also
+                    // contains durable local submissions that have not yet been server-confirmed.
                     bool isChecked = false;
                     ArchipelagoClient.Progress.ShopSlotsChecked?.TryGetValue(checkName, out isChecked);
 
-                    try
+                    long locationId = LocationData.GetShopLocation(player.Character, slot);
+                    if (
+                        locationId == -1
+                        || !ArchipelagoClient.SlotLocationIds.Contains(locationId)
+                    )
                     {
-                        long locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
-                        if (isChecked || ArchipelagoClient.CheckedLocations.Contains(locationId))
-                        {
-                            continue;
-                        }
-                        _missing.Enqueue(locationId);
+                        LogUtility.Error(
+                            $"ShopSanity: location {checkName} is not present in this AP slot, skipped."
+                        );
+                        continue;
                     }
-                    catch
+                    if (isChecked || ArchipelagoClient.CheckedLocations.Contains(locationId))
                     {
-                        LogUtility.Error($"ShopSanity: failed to resolve location id for {checkName}, skipped.");
+                        continue;
                     }
+                    _missing.Enqueue(locationId);
                 }
             }
 
@@ -178,8 +183,6 @@ namespace StS2AP.Patches
         /// </summary>
         private static (string itemName, string playerName, ApItemClassification classification) ResolveApItem(long locationId)
         {
-            string checkName = ArchipelagoClient.Session.Locations.GetLocationNameFromId(locationId);
-
             ScoutedItemInfo info;
             if (ArchipelagoClient.ScoutedLocations.TryGetValue(locationId, out info))
             {
@@ -191,14 +194,17 @@ namespace StS2AP.Patches
                 return (info.ItemName, info.Player.Alias, classification);
             }
 
+            string checkName = ArchipelagoClient.Session?.Locations.GetLocationNameFromId(locationId)
+                ?? $"AP Location {locationId}";
             LogUtility.Warn($"ShopSanity: no scouted info for location {locationId} ({checkName}), showing as generic Filler.");
             return (checkName, "???", ApItemClassification.Filler);
         }
 
         /// <summary>Records a shop slot's location as checked this session</summary>
-        private static void MarkShopSlotChecked(long locationId)
+        private static void MarkShopSlotChecked(long locationId, Player player)
         {
-            string checkName = ArchipelagoClient.Session.Locations.GetLocationNameFromId(locationId);
+            int slot = (int)(locationId % 10000L) - 36;
+            string checkName = $"{player.APName()} Shop Slot {slot}";
             ArchipelagoClient.Progress.ShopSlotsChecked[checkName] = true;
         }
 
@@ -623,8 +629,13 @@ namespace StS2AP.Patches
                 }
 
                 LogUtility.Info($"ShopSanity: sending check for location {locationId}");
-                GameUtility.SendCheck(locationId);
-                MarkShopSlotChecked(locationId);
+                LocationCheckSendResult result = GameUtility.SendCheck(locationId);
+                if (result.WasRecorded)
+                    MarkShopSlotChecked(locationId, player);
+                else
+                    LogUtility.Error(
+                        $"ShopSanity: could not record purchased location {locationId}: {result.Dispatch}"
+                    );
 
                 // AP checks are single-use even when The Courier would refill vanilla entries.
                 ClearApEntry(entry);

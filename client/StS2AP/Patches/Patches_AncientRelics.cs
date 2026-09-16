@@ -252,7 +252,9 @@ namespace StS2AP.Patches
                 {
                     return;
                 }
-                GameUtility.SendCheck($"{player.Character.APName()} Ancient Act {currentAct}");
+                GameUtility.SendCheck(
+                    LocationData.GetAncientLocation(player.Character, currentAct)
+                );
             }
         }
 

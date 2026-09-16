@@ -164,6 +164,14 @@ namespace StS2AP
         /// </summary>
         public static List<long> CheckedLocations { get; set; }
 
+        /// <summary>
+        /// Location IDs belonging to the authenticated AP slot. Unlike scouting data, this
+        /// remains available while a live run waits for an automatic reconnect.
+        /// </summary>
+        internal static IReadOnlySet<long> SlotLocationIds { get; private set; } = new HashSet<long>();
+
+        internal static bool HasAuthenticatedSlot => _authenticatedIdentity != null;
+
         #endregion
 
         /// <summary>
@@ -362,6 +370,7 @@ namespace StS2AP
             Settings = null!;
             SlotData = new();
             CheckedLocations = new();
+            SlotLocationIds = new HashSet<long>();
             ScoutedLocations = new();
             Seed = string.Empty;
             _authenticatedIdentity = null;
@@ -412,6 +421,7 @@ namespace StS2AP
                 SlotData?.Clear();
                 SlotData = new Dictionary<string, object>();
                 CheckedLocations = new List<long>();
+                SlotLocationIds = new HashSet<long>();
                 ScoutedLocations.Clear();
             }
 
@@ -890,6 +900,8 @@ namespace StS2AP
                 Session.ConnectionInfo.Team,
                 Session.ConnectionInfo.Slot
             );
+
+            SlotLocationIds = new HashSet<long>(Session.Locations.AllLocations);
 
             // Bind durable external effects only after login has authenticated the exact room,
             // team, and slot represented by this session.

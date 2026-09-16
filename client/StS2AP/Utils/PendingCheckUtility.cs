@@ -53,35 +53,43 @@ namespace StS2AP.Utils
         }
 
         /// <summary>
-        /// Adds a newly earned location to the durable outbox, then attempts to send it
-        /// immediately when the same authenticated Archipelago session is still connected.
-        /// Checks already present in the outbox are not submitted a second time here; the
-        /// reconnect reconciliation path is responsible for retrying them.
+        /// Adds newly earned locations to the durable outbox with one disk update, then attempts
+        /// to submit the newly recorded IDs in one SDK call when the authenticated session is
+        /// still connected.
         /// </summary>
-        /// <param name="locationId">The Archipelago location ID earned by the player.</param>
-        public static void RecordAndSend(long locationId)
+        internal static LocationCheckSendResult.DispatchStatus RecordAndSend(
+            IEnumerable<long> locationIds
+        )
         {
+            long[] requested = locationIds.Distinct().ToArray();
+            if (requested.Length == 0)
+                return LocationCheckSendResult.DispatchStatus.None;
+
             BoundApSession? bound = GetBoundSession();
             if (bound == null)
             {
                 LogUtility.Error(
-                    $"Could not persist location check {locationId}: no authenticated AP identity is bound"
+                    $"Could not persist {requested.Length} location check(s): no authenticated AP identity is bound"
                 );
-                return;
+                return LocationCheckSendResult.DispatchStatus.NoAuthenticatedSlot;
             }
 
-            if (!TryRecord(bound.Identity, locationId))
-                return;
+            if (!TryRecord(bound.Identity, requested, out long[] newlyRecorded))
+                return LocationCheckSendResult.DispatchStatus.PersistenceFailed;
 
             if (!IsCurrentConnectedSession(bound))
             {
                 LogUtility.Warn(
-                    $"Queued location check {locationId} for AP session {bound.Identity} until it reconnects"
+                    $"Queued {requested.Length} location check(s) for AP session {bound.Identity} until it reconnects"
                 );
-                return;
+                return LocationCheckSendResult.DispatchStatus.Queued;
             }
 
-            _ = SendAsync(bound, new[] { locationId }, replaying: false);
+            if (newlyRecorded.Length == 0)
+                return LocationCheckSendResult.DispatchStatus.Queued;
+
+            _ = SendAsync(bound, newlyRecorded, replaying: false);
+            return LocationCheckSendResult.DispatchStatus.Submitted;
         }
 
         /// <summary>
@@ -147,14 +155,13 @@ namespace StS2AP.Utils
         }
 
         /// <summary>
-        /// Attempts to add a location to the identity-specific outbox on disk.
+        /// Attempts to add locations to the identity-specific outbox on disk.
         /// </summary>
-        /// <returns>
-        /// <see langword="true"/> when the caller should attempt an immediate network send.
-        /// <see langword="false"/> when the location was already present or could not be
-        /// associated with the supplied authenticated identity.
-        /// </returns>
-        private static bool TryRecord(ApSessionIdentity identity, long locationId)
+        private static bool TryRecord(
+            ApSessionIdentity identity,
+            IEnumerable<long> locationIds,
+            out long[] newlyRecorded
+        )
         {
             try
             {
@@ -162,19 +169,19 @@ namespace StS2AP.Utils
                 {
                     string path = GetPendingCheckPath(identity);
                     PendingCheckOutbox outbox = Load(path, identity);
-                    if (!outbox.LocationIds.Add(locationId))
-                        return false;
-
-                    Save(path, outbox);
+                    newlyRecorded = locationIds
+                        .Where(outbox.LocationIds.Add)
+                        .ToArray();
+                    if (newlyRecorded.Length > 0)
+                        Save(path, outbox);
                     return true;
                 }
             }
             catch (Exception ex)
             {
-                LogUtility.Error($"Failed to persist location check {locationId}: {ex}");
-                // The currently authenticated session is still the correct destination. Preserve
-                // the previous best-effort behavior rather than silently dropping the check.
-                return true;
+                newlyRecorded = Array.Empty<long>();
+                LogUtility.Error($"Failed to persist location checks: {ex}");
+                return false;
             }
         }
 
@@ -206,7 +213,7 @@ namespace StS2AP.Utils
                 LogUtility.Info(
                     replaying
                         ? $"Resubmitted {locationIds.Length} pending location check(s) for AP session {bound.Identity}"
-                        : $"Submitted location check: {locationIds[0]} for AP session {bound.Identity}"
+                        : $"Submitted {locationIds.Length} location check(s) for AP session {bound.Identity}"
                 );
             }
             catch (Exception ex)

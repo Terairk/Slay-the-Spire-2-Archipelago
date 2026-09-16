@@ -12,6 +12,7 @@ namespace StS2AP.Data
     public static class LocationData
     {
         private const long CharacterLocationStride = 10000;
+        internal const int MaxFloor = 49;
 
         /// <summary>
         /// Combines a base Location ID with a character's offset ID
@@ -58,8 +59,77 @@ namespace StS2AP.Data
             // If the ID isn't valid, assume the location doesn't exist
             if (id == -1) return false;
 
-            // If it's valid, see if it's in our Scouted Locations
-            return ArchipelagoClient.ScoutedLocations.ContainsKey(id);
+            return ArchipelagoClient.SlotLocationIds.Contains(id);
+        }
+
+        internal static long GetRelicLocation(CharacterModel character, int rewardNumber)
+        {
+            return rewardNumber is >= 1 and <= 10
+                ? CombineLocationAndCharacterIds(26 + rewardNumber, character)
+                : -1;
+        }
+
+        internal static long GetCardRewardLocation(CharacterModel character, int rewardNumber)
+        {
+            return rewardNumber is >= 1 and <= ArchipelagoProgress._maxCardRewards
+                ? CombineLocationAndCharacterIds(rewardNumber, character)
+                : -1;
+        }
+
+        internal static long GetRareCardRewardLocation(CharacterModel character, int rewardNumber)
+        {
+            return rewardNumber is >= 1 and <= ArchipelagoProgress._maxRareCardRewards
+                ? CombineLocationAndCharacterIds(94 + rewardNumber, character)
+                : -1;
+        }
+
+        internal static long GetCombatGoldLocation(CharacterModel character, int rewardNumber)
+        {
+            return rewardNumber is >= 1 and <= ArchipelagoProgress._maxGoldRewards
+                ? CombineLocationAndCharacterIds(53 + rewardNumber, character)
+                : -1;
+        }
+
+        internal static long GetBossGoldLocation(CharacterModel character, int act)
+        {
+            return act is >= 1 and <= 2
+                ? CombineLocationAndCharacterIds(98 + act, character)
+                : -1;
+        }
+
+        internal static long GetPotionDropLocation(CharacterModel character, int rewardNumber)
+        {
+            return rewardNumber is >= 1 and <= ArchipelagoProgress._maxPotionRewards
+                ? CombineLocationAndCharacterIds(78 + rewardNumber, character)
+                : -1;
+        }
+
+        internal static long GetShopLocation(CharacterModel character, int slot)
+        {
+            return slot is >= 1 and <= 16
+                ? CombineLocationAndCharacterIds(36 + slot, character)
+                : -1;
+        }
+
+        internal static long GetCampfireLocation(CharacterModel character, int act, int campfire)
+        {
+            return act is >= 1 and <= 3 && campfire is >= 1 and <= 2
+                ? CombineLocationAndCharacterIds(89 + ((act - 1) * 2) + campfire - 1, character)
+                : -1;
+        }
+
+        internal static long GetAncientLocation(CharacterModel character, int act)
+        {
+            return act is >= 1 and <= 3
+                ? CombineLocationAndCharacterIds(150 + act, character)
+                : -1;
+        }
+
+        internal static long GetFloorLocation(CharacterModel character, int floor)
+        {
+            return floor is >= 1 and <= MaxFloor
+                ? CombineLocationAndCharacterIds(100 + floor, character)
+                : -1;
         }
 
         /// <summary>
@@ -91,7 +161,10 @@ namespace StS2AP.Data
         /// <returns>A list of location IDs for the specified character's Floorsanity.</returns>
         public static List<long> GetFloorsanityLocations(CharacterModel character)
         {
-            return GetLocationsByPattern($"{character.APName()} Reached Floor #", ArchipelagoProgress._maxFloorRewards);
+            return Enumerable.Range(1, MaxFloor)
+                .Select(floor => GetFloorLocation(character, floor))
+                .Where(ArchipelagoClient.SlotLocationIds.Contains)
+                .ToList();
         }
 
         /// <summary>

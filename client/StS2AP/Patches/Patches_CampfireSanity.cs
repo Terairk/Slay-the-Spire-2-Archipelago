@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
+using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Utils;
 using System.Xml.Linq;
@@ -41,7 +42,13 @@ namespace StS2AP.Patches
                             if (!isChecked)
                             {
                                 
-                                var locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
+                                long locationId = LocationData.GetCampfireLocation(
+                                    player.Character,
+                                    i,
+                                    j
+                                );
+                                if (!ArchipelagoClient.SlotLocationIds.Contains(locationId))
+                                    continue;
                                 LogUtility.Info($"Adding campfire location {locationId} " + checkName);
                                 var description = checkName;
                                 ScoutedItemInfo? info;
@@ -173,19 +180,22 @@ namespace StS2AP.Patches
             public override Task<bool> OnSelect()
             {
                 // Supposed to return true if selecting this option succeeded.
-                return SendCampfireCheck(locationId);
+                return SendCampfireCheck(locationId, checkName);
             }
 
-            public static async Task<bool> SendCampfireCheck(long locationId)
+            public static Task<bool> SendCampfireCheck(long locationId, string checkName)
             {
-                // Send the check to the server
-                GameUtility.SendCheck(locationId);
-
-                // Grab the proper name for the check so we can mark it as checked in the client
-                var checkName = ArchipelagoClient.Session.Locations.GetLocationNameFromId(locationId);
+                LocationCheckSendResult result = GameUtility.SendCheck(locationId);
+                if (!result.WasRecorded)
+                {
+                    LogUtility.Error(
+                        $"Could not record campfire location {locationId}: {result.Dispatch}"
+                    );
+                    return Task.FromResult(false);
+                }
                 ArchipelagoClient.Progress.CampfiresChecked[checkName] = true;
 
-                return true;
+                return Task.FromResult(true);
             }
 
             // Need to override Equals because the base game does equality checks based on
