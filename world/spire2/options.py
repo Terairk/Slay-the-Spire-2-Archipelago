@@ -11,11 +11,13 @@ from .constants import NUM_CUSTOM, ASCENSIONS
 
 
 class PlayerCount(Range):
-    """Number of co-op players sharing this AP slot, each with separate items, checks and goals.
-    Each player independently rolls their own character roster. Random locks choose one seeded start per player.
-    Fixed locks give Player 1 the configured start and choose a seeded random start for every other player.
-    Unlocked makes every character in each player's roster available immediately.
-    Each client must select its own player number before connecting."""
+    """Number of co-op players sharing ONE AP slot, each sharing the same settings but separately tracked progress
+    Each player independently rolls their own character roster. 
+    Each client must select its own player number before connecting.
+    NOTE: You may also play multiplayer via player_count: 1 but everyone has their own yaml and thus each
+    person can have different sanities turned on. 
+    May also be used for asyncs to play the same character multiple times
+    """
     display_name = "Player Count"
     range_start = 1
     range_end = 4
@@ -127,9 +129,9 @@ class Ascension(OptionSet):
 #     default = 0
 
 class NeowSanity(Toggle):
-    """Adds Neow's start-of-run reward as a location and Progressive Ancient reward.
+    """Adds Neow's starting Ancient Relic as a Progressive Ancient reward.
 
-    With Anytime, Neow's relic choices appear in the Archipelago reward menu."""
+    With Anytime mode, Neow's relic choices appear in the Archipelago reward menu."""
     display_name = "Neow Sanity"
     default = 0
 
@@ -159,11 +161,12 @@ class AncientRelicPool(Choice):
 
 
 class RelicRewardsAvailableAnytime(Range):
-    """How many Relic items can be claimed before earning relic rewards in the run.
-
-    The client snapshots this value at run start. Later Relic items need a reward from an
-    Elite, treasure chest, or Black Star before they appear in the AP reward menu. The client's
-    local AP relic availability can be overridden in client settings for new runs only."""
+    """How many AP Relic items can be claimed via the AP Menu without fighting elites or visiting chests.
+    Later AP Relic Items can only be 'claimed' by beating Elites or opening treasure chests.
+    i.e. A value of 2 here and receiving 3 relics from AP means you get 2 relics in your AP menu and the 3rd 
+    requires beating one elite or visiting one chest. 
+    tldr; fight elites and go to chests to get more relics. Lower value = elites matter more so don't skip them
+    """
     display_name = "Relic Rewards Available Anytime"
     range_start = 0
     range_end = 10
