@@ -1,6 +1,6 @@
 # Multiplayer syncing: implementation history and current design
 
-Audited on **14 September 2026** and extended on **15 September 2026**, against the current `multiplayer-squashed` working tree; the historical audit baseline is `3ae1677`. This is a source and Git-history audit, not an in-game certification. Dates below use **UTC+08:00**, matching the development timezone. “First implementation” means the earliest relevant code found in the available local Git history, including WIP commits; it does not mean the first working or released version.
+Audited on **14 September 2026**, extended on **15 September 2026**, and checked against `multiplayer-squashed` at `68c4a03` on **17 September 2026**; the historical audit baseline is `3ae1677`. This is a source and Git-history audit, not an in-game certification. Dates below use **UTC+08:00**, matching the development timezone. “First implementation” means the earliest relevant code found in the available local Git history, including WIP commits; it does not mean the first working or released version.
 
 The history matters here: `9fae442` on 5 September consolidated the earlier multiplayer work onto upstream main. Reading only the current branch’s introduction commits would incorrectly date much of this work to September. This audit follows the preserved earlier history with `git log --all`, historical file reads, and diffs. Uncommitted experiments cannot be dated from that evidence.
 
@@ -296,7 +296,7 @@ Receipts for an inactive character remain banked for a later initialization. Thi
 
 ### DeathLink
 
-First code: **24 August, `d95193d` at 11:01**; `ad72a44` changed it to managed actions at 11:30. `3a384ad` on 25 August deferred damage to safe boundaries; `f3a5fae` on 26 August centralized host authorization; `044ecc6` on 28 August added per-recipient AP-event deduplication. The current 15 September design removed noncombat admission, retained distinct events in an owner-local FIFO, replaced direct HP assignment with the native damage pipeline and lets each AP owner submit incoming damage and report their own synchronized death.
+First code: **24 August, `d95193d` at 11:01**; `ad72a44` changed it to managed actions at 11:30. `3a384ad` on 25 August deferred damage to safe boundaries; `f3a5fae` on 26 August centralized host authorization; `044ecc6` on 28 August added per-recipient AP-event deduplication. On 15 September, `6b32e55` restricted admission to combat and retained distinct events in an owner-local FIFO; `e53f80d` made each AP owner report their own synchronized death; `c8b9532` removed the separate inbound sidecar relay. Damage now uses the native pipeline.
 
 Inbound flow:
 
@@ -310,7 +310,7 @@ Outbound flow: MegaCrit replicates the player death and every replica observes t
 
 Current inbound action validation requires exactly **one target: the AP event recipient**. This is not a host-authored packet that damages everyone simply because one callback arrived. Other connected recipients can receive and queue the same external AP event separately. Death Fragments are a separate feature, currently absent from the enabled multiplayer capability set.
 
-Each owner’s queue is run-local memory and is cleared by `EndRun`; it is not a persisted inbox across quitting or a crashed process. Deduplication happens before enqueue, so retransmitting the same AP source/timestamp for the same recipient does not create another hit, while two distinct DeathLinks received five seconds apart remain two FIFO entries. If the first kills the target, the later entry is consumed as already dead rather than transferred to another player or combat.
+Each owner’s queue is run-local memory and is cleared by `EndRun`; it is not a persisted inbox across quitting or a crashed process. Deduplication happens before enqueue, so retransmitting the same AP source/timestamp for the same recipient does not create another hit, while two distinct DeathLinks received five seconds apart remain two FIFO entries. Only one action is in flight at a time. If the first kills the target before the next entry can be admitted, the later entry may remain queued until `EndRun` clears it; an action that does execute after its target is already dead is consumed without another hit.
 
 ```mermaid
 flowchart TD
@@ -336,7 +336,7 @@ There are **two contracts**, not one global replacement of native relic RNG:
 
 The Rewarding Elites/progressive relic system predates multiplayer: `934923a` on 11 August added the coupon counter; `e1bb3c2` on 13 August integrated Rewarding Elites. The current distinction is between the first configured **X** relic receipts available anytime and later receipts that must pair with a relic coupon gained from a natural relic source. The first ten eligible sources produce numbered AP relic checks and a relic coupon. A waiting gated receipt can keep the natural relic; a coupon without a receipt waits for a later AP-menu pairing. Beyond the AP-controlled range, rewards remain native.
 
-**18 August, `058881c`:** first mirrored multiplayer relic rewards. **19 August, `9b1c64c`:** persist concrete assignments for preview and reuse. **23 August, `a188fe9`:** introduced `StandardRelicPool`, avoiding private advancement of native reward RNG during AP-menu assignment. **24 August, `cc9c77f`:** scarcity chest fix. **28 August, `044ecc6`:** host receipt arbitration and frozen chest decisions. **29 August, `4baf7a5`:** all-replica Proceed barrier.
+**18 August, `058881c`:** first mirrored multiplayer relic rewards. **19 August, `9b1c64c`:** persist concrete assignments for preview and reuse. **23 August, `a188fe9`:** introduced `StandardRelicPool`, avoiding private advancement of native reward RNG during AP-menu assignment. **24 August, `cc9c77f`:** scarcity chest fix. **28 August, `044ecc6`:** host receipt arbitration and frozen chest decisions. **29 August, `4baf7a5`:** all-replica Proceed barrier. **15 September, `a5d527d`:** broadcast the receipt decision before native generation so host and clients can roll concurrently; retain a delayed recovery request.
 
 ### AP-menu relic selection
 
@@ -360,7 +360,7 @@ The client starts with a native reward already generated on each replica. `Proce
 4. The host and clients can now generate concurrently. Every replica generates **all native candidates first** in native player order, relying on MegaCrit’s multiplayer invariant that synchronized run RNG and equivalent relic bags produce the same ordered models. The ordered subset where `GeneratesRelic` is true maps positionally to MegaCrit’s `_currentRelics` list.
 5. Before filtering, each replica locally checks candidate count, saved Player order and `Hook.ShouldGenerateTreasure` shape against the frozen host record. AP no longer publishes or compares the concrete native relic IDs. MegaCrit owns model-list agreement; if native RNG or bag state has already diverged, this AP layer will not detect different models that happen to have the same shape.
 6. Replicas remove candidates whose AP-gated source had no frozen receipt. Those relics were already popped from their native bags and remain unavailable there. The player has earned the numbered Relic check and **gains a relic coupon**; a later receipt can spend that coupon through a new deterministic AP-menu relic assignment. This differs from merely hiding a still-available candidate.
-7. Remaining candidates form MegaCrit’s one **shared picker list**. The list is shared because the native multiplayer chest lets the players vote over the same remaining choices. A player can win a relic whose survival was funded by another player’s receipt; the funding owner is not an exclusive winner.
+7. Remaining candidates form MegaCrit’s one **shared picker list**. The list is shared because the native multiplayer chest lets the players vote over the same remaining choices. A player can win a relic whose survival was funded by another player’s receipt; the funding owner is not an exclusive winner. The numbered AP check and receipt consumption still belong to that candidate’s `PlayerNetId`, not to whoever wins the visible relic.
 8. Fewer candidates than players is valid. The scarcity patch changes controller focus from “holder at my player index” to the first visible relic, avoiding an out-of-range assumption.
 9. Opening/settling records each frozen numbered source once. If it has a reserved receipt, settlement marks that exact receipt used; otherwise it records the relic coupon. An empty chest completes through the native chest-open animation once.
 
@@ -583,7 +583,8 @@ A compact in-game follow-up matrix would be:
 | Egg acquired after an offer was revealed | Eligible assigned choices refresh without rerolling or replaying one-shot generation effects |
 | Save/rejoin with revealed offers, coupons, starters and wax | Restore the selected host snapshot’s native/AP state, exact offers and per-player cadence |
 | DeathLink in a shop, event, map room or combat transition | No immediate HP change; event remains queued until a stable combat player phase |
-| Two DeathLinks queued five seconds apart | Two ordered managed actions and two damage attempts; no coalescing or duplicate outward echo |
+| Two DeathLinks queued five seconds apart while combat stays in PlayPhase and the target survives | Two ordered managed actions and two damage attempts; no coalescing or duplicate outward echo |
+| First queued DeathLink kills the target | The later entry is not transferred to another player; it may stay queued until run teardown clears it |
 | DeathLink with Block, Buffer, Intangible and death prevention | Block is bypassed; Buffer/Intangible/death prevention modify the result identically on both clients; native damage feedback plays |
 | Ordinary host and client deaths | Each dead player’s local process sends exactly one AP DeathLink after native death prevention; other replicas remain silent |
 

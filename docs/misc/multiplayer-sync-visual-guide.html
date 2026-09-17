@@ -194,7 +194,7 @@ summary { cursor: pointer; color: var(--ink); padding: 5px 0; }
     </main>
   </div>
   <footer class="footer">
-    <span>Current design · source audit updated 15 September 2026</span>
+    <span>Current design · source audit checked 17 September 2026</span>
     <span><a href="multiplayer-sync-history-audit.md">Full source and history audit ↗</a> · Static design evidence; gameplay verification not run.</span>
   </footer>
   <noscript><p>This interactive guide requires JavaScript. All historical and design explanations are also available in the linked Markdown audit.</p></noscript>
@@ -339,7 +339,7 @@ summary { cursor: pointer; color: var(--ink); padding: 5px 0; }
           node('replica',1,'Generate every native candidate','Once the receipt mask exists, every machine independently lets MegaCrit pop all candidates in native player order. Host and clients can now generate concurrently using the base game’s synchronized run RNG and matching relic bags.'),
           node('replica',2,'Check the local candidate shape','Before filtering, each machine verifies that candidate count, Player order and ShouldGenerateTreasure results still match the frozen host record. MegaCrit owns model-list determinism; AP no longer broadcasts or compares native relic IDs.'),
           node('replica',3,'Show the kept shared choices','Remove exactly the candidates excluded by the frozen mask. The remaining native list is one shared multiplayer picker, so any player may win any visible relic even when another player’s receipt allowed that candidate to survive.'),
-          node('replica',4,'Open and settle each source once','Opening records the numbered Relic location. If the frozen receipt exists, redeem that exact receipt; otherwise gain one relic coupon for later AP-menu use. Empty chests finish through the native open animation once.'),
+          node('replica',4,'Open and settle each source once','Opening records the numbered Relic location for the candidate’s PlayerNetId, even if another player wins that relic from the shared picker. That same source owner redeems the frozen receipt or gains a relic coupon for later AP-menu use. Empty chests finish through the native open animation once.'),
           node('replica',5,'Finish local OpenChest work','After this replica’s OpenChest task and any per-player extra reward-set construction finish, report that this machine has reached the safe Proceed point.'),
           node('host',5,'Release AP-menu barrier','When every native NetId has reported, the host broadcasts all-ready. Only then may any replica insert an AP RewardsSet without assigning a different meaning to MegaCrit’s next reward-set ID.')
         ], extra:'treasure'}
@@ -562,7 +562,7 @@ summary { cursor: pointer; color: var(--ink); padding: 5px 0; }
     } else if(type==='deathlink') {
       summary.textContent='FIFO delivery at safe combat boundaries';
       copy('A DeathLink received outside combat remains in its AP owner’s run-local FIFO. It does not change HP in a shop, event or map room. The owner waits for a stable player PlayPhase with no native action running or queued, then submits exactly one CombatPlayPhaseOnly managed action under its own native player identity.');
-      copy('Distinct events never overwrite each other: DeathLinks received at T=0 and T=5 become two entries and two ordered damage actions. Duplicate callbacks with the same recipient, AP source and timestamp are still ignored. If the first event kills the player, a later queued entry is consumed as already dead. The in-memory queue is cleared when the run ends and is not persisted through a quit or crash.');
+      copy('Distinct events never overwrite each other: DeathLinks received at T=0 and T=5 become separate FIFO entries. If the target survives and combat remains in a stable PlayPhase, they become two ordered damage actions. Duplicate callbacks with the same recipient, AP source and timestamp are still ignored. Only one action is in flight at a time; if it kills the target, a later entry may remain queued until run teardown clears it. An action that executes after its target is already dead is consumed without another hit. The queue is not persisted through a quit or crash.');
       copy('The owner authors raw damage equal to the configured percentage of Max HP. MegaCrit sends the client-owned managed-action request to the host, which orders and broadcasts it with ordinary gameplay; the former inbound DeathLink sidecar request is gone. Every replica applies the amount through CreatureCmd.Damage with Unblockable and Unpowered. Ordinary Block cannot absorb it, but Buffer, Intangible, HP-loss hooks and death prevention can mitigate it, and the normal damage number, hit animation and screen feedback can play. Two-client tests should cover queued delivery across rooms, enemy-turn arrival, multiple hits, mitigation and lethal echo suppression.');
       copy('For an ordinary death, MegaCrit replicates the native death lifecycle and every replica reaches the same post-prevention callback. The dead player’s own process is the sole AP sender, selected by LocalContext.IsMe. This removes the outbound host-to-owner message and relies on the base game to surface any native state desync.');
     } else if(type==='lobby') {
