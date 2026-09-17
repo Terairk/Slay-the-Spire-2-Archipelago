@@ -254,6 +254,7 @@ jobs:
 
       - name: Stage and verify release assets
         env:
+          CLIENT_VERSION: ${{ needs.prepare.outputs.new_client_version }}
           WORLD_VERSION: ${{ needs.prepare.outputs.new_world_version }}
         shell: bash
         run: |
@@ -266,28 +267,16 @@ jobs:
             "release-assets/spire2-${WORLD_VERSION}.apworld"
 
           python - <<'PY'
+          import os
           from pathlib import Path
           from zipfile import ZipFile
-          from scripts.release import verify_client_archive
+          from scripts.client_archive import verify_client_archive
 
           archive = Path("release-assets/Archipelago.zip")
-          verify_client_archive(archive)
+          verify_client_archive(archive, os.environ["CLIENT_VERSION"])
           standalone = Path("release-input/spire2.apworld")
-          required = {
-              "Archipelago.dll",
-              "Archipelago.pck",
-              "Archipelago.json",
-              "spire2.apworld",
-          }
 
           with ZipFile(archive) as package:
-              names = set(package.namelist())
-              missing = sorted(required - names)
-              if missing:
-                  raise SystemExit(
-                      "Archipelago.zip is missing required root files: "
-                      + ", ".join(missing)
-                  )
               if package.read("spire2.apworld") != standalone.read_bytes():
                   raise SystemExit(
                       "The APWorld in Archipelago.zip differs from the standalone build."

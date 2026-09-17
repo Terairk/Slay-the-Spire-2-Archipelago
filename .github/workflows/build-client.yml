@@ -140,21 +140,23 @@ jobs:
             -p:UseSts2RefLib=true \
             -p:Sts2ApiCompat="$public_api"
 
-      - name: Zip the Client for Distribution
+      - name: Zip and Validate Client
         if: inputs.build_mode == 'Package'
         shell: bash
         run: |
           python - <<'PY'
+          import json
+          import shutil
           from pathlib import Path
-          from scripts.release import create_client_archive, include_client_file, read_versions
+          from scripts.client_archive import verify_client_archive
 
-          root = Path("dist/Archipelago")
-          entries = {
-              path.relative_to(root).as_posix(): path
-              for path in root.rglob("*")
-              if include_client_file(path)
-          }
-          create_client_archive(entries, Path("dist/Archipelago.zip"), read_versions(Path(".")))
+          expected_version = json.loads(
+              Path("client/StS2AP/Archipelago.json").read_text(encoding="utf-8")
+          )["version"]
+          shutil.make_archive(
+              "dist/Archipelago", "zip", root_dir="dist/Archipelago"
+          )
+          verify_client_archive(Path("dist/Archipelago.zip"), expected_version)
           PY
 
       - name: Review Packaged Files

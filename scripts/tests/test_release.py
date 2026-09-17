@@ -1,21 +1,14 @@
 from __future__ import annotations
 
-import importlib.util
 import json
+import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
-
-MODULE_PATH = Path(__file__).parents[1] / "release.py"
-SPEC = importlib.util.spec_from_file_location("sts2_release", MODULE_PATH)
-assert SPEC is not None and SPEC.loader is not None
-release = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = release
-SPEC.loader.exec_module(release)
+from scripts import release
 
 
 class SemVerTests(unittest.TestCase):
@@ -149,6 +142,28 @@ class ClientArchiveTests(unittest.TestCase):
 
             with zipfile.ZipFile(archive_path) as archive:
                 self.assertEqual(archive.namelist(), sorted(entries))
+
+    def test_accepts_directory_entries_from_make_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            staging = root / "staging"
+            for name, source in self.make_valid_entries(root).items():
+                destination = staging / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(source.read_bytes() if isinstance(source, Path) else source)
+
+            archive_path = Path(shutil.make_archive(str(root / "Archipelago"), "zip", root_dir=staging))
+            with zipfile.ZipFile(archive_path) as archive:
+                self.assertIn("lib/0.107.1/", archive.namelist())
+            release.verify_client_archive(archive_path, "1.0.0")
+
+    def test_rejects_client_version_different_from_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with self.assertRaisesRegex(release.ReleaseError, "expected 1.0.1"):
+                release.create_client_archive(
+                    self.make_valid_entries(root), root / "Archipelago.zip", "1.0.1"
+                )
 
     def test_rejects_unexpected_nested_archive_path(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
