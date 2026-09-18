@@ -48,14 +48,13 @@ Supported on Windows (primary), Linux (confirmed), and macOS (expected to work, 
 
 These steps apply whether you installed the mod through Steam Workshop or manually.
 
-On Windows, if Archipelago Launcher is installed, you can also install the downloaded `.apworld` by double-clicking it in File Explorer. Restart the Launcher afterward.
+On Windows, if Archipelago Launcher is installed, you can also install the downloaded `.apworld` by double-clicking it in File Explorer.
 
 1. Download `spire2-{{WORLD_VERSION}}.apworld` from this release's assets.
 2. Open your Archipelago Launcher.
 3. Click "Install APWorld".
 4. Select `spire2-{{WORLD_VERSION}}.apworld` in the file dialog that pops up.
-5. **Restart the Archipelago Launcher**.
-6. Now you should be able to properly host/generate an Archipelago Session with StS 2.
+5. Now you should be able to properly host/generate an Archipelago Session with StS 2.
 
 - If you want to use `archipelago.gg` to host the game, generate it locally first following the steps above, then upload the `.zip` file from the `output` folder in your Archipelago installation
 
