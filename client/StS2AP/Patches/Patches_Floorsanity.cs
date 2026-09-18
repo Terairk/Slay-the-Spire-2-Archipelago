@@ -1,6 +1,7 @@
 ﻿using HarmonyLib;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.UI;
@@ -94,33 +95,54 @@ namespace StS2AP.Patches
                 return;
             }
 
-            // Create the Location/Check name to send
-            var floorValue = floorProperty.GetValue(runState);
+            if (floorProperty.GetValue(runState) is not object rawFloor)
+            {
+                LogUtility.Error("TotalFloor had no value, skipping Archipelago check");
+                return;
+            }
+
+            int floorValue = Convert.ToInt32(rawFloor);
+            if (floorValue < 1)
+            {
+                LogUtility.Warn($"Cannot send a floor check for invalid floor {floorValue}");
+                return;
+            }
+
             var name = GameUtility.CurrentPlayer.APName();
             var locationName = $"{name} Reached Floor {floorValue}";
 
-            LogUtility.Debug($"Attempting to send Archipelago location check: {locationName}");
+            int lastGeneratedFloor = Math.Min(floorValue, LocationData.MaxFloor);
+            long[] floorLocationIds = Enumerable.Range(1, lastGeneratedFloor)
+                .Select(floor => LocationData.GetFloorLocation(GameUtility.CurrentPlayer.Character, floor))
+                .ToArray();
+            LocationCheckSendResult result = GameUtility.SendChecks(floorLocationIds);
 
-            // Get the location ID from the name
-            if (ArchipelagoClient.Session?.Locations.GetLocationIdFromName("Slay the Spire II", locationName) is long locationId && locationId != -1)
+            if (result.AcceptedCount > 0)
             {
-                // Make sure this is the first time we've hit this location, otherwise we might be sending duplicates
-                if (!ArchipelagoClient.CheckedLocations.Contains(locationId))
-                {
-                    // Check the location off and let the server know
-                    GameUtility.SendCheck(locationId);
-
-                    // Log it and notify the user (uses pre-scouted data)
-                    LogUtility.Success($"Sent location check: {locationName}");
-                }
+                string message =
+                    $"{result.AcceptedCount} floor check(s) through {locationName}";
+                if (result.Dispatch == LocationCheckSendResult.DispatchStatus.Submitted)
+                    LogUtility.Success($"Submitted {message}");
                 else
-                {
-                    LogUtility.Warn($"Location '{locationName}' already checked, skipping Archipelago check");
-                }
+                    LogUtility.Warn($"Queued {message} until the AP connection recovers");
+            }
+            else if (result.Dispatch == LocationCheckSendResult.DispatchStatus.PersistenceFailed)
+            {
+                LogUtility.Error($"Could not persist floor checks through {locationName}");
+            }
+            else if (result.Dispatch == LocationCheckSendResult.DispatchStatus.NoAuthenticatedSlot)
+            {
+                LogUtility.Warn($"Could not record {locationName}: no authenticated AP slot");
+            }
+            else if (result.AlreadyCheckedCount > 0 && result.NotInSlotCount == 0)
+            {
+                LogUtility.Debug($"Floor checks through {locationName} are already recorded");
             }
             else
             {
-                LogUtility.Warn($"Location '{locationName}' not found in Archipelago");
+                LogUtility.Warn(
+                    $"No new floor checks through {locationName}; {result.NotInSlotCount} location(s) are not in this AP slot"
+                );
             }
         }
     }

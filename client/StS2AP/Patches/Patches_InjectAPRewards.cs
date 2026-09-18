@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using StS2AP.Data;
 using StS2AP.Extensions;
 using StS2AP.Models;
 using StS2AP.Utils;
@@ -38,7 +39,10 @@ namespace StS2AP.Patches
             if (!RelicRewardUtility.RecordEligibleReward(out var rewardNumber))
                 return;
 
-            rewards.Add(new ArchipelagoReward($"{player.APName()} Relic {rewardNumber}"));
+            rewards.Add(new ArchipelagoReward(
+                LocationData.GetRelicLocation(player.Character, rewardNumber),
+                $"{player.APName()} Relic {rewardNumber}"
+            ));
 
             // The native reward already exists. A receipt decides whether it survives beside the check.
             if (!RelicRewardUtility.TryConsumeWaitingReceiptForNaturalReward(player))
@@ -87,7 +91,11 @@ namespace StS2AP.Patches
                             // Replace this reward with an AP Location reward
                             ArchipelagoClient.Progress.RareCardRewardsAttempted++;
                             __result.Remove(cardReward);
-                            __result.Add(new ArchipelagoReward($"{name} Rare Card Reward {ArchipelagoClient.Progress.RareCardRewardsAttempted}"));
+                            int rewardNumber = ArchipelagoClient.Progress.RareCardRewardsAttempted;
+                            __result.Add(new ArchipelagoReward(
+                                LocationData.GetRareCardRewardLocation(player.Character, rewardNumber),
+                                $"{name} Rare Card Reward {rewardNumber}"
+                            ));
                         }
                         // Otherwise, we have more checks to do
                         else
@@ -104,7 +112,10 @@ namespace StS2AP.Patches
                                     ? ArchipelagoClient.Progress.CardRewardsAttempted
                                     : (ArchipelagoClient.Progress.CardRewardsAttempted + 1) / 2;
                                 __result.Remove(cardReward);
-                                __result.Add(new ArchipelagoReward($"{name} Card Reward {rewardNumber}"));
+                                __result.Add(new ArchipelagoReward(
+                                    LocationData.GetCardRewardLocation(player.Character, rewardNumber),
+                                    $"{name} Card Reward {rewardNumber}"
+                                ));
                             }
                         }
                     }
@@ -121,7 +132,10 @@ namespace StS2AP.Patches
 
                             // Replace this reward with an AP Location reward
                             __result.Remove(goldReward);
-                            __result.Add(new ArchipelagoReward($"{name} Boss Gold {actNumber}"));
+                            __result.Add(new ArchipelagoReward(
+                                LocationData.GetBossGoldLocation(player.Character, actNumber),
+                                $"{name} Boss Gold {actNumber}"
+                            ));
                         }
                         // Otherwise, see if it's one of the first twenty gold rewards, and if so then replace it with an AP item
                         else
@@ -132,7 +146,11 @@ namespace StS2AP.Patches
                             {
                                 // Replace this reward with an AP Location reward
                                 __result.Remove(goldReward);
-                                __result.Add(new ArchipelagoReward($"{name} Combat Gold {ArchipelagoClient.Progress.GoldRewardsAttempted}"));
+                                int rewardNumber = ArchipelagoClient.Progress.GoldRewardsAttempted;
+                                __result.Add(new ArchipelagoReward(
+                                    LocationData.GetCombatGoldLocation(player.Character, rewardNumber),
+                                    $"{name} Combat Gold {rewardNumber}"
+                                ));
                             }
                         }
                     }
@@ -145,7 +163,11 @@ namespace StS2AP.Patches
                         {
                             // Replace this reward with an AP Location reward
                             __result.Remove(potionReward);
-                            __result.Add(new ArchipelagoReward($"{name} Potion Drop {ArchipelagoClient.Progress.PotionRewardsAttempted}"));
+                            int rewardNumber = ArchipelagoClient.Progress.PotionRewardsAttempted;
+                            __result.Add(new ArchipelagoReward(
+                                LocationData.GetPotionDropLocation(player.Character, rewardNumber),
+                                $"{name} Potion Drop {rewardNumber}"
+                            ));
                         }
                     }
                 }
@@ -201,7 +223,9 @@ namespace StS2AP.Patches
                 // The alternative was the chest opening 2 times or having to manually generate a relic
                 // I opted to use the native game default way. My rationale was that floor checks automatically send
                 // things out so what's 3 more.
-                GameUtility.SendCheck($"{player.APName()} Relic {rewardNumber}");
+                GameUtility.SendCheck(
+                    LocationData.GetRelicLocation(player.Character, rewardNumber)
+                );
 
                 var relicPicker = RunManager.Instance.TreasureRoomRelicSynchronizer;
                 var nativeRelicExists = relicPicker.CurrentRelics?.Count > 0;

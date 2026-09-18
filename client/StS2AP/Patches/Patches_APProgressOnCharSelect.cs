@@ -74,7 +74,11 @@ namespace StS2AP.Patches
                 if (ArchipelagoClient.Settings.Floorsanity)
                 {
                     var floorLocations = LocationData.GetFloorsanityLocations(character);
-                    SetCheckedLocation(ArchipelagoCharTrackerUI.FloorsanityChecks, floorLocations, ArchipelagoProgress._maxFloorRewards);
+                    SetCheckedLocation(
+                        ArchipelagoCharTrackerUI.FloorsanityChecks,
+                        floorLocations,
+                        floorLocations.Count
+                    );
                 }
 
                 // Update Campfiresanity Locations

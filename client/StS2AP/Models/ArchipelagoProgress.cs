@@ -20,8 +20,9 @@ namespace StS2AP.Models
 {
     /// <summary>
     /// Tracks the progress of how far along the player is through their Archipelago game
-    /// PLEASE NOTE IF YOU CHANGE THIS DATASTRUCTURE, YOU NEED TO UPDATE THE SAVE DATA STRUCTURE
-    /// AS WELL. SEE SerializableAP
+    /// Per-run state that must survive save/load also needs a SerializableAP property and
+    /// corresponding mappings in ToSerializable and FromSerializable. Constants, calculated
+    /// properties, and intentionally transient state do not.
     /// </summary>
     public class ArchipelagoProgress
     {
@@ -58,11 +59,6 @@ namespace StS2AP.Models
         /// The maximum Progressive Shop Card Removal level a player could receive (one per Act).
         /// </summary>
         public const int _maxShopRemoves = 3;
-
-        /// <summary>
-        /// The number of floor rewards in floorsanity
-        /// </summary>
-        public const int _maxFloorRewards = 47;
 
         /// <summary>
         /// Maximum possible number of Campfire Rewards that a player could find.

@@ -90,16 +90,15 @@ public class ArchipelagoReward : Reward
     }
 
     /// <summary>
-    /// Constructor that takes in the name of a Location
+    /// Constructor that takes the deterministic ID and display name of a location.
     /// </summary>
-    /// <param name="locationName">The name of the AP Location we're giving a reward for</param>
-    public ArchipelagoReward(string locationName) : base(GameUtility.CurrentPlayer)
+    internal ArchipelagoReward(long locationId, string locationName) : base(GameUtility.CurrentPlayer)
     {
-        // Try and find this location
-        _locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", locationName);
+        _locationId = locationId;
         if(!ArchipelagoClient.ScoutedLocations.TryGetValue(_locationId, out _location))
         {
             LogUtility.Warn($"Could not find scouted info for {locationName}");
+            TextUtility.RegisterLocString($"AP_LOC_{_locationId}", locationName, "ap");
         }
 
         // If it's already been found, keep track of it
@@ -129,13 +128,20 @@ public class ArchipelagoReward : Reward
 
     protected override async Task<bool> OnSelect()
     {
-        // Handle reward selection logic
         if (!ArchipelagoClient.CheckedLocations.Contains(_locationId))
         {
-            // Check the location off and let the server know
-            GameUtility.SendCheck(_locationId);
-
-            LogUtility.Success($"Sent location check: {_locationId}");
+            LocationCheckSendResult result = GameUtility.SendCheck(_locationId);
+            if (!result.WasRecorded)
+            {
+                LogUtility.Error(
+                    $"Could not record location check {_locationId}: {result.Dispatch}"
+                );
+                return false;
+            }
+            if (result.Dispatch == LocationCheckSendResult.DispatchStatus.Queued)
+                LogUtility.Warn($"Queued location check: {_locationId}");
+            else if (result.AcceptedCount > 0)
+                LogUtility.Success($"Submitted location check: {_locationId}");
         }
         return true;
     }

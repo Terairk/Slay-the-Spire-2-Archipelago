@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.ValueProps;
 using Newtonsoft.Json.Linq;
 using StS2AP.Extensions;
+using StS2AP.Data;
 using StS2AP.Models;
 using StS2AP.Patches;
 using StS2AP.UI;
@@ -544,10 +545,18 @@ namespace StS2AP.Utils
                     // Goal progress is independent from whether victory releases this character's checks.
                     if (settings.ReleaseOnVictory)
                     {
-                        await TryReleaseAllCharacterChecks(CurrentPlayer.APName());
-                        foreach(var unrecognized in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
+                        if (CurrentConfig != null)
                         {
-                            await TryReleaseAllCharacterChecks(unrecognized.Name);
+                            await TryReleaseAllCharacterChecks(
+                                CurrentConfig.CharOffset,
+                                CurrentPlayer.APName()
+                            );
+                        }
+                        else
+                        {
+                            LogUtility.Error(
+                                "Could not release remaining checks: current character configuration is unavailable"
+                            );
                         }
                     }
                     else
@@ -592,12 +601,13 @@ namespace StS2AP.Utils
         /// This function should be called upon clearing a run with that character.
         /// </summary>
 
-        public static async Task TryReleaseAllCharacterChecks(string charName)
+        private static async Task TryReleaseAllCharacterChecks(int characterOffset, string charName)
         {
-            // Grab all locations whose name contains the character's name (e.g. "Ironclad")
-            var characterLocations = ArchipelagoClient.ScoutedLocations
-                .Where(kvp => kvp.Value.LocationName.Contains(charName, StringComparison.OrdinalIgnoreCase))
-                .Select(kvp => kvp.Key)
+            long blockStart = (characterOffset - 1L) * 10000L;
+            var characterLocations = ArchipelagoClient.SlotLocationIds
+                .Where(locationId =>
+                    locationId >= blockStart && locationId < blockStart + 10000L
+                )
                 .ToList();
 
             // It shouldn't be possible, but if somehow we get here, write this problem to the log.
@@ -609,60 +619,95 @@ namespace StS2AP.Utils
 
             LogUtility.Info($"TryReleaseAllCharacterChecks: Releasing {characterLocations.Count} checks for '{charName}'");
 
-            // Send every unchecked location for this character
-            foreach (var locationId in characterLocations)
-            {
-                if (!ArchipelagoClient.CheckedLocations.Contains(locationId) && locationId != -1 && ArchipelagoClient.ScoutedLocations.ContainsKey(locationId))
-                {
-                    // Check the location off and let the server know
-                    GameUtility.SendCheck(locationId);
-                }
-            }
+            SendChecks(characterLocations);
 
             await Task.CompletedTask;
         }
 
         public static void TrySendPressStartCheck()
         {
-            // Grab the Character Name
-            var name = GameUtility.CurrentPlayer.APName();
-
-            // Grab the check ID
-            var checkName = $"{name} Press Start";
-            SendCheck(checkName);
-
+            if (CurrentPlayer != null)
+                SendCheck(LocationData.GetPressStartLocation(CurrentPlayer.Character));
         }
 
-        public static void SendCheck(string checkName)
+        internal static LocationCheckSendResult SendCheck(long locationId)
         {
-            var _locationId = ArchipelagoClient.Session.Locations.GetLocationIdFromName("Slay the Spire II", checkName);
-            SendCheck(_locationId);
+            return SendChecks(new[] { locationId });
         }
 
-        public static void SendCheck(long locationId)
+        internal static LocationCheckSendResult SendChecks(IEnumerable<long> locationIds)
         {
-            SendCheck(locationId, true);
-        }
-
-        private static void SendCheck(long locationId, bool includeUnrecognizedChars)
-        {
-            if (!ArchipelagoClient.CheckedLocations.Contains(locationId) && locationId != -1 && ArchipelagoClient.ScoutedLocations.ContainsKey(locationId))
+            var requested = locationIds.Distinct().ToArray();
+            if (!ArchipelagoClient.HasAuthenticatedSlot)
             {
-                // Record the location durably before attempting the socket write. If the
-                // connection is timing out, it will be replayed after the next login.
-                ArchipelagoClient.CheckedLocations.Add(locationId);
-                PendingCheckUtility.RecordAndSend(locationId);
+                return new(
+                    LocationCheckSendResult.DispatchStatus.NoAuthenticatedSlot,
+                    requested.Length,
+                    0,
+                    0,
+                    0
+                );
             }
-            if(includeUnrecognizedChars)
+
+            var expanded = new HashSet<long>(requested);
+            foreach (long locationId in requested.Where(id => id != -1))
             {
-                foreach(var otherChar in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
+                foreach (var otherChar in ArchipelagoClient.Settings.UnrecognizedCharacters.Values)
                 {
                     // - 1 because locations are offset from items by 1
                     long newLocationId = (locationId % 10000L) + (10000L * (otherChar.CharOffset - 1));
-                    LogUtility.Info($"Sending location for unrecognized character {otherChar.OfficialName} {locationId} {newLocationId}");
-                    SendCheck(newLocationId, false);
+                    expanded.Add(newLocationId);
+                    LogUtility.Debug(
+                        $"Mirroring location for unrecognized character {otherChar.OfficialName}: {locationId} -> {newLocationId}"
+                    );
                 }
             }
+
+            int notInSlot = 0;
+            int alreadyChecked = 0;
+            var pending = new List<long>();
+            foreach (long locationId in expanded)
+            {
+                if (locationId == -1 || !ArchipelagoClient.SlotLocationIds.Contains(locationId))
+                {
+                    notInSlot++;
+                }
+                else if (ArchipelagoClient.CheckedLocations.Contains(locationId))
+                {
+                    alreadyChecked++;
+                }
+                else
+                {
+                    pending.Add(locationId);
+                }
+            }
+
+            var dispatch = LocationCheckSendResult.DispatchStatus.None;
+            int accepted = 0;
+            if (pending.Count > 0)
+            {
+                dispatch = PendingCheckUtility.RecordAndSend(pending);
+                if (
+                    dispatch is LocationCheckSendResult.DispatchStatus.Submitted
+                        or LocationCheckSendResult.DispatchStatus.Queued
+                )
+                {
+                    accepted = pending.Count;
+                    foreach (long locationId in pending)
+                    {
+                        if (!ArchipelagoClient.CheckedLocations.Contains(locationId))
+                            ArchipelagoClient.CheckedLocations.Add(locationId);
+                    }
+                }
+            }
+
+            return new(
+                dispatch,
+                expanded.Count,
+                accepted,
+                alreadyChecked,
+                notInSlot
+            );
         }
 
         /// <summary>
