@@ -48,6 +48,8 @@ Supported on Windows (primary), Linux (confirmed), and macOS (expected to work, 
 
 These steps apply whether you installed the mod through Steam Workshop or manually.
 
+On Windows, if Archipelago Launcher is installed, you can also install the downloaded `.apworld` by double-clicking it in File Explorer. Restart the Launcher afterward.
+
 1. Download `spire2-{{WORLD_VERSION}}.apworld` from this release's assets.
 2. Open your Archipelago Launcher.
 3. Click "Install APWorld".
