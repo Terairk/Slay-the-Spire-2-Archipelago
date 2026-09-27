@@ -9,7 +9,7 @@ public sealed class PackagingTests
 {
     [ArtifactFact("STS2AP_TEST_BUNDLE")]
     [Trait("Category", "Bundle")]
-    public void BothPackagedVariantsLoadFSharpThroughTheModLoader()
+    public void BothPackagedVariantsLoadDependenciesThroughTheModLoader()
     {
         string root = Path.GetFullPath(Environment.GetEnvironmentVariable("STS2AP_TEST_BUNDLE")!);
         foreach (string dependency in new[] { "StS2AP.Domain.dll", "FSharp.Core.dll" })
@@ -46,14 +46,30 @@ public sealed class PackagingTests
                 object origin = reward.GetType().GetProperty("Origin")!.GetValue(reward)!;
                 Assert.Equal("2:42", origin.GetType().GetProperty("ReceiptIdentity")!.GetValue(origin));
 
-                foreach (string dependency in new[] { "StS2AP.Domain", "FSharp.Core" })
+                // The SDK and client must bind typed JSON APIs to the same assembly.
+                // Slot data may still arrive from a foreign copy, so exercise the actual
+                // variant's normalization boundary with the test runner's JSON objects.
+                Assembly sdk = context.LoadFromAssemblyName(new AssemblyName("Archipelago.MultiClient.Net"));
+                Type sdkToken = sdk.GetType("Archipelago.MultiClient.Net.Packets.SetPacket", true)!
+                    .GetProperty("DefaultValue")!.PropertyType;
+                var normalize = variant.GetType("StS2AP.Utils.ApSlotData", true)!
+                    .GetMethod("Normalize", BindingFlags.NonPublic | BindingFlags.Static)!;
+                var foreignPlayers = Newtonsoft.Json.Linq.JObject.Parse("""{"1":[{"name":"Ironclad","locked":true}]}""");
+                Assert.False(sdkToken.IsInstanceOfType(foreignPlayers));
+                var slotData = (Dictionary<string, object>)normalize.Invoke(null,
+                    [new Dictionary<string, object> { ["players"] = foreignPlayers }])!;
+                Assert.True(sdkToken.IsInstanceOfType(slotData["players"]));
+                Assert.True(Newtonsoft.Json.Linq.JToken.DeepEquals(foreignPlayers,
+                    Newtonsoft.Json.Linq.JToken.Parse(slotData["players"].ToString()!)));
+
+                foreach (string dependency in new[] { "StS2AP.Domain", "FSharp.Core", "Archipelago.MultiClient.Net", "Newtonsoft.Json" })
                 {
                     Assembly loaded = context.Assemblies.Single(a => a.GetName().Name == dependency);
                     if (!string.Equals(loaded.Location, Path.Combine(root, dependency + ".dll"),
                             StringComparison.OrdinalIgnoreCase))
                         throw new InvalidOperationException($"{dependency} was not loaded from the bundle root.");
                 }
-                Console.WriteLine($"Packaged {compat} C# -> F# call passed using the actual loader dependency resolver.");
+                Console.WriteLine($"Packaged {compat} F# and JSON boundaries passed using the actual loader dependency resolver.");
             }
             finally
             {

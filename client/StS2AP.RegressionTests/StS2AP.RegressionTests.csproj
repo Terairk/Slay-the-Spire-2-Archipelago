@@ -42,6 +42,7 @@
     <Compile Include="..\StS2AP\Models\Rewards\Grants\ApGoldClaim.cs" Link="Models\Rewards\Grants\ApGoldClaim.cs" />
     <Compile Include="..\StS2AP\Persistence\ApReplicaConstructionState.cs"
              Link="Persistence\ApReplicaConstructionState.cs" />
+    <Compile Include="..\StS2AP\Utils\Connection\ApSlotData.cs" Link="Utils\Connection\ApSlotData.cs" />
     <Compile Include="..\StS2AP\Utils\Connection\ApSessionIdentity.cs"
              Link="Utils\Connection\ApSessionIdentity.cs" />
     <Compile Include="..\StS2AP\Utils\Connection\ApConnectionIndicatorPolicy.cs"

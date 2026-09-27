@@ -1513,6 +1513,7 @@ namespace StS2AP
                 LogUtility.Error("No slot data found for this player!");
                 throw new InvalidDataException("No slot data found for this player!");
             }
+            slotData = ApSlotData.Normalize(slotData);
             bool hasPlayerCount = slotData.TryGetValue("player_count", out object? playerCountValue);
             bool hasPlayers = slotData.TryGetValue("players", out object? playersValue);
             bool legacySingleplayer = !hasPlayerCount && !hasPlayers && apWorldVersion.Major < 2;
