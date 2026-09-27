@@ -49,7 +49,7 @@ jobs:
 
       - name: Verify manifests after compile-only validation
         env:
-          STS2AP_TEST_ASSEMBLY: ${{ github.workspace }}/client/StS2AP/obj/${{ matrix.sts2_api }}/Release/net9.0/Archipelago.dll
+          STS2AP_TEST_ASSEMBLY: ${{ github.workspace }}/client/StS2AP/obj/Unix/${{ matrix.sts2_api }}/Release/net9.0/Archipelago.dll
         run: |
           dotnet build client/StS2AP/StS2AP.csproj -c Release -t:Compile --no-restore -p:Sts2ApiCompat=${{ matrix.sts2_api }} -p:UseSts2RefLib=true -p:DllOnlyBuild=true --nologo
           dotnet test client/StS2AP.RegressionTests/StS2AP.RegressionTests.csproj -c Release --filter Category=Manifest

@@ -48,7 +48,7 @@ xUnit reports them as skipped. A supplied path that is missing or invalid fails 
 
 ```powershell
 # Check an intermediate or output client DLL. Repeat for each compatibility variant.
-$env:STS2AP_TEST_ASSEMBLY = (Resolve-Path 'client/StS2AP/obj/0.111.0/Debug/net9.0/Archipelago.dll').Path
+$env:STS2AP_TEST_ASSEMBLY = (Resolve-Path 'client/StS2AP/obj/Windows_NT/0.111.0/Debug/net9.0/Archipelago.dll').Path
 dotnet test client/StS2AP.RegressionTests/StS2AP.RegressionTests.csproj -c Release --filter 'Category=Manifest'
 
 # Check a complete bundle from a full client build, including both variants and the loader.
@@ -58,6 +58,7 @@ dotnet test client/StS2AP.RegressionTests/StS2AP.RegressionTests.csproj -c Relea
 Remove-Item Env:STS2AP_TEST_ASSEMBLY, Env:STS2AP_TEST_BUNDLE
 ```
 
+Intermediate DLLs use `obj/Windows_NT/` on Windows and `obj/Unix/` on WSL/Linux.
 The manifest test opens both embedded JSON manifests and checks their version fields.
 The bundle test also checks the external mod version and uses the shipped loader to call
 the C# adapter in both variants. It verifies that FSharp.Core and the domain DLL load from
