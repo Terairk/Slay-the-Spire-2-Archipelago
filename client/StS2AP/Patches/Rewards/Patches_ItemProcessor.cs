@@ -128,7 +128,7 @@ namespace StS2AP.Patches
             /// no matter how many characters we add in the future.
             if (ArchipelagoIdCodec.IsUniversalItemId(item.ItemId))
             {
-                HandleUniversalItem(item, index);
+                HandleUniversalItem(indexedInfo);
                 return;
             }
 
@@ -175,7 +175,7 @@ namespace StS2AP.Patches
                     HandleThreshholdItem(item, Progress.ProgressiveAncients, "Progressive Ancients");
 
                     // Keep receipts across future run-mode changes; menu policy controls visibility.
-                    ArchipelagoClient.Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
+                    ArchipelagoClient.Progress.Items.RegisterReceived(indexedInfo);
 
                     if (liveDelivery
                         && MultiplayerSupport.IsRealMultiplayerRun
@@ -226,13 +226,13 @@ namespace StS2AP.Patches
                     // Save loading replays the whole item list, then reconciles once at the end.
                     if (!liveDelivery)
                     {
-                        ArchipelagoClient.Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
+                        ArchipelagoClient.Progress.Items.RegisterReceived(indexedInfo);
                         return;
                     }
 
                     // Keep every receipt. Other characters and out-of-run deliveries may
                     // matter when their run starts or a checkpoint is loaded.
-                    ArchipelagoClient.Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
+                    ArchipelagoClient.Progress.Items.RegisterReceived(indexedInfo);
 
                     var player = GameUtility.CurrentPlayer;
                     var characterOffset = player?.Character.GetAPCharacterNumber();
@@ -376,8 +376,10 @@ namespace StS2AP.Patches
         /// without any modulo operation. In multiplayer, combat buffs contribute five raw AP
         /// gold to a cumulative total divided equally across the configured characters.
         /// </summary>
-        private static void HandleUniversalItem(ItemInfo item, int index)
+        private static void HandleUniversalItem(IndexedItemInfo receipt)
         {
+            ItemInfo item = receipt.Item;
+            int index = receipt.Index;
             if (MultiplayerSupport.IsMultiplayerScope
                 && (ItemTable.IsUniversalCombatBuff(item.ItemId) || BonusRewardUtility.ConvertToGold(item.ItemId)))
             {
@@ -395,7 +397,7 @@ namespace StS2AP.Patches
             switch (universalId)
             {
                 case APItem.BonusWaxRelic:
-                    ArchipelagoClient.Progress.Items.RegisterReceived(new IndexedItemInfo(item, index));
+                    ArchipelagoClient.Progress.Items.RegisterReceived(receipt);
                     break;
                 case APItem.FreeAttack:
                 case APItem.FreePower:

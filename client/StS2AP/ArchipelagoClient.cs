@@ -1370,18 +1370,16 @@ namespace StS2AP
                 {
                     if (!ReferenceEquals(Session, session))
                         return;
-                    // Grab the item data
-                    var receivedItem = helper.DequeueItem();
+                    var receipt = new IndexedItemInfo(helper.DequeueItem(), helper.Index);
 
                     // Ignore if this item is an old message
-                    if (helper.Index <= Index)
+                    if (receipt.Index <= Index)
                         return;
 
                     // Process on Godot main thread
-                    Patches_ItemProcessor.AddToQueue(new IndexedItemInfo(receivedItem, helper.Index));
+                    Patches_ItemProcessor.AddToQueue(receipt);
 
-                    // Keep track of how many messages we've had so far
-                    Index++;
+                    Index = receipt.Index;
                 }
             }
             finally
