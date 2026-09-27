@@ -3,20 +3,20 @@ import typing
 from collections import defaultdict
 from typing import TYPE_CHECKING, List
 
-from BaseClasses import CollectionState, MultiWorld, Item
+from BaseClasses import CollectionState, MultiWorld
 from NetUtils import JSONMessagePart
 from rule_builder.field_resolvers import FieldResolver
 from rule_builder.options import OptionFilter
-from rule_builder.rules import HasFromList, Rule, TWorld, True_, Has, HasFromListUnique, HasAnyCount, HasAllCounts
-from .characters import CharacterConfig, character_offset_map
+from rule_builder.rules import Rule, True_, Has, HasFromListUnique
+from .characters import CharacterConfig, character_list
+from .coop import player_name
 from .items import ItemType
-from .options import CampfireSanity, ShopSanity, GoldSanity, NeowSanity, ShopRemoveSlots, ProgressiveStarterCard, \
+from .options import CampfireSanity, ShopSanity, GoldSanity, ShopRemoveSlots, ProgressiveStarterCard, \
     ProgressiveStarterRelic
-from ..AutoWorld import LogicMixin
-from ..generic.Rules import set_rule
+from worlds.AutoWorld import LogicMixin, World
 
 if TYPE_CHECKING:
-    from .world import SlayTheSpire2World, SlayTheSpire2Item
+    from .world import SlayTheSpire2World
 
 
 class SpireLogic(LogicMixin):
@@ -37,15 +37,21 @@ class SpireLogic(LogicMixin):
         }
 
     def copy_mixin(self, new_state: CollectionState) -> CollectionState:
+        copied_state = spire_logic(new_state)
         for k,v in self.power_level.items():
             new_char_pl = defaultdict(float)
-            new_state.power_level[k] = new_char_pl
+            copied_state.power_level[k] = new_char_pl
             for ik, iv in v.items():
                 new_char_pl[ik] = iv
-        new_state.item_levels = {
+        copied_state.item_levels = {
             k: {inner: inner_v for inner, inner_v in v.items() } for k,v in self.item_levels.items()
         }
         return new_state
+
+
+def spire_logic(state: CollectionState) -> SpireLogic:
+    # Archipelago installs LogicMixin attributes on CollectionState at runtime.
+    return typing.cast(SpireLogic, typing.cast(object, state))
 
 
 @dataclasses.dataclass()
@@ -73,13 +79,16 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
 
         @typing.override
         def _evaluate(self, state: CollectionState) -> bool:
-            return state.power_level[self.player][self.char_offset] >= self.power_level
+            return spire_logic(state).power_level[self.player][self.char_offset] >= self.power_level
 
         @typing.override
         def explain_json(self, state: CollectionState | None = None) -> List[JSONMessagePart]:
+            player_index, character = divmod(self.char_offset, 100)
+            name = (character_list[character - 1] if 1 <= character <= len(character_list)
+                    else f"Custom Character {character - len(character_list)}")
             return [
                 {
-                    "type": "text", "text": f"{character_offset_map[self.char_offset]} has power level {self.power_level}"
+                    "type": "text", "text": f"{player_name(name, player_index + 1)} requires power level {self.power_level}"
                 }
             ]
 
@@ -144,23 +153,27 @@ class SpireHasShop(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
 class NumberOfProgressiveAncients(FieldResolver, game="Slay the Spire II"):
     default_amount: int
     @typing.override
-    def resolve(self, world: 'SlayTheSpire2World') -> typing.Any:
-        return self.default_amount + (0 if world.options.neow_sanity.value == 0 else 1)
+    def resolve(self, world: World) -> int:
+        spire_world = typing.cast('SlayTheSpire2World', world)
+        return self.default_amount + (0 if spire_world.options.neow_sanity.value == 0 else 1)
 
 
 
 def set_rules(world: 'SlayTheSpire2World') -> None:
-    for config in world.characters:
+    for config in world.all_player_characters:
         _set_rules(world, config)
 
-    num_goals = len(world.characters) if world.options.num_chars_goal.value == 0 else world.options.num_chars_goal.value
-    assert num_goals > 0
-    world.set_completion_rule(HasFromListUnique(*[f"{config.name} Victory" for config in world.characters],
-                                          count=num_goals))
+    completion = True_()
+    for configs in world.player_characters.values():
+        num_goals = len(configs) if world.options.num_chars_goal.value == 0 else world.options.num_chars_goal.value
+        assert num_goals > 0
+        completion = completion & HasFromListUnique(*[f"{config.ap_name} Victory" for config in configs],
+                                                    count=num_goals)
+    world.set_completion_rule(completion)
 
 def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
-    prefix = config.name
-    offset = config.char_offset
+    prefix = config.ap_name
+    offset = config.power_key
     world.set_rule(world.get_entrance(f"{prefix} Early Act 1"), Has(f"{prefix} Unlock"))
     world.set_rule(world.get_entrance(f"{prefix} Mid Act 1"), SpireHasPower(offset,3) &
                    Has(f"{prefix} Progressive Rest", options=[OptionFilter(CampfireSanity, 1)], filtered_resolution=True) &

@@ -1,4 +1,4 @@
-from BaseClasses import ItemClassification, Optional
+from BaseClasses import ItemClassification
 import typing
 from typing import Dict
 from collections import defaultdict
@@ -6,6 +6,7 @@ from enum import auto, Enum
 
 from worlds.spire2.characters import character_list
 from worlds.spire2.constants import CHAR_OFFSET, NUM_CUSTOM, ASCENSIONS
+from .coop import MAX_PLAYERS, expand_player_groups, player_id, player_name, power_key
 
 
 class ItemType(Enum):
@@ -78,8 +79,11 @@ base_item_table: Dict[str, ItemData] = {
     'Victory': ItemData(None, ItemType.EVENT, ItemClassification.progression, True, True),
     'Beat Act 1 Boss': ItemData(None, ItemType.EVENT, ItemClassification.progression, True),
     'Beat Act 2 Boss': ItemData(None, ItemType.EVENT, ItemClassification.progression, True),
-    **{asc: ItemData(i + 19, ItemType.ASCENSION_DOWN, ItemClassification.useful) for i, asc in enumerate(ASCENSIONS.values()) }
 }
+base_item_table.update({
+    asc: ItemData(i + 19, ItemType.ASCENSION_DOWN, ItemClassification.useful)
+    for i, asc in enumerate(ASCENSIONS.values())
+})
 
 # Items in this table are character-agnostic, and can be claimed by any of them
 universal_items: Dict[str, ItemData] = {
@@ -123,19 +127,16 @@ base_event_item_pairs: Dict[str, str] = {
 
 def create_item_tables(vanilla_chars: typing.List[str], extras: int) -> typing.Tuple[dict[str, ItemData], dict[
     typing.Union[str, int],dict[str,ItemData]], dict[str,str]]:
-    item_name_to_data = {
-        **universal_items,
-        **universal_bonus_items,
-    }
+    item_name_to_data = universal_items | universal_bonus_items
 
-    characters_to_items: dict[typing.Union[str, int],dict[str, ItemData]] = defaultdict(lambda: dict())
+    characters_to_items: dict[typing.Union[str, int],dict[str, ItemData]] = defaultdict(dict)
     event_item_pairs: dict[str, str] = dict()
     char_num = 1
 
     for char in vanilla_chars:
-        for key, data in base_item_table.items():
+        for key, base_data in base_item_table.items():
             newkey = f"{char} {key}"
-            newval = ItemData.increment(data, char_num*CHAR_OFFSET)
+            newval = ItemData.increment(base_data, char_num*CHAR_OFFSET)
             item_name_to_data[newkey] = newval
             characters_to_items[char][newkey] = newval
         for key, val in base_event_item_pairs.items():
@@ -143,9 +144,9 @@ def create_item_tables(vanilla_chars: typing.List[str], extras: int) -> typing.T
         char_num += 1
 
     for i in range(extras):
-        for key, data in base_item_table.items():
+        for key, base_data in base_item_table.items():
             newkey = f"Custom Character {i+1} {key}"
-            newval = ItemData.increment(data, char_num * CHAR_OFFSET)
+            newval = ItemData.increment(base_data, char_num * CHAR_OFFSET)
             item_name_to_data[newkey] = newval
             characters_to_items[i+1][newkey] = newval
         for key, val in base_event_item_pairs.items():
@@ -245,3 +246,11 @@ def create_item_groups(
 
 
 item_groups = create_item_groups(item_table, chars_to_items)
+
+# Keep the character tables canonical; expand only the public AP name/ID catalog.
+_base_items = dict(item_table)
+for number in range(2, MAX_PLAYERS + 1):
+    for name, data in _base_items.items():
+        item_table[player_name(name, number)] = data._replace(
+            code=player_id(data.code, number), char_offset=power_key(data.char_offset, number))
+expand_player_groups(item_groups, character_list + [f"Custom Character {n}" for n in range(1, NUM_CUSTOM + 1)])

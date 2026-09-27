@@ -1,16 +1,27 @@
 import typing
-from copy import deepcopy
 from dataclasses import dataclass
-from typing import List
 
-from Options import OptionSet, OptionList, Range, Toggle, Visibility, Choice, TextChoice, OptionDict, OptionCounter, \
+from Options import OptionSet, OptionList, Range, Toggle, Visibility, Choice, TextChoice, OptionDict, \
     PerGameCommonOptions, OptionGroup, DeathLink as ArchipelagoDeathLink
 
-import schema
 from schema import Schema, Optional, And
 
 from .characters import character_list
 from .constants import NUM_CUSTOM, ASCENSIONS
+
+
+class PlayerCount(Range):
+    """Number of co-op players sharing ONE AP slot, each sharing the same settings but separately tracked progress
+    Each player independently rolls their own character roster. 
+    Each client must select its own player number before connecting.
+    NOTE: You may also play multiplayer via player_count: 1 but everyone has their own yaml and thus each
+    person can have different sanities turned on. 
+    May also be used for asyncs to play the same character multiple times
+    """
+    display_name = "Player Count"
+    range_start = 1
+    range_end = 4
+    default = 1
 
 
 class Characters(OptionSet):
@@ -35,9 +46,8 @@ class ModdedCharacters(OptionSet):
     If you don't know the exact ID to enter with the mod installed go to
     `Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.
 
-    If a configured mod is missing or its ID is wrong, the client treats that character as
-    unrecognized and mirrors its checks from playable configured characters. Configure at least
-    one character that the client can load so it has a valid starting character.
+    Every configured character must be installed with the matching internal ID. The client
+    rejects the AP connection if a configured character cannot be loaded.
     """
     display_name = "Modded Characters"
     default = []
@@ -50,8 +60,9 @@ class GoalNumChar(Range):
     default = 0
 
 class PickNumberCharacters(Range):
-    """Randomly select from the configured characters this many characters to generate for.
-    0 disables.
+    """Randomly select from the configured characters this many characters for each player to generate for.
+    Each player's selection is rolled independently, and selections may overlap.
+    0 gives every player all configured characters.
     For example, if "character" is configured to be:
         characters:
             - Ironclad
@@ -66,9 +77,9 @@ class PickNumberCharacters(Range):
 
 class LockCharacters(Choice):
     """Whether in a multi character run "Unlock [Char]" items should be shuffled in.
-    locked_fixed means the unlocked_character option is used to determine which character to start with
-    locked_random means which character you start with is randomized
-    unlocked means you start with all characters available"""
+    locked_fixed uses unlocked_character for Player 1 and randomizes the starting character for other players.
+    locked_random independently randomizes which character each player starts with.
+    unlocked makes every character in each player's roster available."""
     display_name = "Lock Characters"
     option_unlocked = 0
     option_locked_random = 1
@@ -76,7 +87,7 @@ class LockCharacters(Choice):
     default = 1
 
 class UnlockedCharacter(TextChoice):
-    """Which character to start unlocked, if lock_characters is set to locked_fixed.
+    """Which character Player 1 starts with, if lock_characters is set to locked_fixed.
     Can also enter a character name for modded characters."""
     default = 0
     option_ironclad = 0
@@ -118,9 +129,9 @@ class Ascension(OptionSet):
 #     default = 0
 
 class NeowSanity(Toggle):
-    """Adds Neow's start-of-run reward as a location and Progressive Ancient reward.
+    """Adds Neow's starting Ancient Relic as a Progressive Ancient reward.
 
-    With Anytime, Neow's relic choices appear in the Archipelago reward menu."""
+    With Anytime mode, Neow's relic choices appear in the Archipelago reward menu."""
     display_name = "Neow Sanity"
     default = 0
 
@@ -150,11 +161,12 @@ class AncientRelicPool(Choice):
 
 
 class RelicRewardsAvailableAnytime(Range):
-    """How many Relic items can be claimed before earning relic rewards in the run.
-
-    The client snapshots this value at run start. Later Relic items need a reward from an
-    Elite, treasure chest, or Black Star before they appear in the AP reward menu. The client's
-    local AP relic availability can be overriden in client settings for new runs only."""
+    """How many AP Relic items can be claimed via the AP Menu without fighting elites or visiting chests.
+    Later AP Relic Items can only be 'claimed' by beating Elites or opening treasure chests.
+    i.e. A value of 2 here and receiving 3 relics from AP means you get 2 relics in your AP menu and the 3rd 
+    requires beating one elite or visiting one chest. 
+    tldr; fight elites and go to chests to get more relics. Lower value = elites matter more so don't skip them
+    """
     display_name = "Relic Rewards Available Anytime"
     range_start = 0
     range_end = 10
@@ -321,9 +333,8 @@ class CharacterOptions(OptionDict):
     If you don't know the exact ID to enter with the mod installed go to
     `Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.
 
-    If a configured mod is missing or its ID is wrong, the client treats that character as
-    unrecognized and mirrors its checks from playable configured characters. Configure at least
-    one character that the client can load so it has a valid starting character.
+    Every configured character must be installed with the matching internal ID. The client
+    rejects the AP connection if a configured character cannot be loaded.
     """
     # For those wondering why on earth there's an advanced character option
     # it's to support modded characters.
@@ -473,140 +484,132 @@ class DeathLinkDamagePercent(Range):
 
 # Filler Item Weight Options
 
-# Factory function to create filler weight Choice classes dynamically
-def _create_filler_weight_class(item_name: str, description: str, default_weight: int = 1):
-    """Create a Choice class for filler item weights.
-    
-    Args:
-        item_name: The display name of the item (e.g., "One Gold", "Free Attack")
-        description: Description of what the item does
-    
-    Returns:
-        A Choice class with standard weight options (none=0, low=1, medium=3, high=5)
-    """
-    class_name = item_name.replace(" ", "").replace("-", "") + "FillerWeight"
-    display_name = f"{item_name} Filler Weight"
-    docstring = f"""Weight for {item_name} filler items. {description}"""
-    
-    return type(
-        class_name,
-        (Choice,),
-        {
-            "__module__": __name__,
-            "__doc__": docstring,
-            "display_name": display_name,
-            "option_none": 0,
-            "option_low": 1,
-            "option_medium": 3,
-            "option_high": 5,
-            "default": default_weight,
-        }
-    )
+class FillerWeight(Choice):
+    option_none = 0
+    option_low = 1
+    option_medium = 3
+    option_high = 5
+    default = option_low
 
 # Character-specific filler items
-OneGoldFillerWeight = _create_filler_weight_class(
-    "One Gold",
-    """Grants one gold to its associated character. If every filler weight is None, the generator
-    uses that character's One Gold as the required safe fallback.""",
-    default_weight = 0
-)
+class OneGoldFillerWeight(FillerWeight):
+    """Weight for One Gold filler items. Grants one gold to its associated character. If every filler weight is None, the generator
+    uses that character's One Gold as the required safe fallback."""
 
-FiveGoldFillerWeight = _create_filler_weight_class(
-    "Five Gold",
-    """Grants five gold to its associated character.""",
-    default_weight = 5
-)
+    display_name = "One Gold Filler Weight"
+    default = FillerWeight.option_none
+
+
+class FiveGoldFillerWeight(FillerWeight):
+    """Weight for Five Gold filler items. Grants five gold to its associated character."""
+
+    display_name = "Five Gold Filler Weight"
+    default = FillerWeight.option_high
 
 # Universal filler items
-FreeAttackFillerWeight = _create_filler_weight_class(
-    "Free Attack",
-    "At the start of the next player combat turn, makes the next Attack played cost zero energy.",
-    default_weight = 5
-)
+class FreeAttackFillerWeight(FillerWeight):
+    """Weight for Free Attack filler items. At the start of the next player combat turn, makes the next Attack played cost zero energy."""
 
-FreePowerFillerWeight = _create_filler_weight_class(
-    "Free Power",
-    "At the start of the next player combat turn, makes the next Power played cost zero energy.",
-    default_weight = 5
-)
+    display_name = "Free Attack Filler Weight"
+    default = FillerWeight.option_high
 
-FreeSkillFillerWeight = _create_filler_weight_class(
-    "Free Skill",
-    "At the start of the next player combat turn, makes the next Skill played cost zero energy.",
-    default_weight = 5
-)
 
-VigorFillerWeight = _create_filler_weight_class(
-    "Vigor",
-    "Applies Vigor at the start of the next player combat turn.",
-    default_weight = 5
-)
+class FreePowerFillerWeight(FillerWeight):
+    """Weight for Free Power filler items. At the start of the next player combat turn, makes the next Power played cost zero energy."""
 
-ArtifactFillerWeight = _create_filler_weight_class(
-    "Artifact",
-    "Applies Artifact at the start of the next player combat turn.",
-    default_weight = 5
-)
+    display_name = "Free Power Filler Weight"
+    default = FillerWeight.option_high
 
-ThornsFillerWeight = _create_filler_weight_class(
-    "Thorns",
-    "Applies Thorns at the start of the next player combat turn.",
-    default_weight = 5
-)
 
-DexterityFillerWeight = _create_filler_weight_class(
-    "Dexterity",
-    "Applies Dexterity at the start of the next player combat turn.",
-    default_weight = 3
-)
+class FreeSkillFillerWeight(FillerWeight):
+    """Weight for Free Skill filler items. At the start of the next player combat turn, makes the next Skill played cost zero energy."""
 
-StrengthFillerWeight = _create_filler_weight_class(
-    "Strength",
-    "Applies Strength at the start of the next player combat turn.",
-    default_weight = 3
-)
+    display_name = "Free Skill Filler Weight"
+    default = FillerWeight.option_high
 
-PlatingFillerWeight = _create_filler_weight_class(
-    "Plating",
-    "Applies Plating at the start of the next player combat turn.",
-    default_weight = 3
-)
 
-BufferFillerWeight = _create_filler_weight_class(
-    "Buffer",
-    "Applies Buffer at the start of the next player combat turn.",
-    default_weight = 1
-)
+class VigorFillerWeight(FillerWeight):
+    """Weight for Vigor filler items. Applies Vigor at the start of the next player combat turn."""
 
-FriendshipFillerWeight = _create_filler_weight_class(
-    "Friendship",
-    "Applies Friendship at the start of the next player combat turn, raising maximum energy by one.",
-    default_weight = 3
-)
+    display_name = "Vigor Filler Weight"
+    default = FillerWeight.option_high
 
-PostCombatCardUpgradeFillerWeight = _create_filler_weight_class(
-    "Post-Combat Card Upgrade",
-    "At the start of the next player combat turn, applies a buff that upgrades a random deck card after combat.",
-    default_weight = 1
-)
 
-PostCombatCardRemovalFillerWeight = _create_filler_weight_class(
-    "Post-Combat Card Removal",
-    "At the start of the next player combat turn, applies a buff that lets you remove a deck card after combat.",
-    default_weight = 1
-)
+class ArtifactFillerWeight(FillerWeight):
+    """Weight for Artifact filler items. Applies Artifact at the start of the next player combat turn."""
 
-AdditionalCardRewardFillerWeight = _create_filler_weight_class(
-    "Additional Card Reward",
-    "At the start of the next player combat turn, applies a buff that adds a card reward after combat.",
-    default_weight = 1
-)
+    display_name = "Artifact Filler Weight"
+    default = FillerWeight.option_high
 
-SingleColorlessCardFillerWeight = _create_filler_weight_class(
-    "Single Colorless Card",
-    """Grants a one-time card reward containing one random colorless card.""",
-    default_weight = 3
-)
+
+class ThornsFillerWeight(FillerWeight):
+    """Weight for Thorns filler items. Applies Thorns at the start of the next player combat turn."""
+
+    display_name = "Thorns Filler Weight"
+    default = FillerWeight.option_high
+
+
+class DexterityFillerWeight(FillerWeight):
+    """Weight for Dexterity filler items. Applies Dexterity at the start of the next player combat turn."""
+
+    display_name = "Dexterity Filler Weight"
+    default = FillerWeight.option_medium
+
+
+class StrengthFillerWeight(FillerWeight):
+    """Weight for Strength filler items. Applies Strength at the start of the next player combat turn."""
+
+    display_name = "Strength Filler Weight"
+    default = FillerWeight.option_medium
+
+
+class PlatingFillerWeight(FillerWeight):
+    """Weight for Plating filler items. Applies Plating at the start of the next player combat turn."""
+
+    display_name = "Plating Filler Weight"
+    default = FillerWeight.option_medium
+
+
+class BufferFillerWeight(FillerWeight):
+    """Weight for Buffer filler items. Applies Buffer at the start of the next player combat turn."""
+
+    display_name = "Buffer Filler Weight"
+    default = FillerWeight.option_low
+
+
+class FriendshipFillerWeight(FillerWeight):
+    """Weight for Friendship filler items. Applies Friendship at the start of the next player combat turn, raising maximum energy by one."""
+
+    display_name = "Friendship Filler Weight"
+    default = FillerWeight.option_medium
+
+
+class PostCombatCardUpgradeFillerWeight(FillerWeight):
+    """Weight for Post-Combat Card Upgrade filler items. At the start of the next player combat turn, applies a buff that upgrades a random deck card after combat."""
+
+    display_name = "Post-Combat Card Upgrade Filler Weight"
+    default = FillerWeight.option_low
+
+
+class PostCombatCardRemovalFillerWeight(FillerWeight):
+    """Weight for Post-Combat Card Removal filler items. At the start of the next player combat turn, applies a buff that lets you remove a deck card after combat."""
+
+    display_name = "Post-Combat Card Removal Filler Weight"
+    default = FillerWeight.option_low
+
+
+class AdditionalCardRewardFillerWeight(FillerWeight):
+    """Weight for Additional Card Reward filler items. At the start of the next player combat turn, applies a buff that adds a card reward after combat."""
+
+    display_name = "Additional Card Reward Filler Weight"
+    default = FillerWeight.option_low
+
+
+class SingleColorlessCardFillerWeight(FillerWeight):
+    """Weight for Single Colorless Card filler items. Grants a one-time card reward containing one random colorless card."""
+
+    display_name = "Single Colorless Card Filler Weight"
+    default = FillerWeight.option_medium
 
 # Filler Items Option Group
 filler_item_options = OptionGroup(
@@ -637,6 +640,7 @@ filler_item_options = OptionGroup(
 
 @dataclass
 class Spire2Options(PerGameCommonOptions):
+    player_count: PlayerCount
     # Character options
     characters: Characters
     modded_characters: ModdedCharacters
