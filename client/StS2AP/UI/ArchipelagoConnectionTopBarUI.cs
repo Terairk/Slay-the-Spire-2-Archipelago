@@ -92,6 +92,14 @@ internal sealed partial class ArchipelagoConnectionStatusIcon : Control
 
     private ApConnectionIndicatorState? _state;
     private float _spinnerAngle;
+    private readonly Godot.Timer _spinnerTimer = new() { WaitTime = 1.0 / 30.0 };
+
+    public ArchipelagoConnectionStatusIcon()
+    {
+        Draw += DrawIcon;
+        _spinnerTimer.Timeout += AdvanceSpinner;
+        AddChild(_spinnerTimer);
+    }
 
     public void SetState(ApConnectionIndicatorState state)
     {
@@ -101,20 +109,23 @@ internal sealed partial class ArchipelagoConnectionStatusIcon : Control
         _state = state;
         bool isTrying = state is ApConnectionIndicatorState.Connecting
             or ApConnectionIndicatorState.Reconnecting;
-        SetProcess(isTrying);
+        if (isTrying)
+            _spinnerTimer.Start();
+        else
+            _spinnerTimer.Stop();
         QueueRedraw();
     }
 
-    public override void _Process(double delta)
+    private void AdvanceSpinner()
     {
         _spinnerAngle = Mathf.PosMod(
-            _spinnerAngle + (float)delta * Mathf.Tau * 0.7f,
+            _spinnerAngle + (float)_spinnerTimer.WaitTime * Mathf.Tau * 0.7f,
             Mathf.Tau
         );
         QueueRedraw();
     }
 
-    public override void _Draw()
+    private void DrawIcon()
     {
         float scale = MathF.Min(Size.X, Size.Y) / 80f;
         if (scale <= 0f)
