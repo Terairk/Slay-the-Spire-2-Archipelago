@@ -47,6 +47,8 @@ internal static class BonusRewardUtility
                 : null;
             selected = BonusRelicResolver.BuildPoolCandidates(definition.Pools, rejectPickupEffectRelics: true)
                 .Where(relic => relic.IsAllowed(player.RunState))
+                .Where(relic => relic.Pool == player.Character.RelicPool
+                    || !ModelDb.CharacterRelicPools.Contains(relic.Pool))
                 .OrderBy(relic => BonusRewardSelectionKey.Create(
                     player.RunState.Rng.StringSeed,
                     ordinal,
