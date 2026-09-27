@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble the loader and both client variants after the Package build exports its PCK."""
+"""Assemble the loader and both client variants after exporting the PCK."""
 
 from __future__ import annotations
 
@@ -11,21 +11,27 @@ import subprocess
 from pathlib import Path
 
 
-def assemble(repo: Path, output: Path, configuration: str, public: str, beta: str) -> None:
+def assemble(repo: Path, output: Path, configuration: str, public: str, beta: str,
+             *, local: bool = False) -> None:
     output = output.resolve()
-    for required in ("Archipelago.pck", "Archipelago.json", "spire2.apworld"):
+    required_files = ["Archipelago.pck", "Archipelago.json"]
+    if not local:
+        required_files.append("spire2.apworld")
+    for required in required_files:
         if not (output / required).is_file():
             raise ValueError(f"Package staging is missing {required}: {output}")
+    # Local builds use the same reference settings as the IDE via local.props.
+    reference_properties = [] if local else ["-p:UseSts2RefLib=true"]
     project = repo / "client/StS2AP/StS2AP.csproj"
     for version in (public, beta):
         subprocess.run([
             "dotnet", "build", str(project), "-c", configuration,
-            "-p:BuildMode=CompileOnly", "-p:UseSts2RefLib=true",
+            "-p:BuildMode=CompileOnly", *reference_properties,
             f"-p:Sts2ApiCompat={version}",
         ], check=True)
     subprocess.run([
         "dotnet", "build", str(repo / "client/StS2AP.Loader/StS2AP.Loader.csproj"),
-        "-c", configuration, "-p:UseSts2RefLib=true", f"-p:Sts2ApiCompat={public}",
+        "-c", configuration, *reference_properties, f"-p:Sts2ApiCompat={public}",
     ], check=True)
 
     manifest = {
@@ -68,6 +74,8 @@ if __name__ == "__main__":
     parser.add_argument("--configuration", default="Release")
     parser.add_argument("--public", required=True)
     parser.add_argument("--beta", required=True)
+    parser.add_argument("--local", action="store_true",
+                        help="Use local reference settings and allow a missing APWorld.")
     args = parser.parse_args()
     assemble(Path(__file__).resolve().parents[1], args.output,
-             args.configuration, args.public, args.beta)
+             args.configuration, args.public, args.beta, local=args.local)

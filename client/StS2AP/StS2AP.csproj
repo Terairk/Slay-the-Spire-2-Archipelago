@@ -1,5 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <!-- Import user-specific Windows development/deployment paths. -->
+  <!-- Import user-specific development/deployment paths. -->
   <Import Project="local.props" Condition="Exists('local.props')" />
 
   <PropertyGroup>
@@ -34,7 +34,7 @@
     <!-- Client Release Version -->
     <Version>2.4.0</Version>
 
-    <!-- Build/deploy paths on the Windows build machine. -->
+    <!-- Build/deploy paths for the active game installation. -->
     <ModsOutputDir Condition="'$(ModsOutputDir)' == ''"
       >$(STS2GamePath)/mods/$(ModName)</ModsOutputDir>
     <GameDataDir>$(STS2GamePath)/data_sts2_windows_x86_64</GameDataDir>
@@ -75,7 +75,7 @@
     <UseSts2RefLib Condition="'$(UseSts2RefLib)' == ''">true</UseSts2RefLib>
 
     <!-- Differentiate build outputs based on beta/public build -->
-    <IntermediateOutputPath>$(MSBuildProjectDirectory)/obj/$(Sts2ApiCompat)/$(Configuration)/</IntermediateOutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Sts2ApiCompat)/$(Configuration)/</IntermediateOutputPath>
     <OutputPath>$(MSBuildProjectDirectory)/bin/$(Sts2ApiCompat)/$(Configuration)/</OutputPath>
 
     <!-- Create pre-processor directives for each supported game version -->
@@ -386,17 +386,17 @@ dotnet/embed_build_outputs=false
       Condition="'$(BuildMode)' == 'Package' and !Exists('$(ApWorldSource)')"
     />
     <Warning
-      Text="spire2.apworld not found in dist folder. Run scripts/build_world.ps1 to build it."
+      Text="spire2.apworld not found in dist folder. Run scripts/build_apworld_local.py to build it."
       Condition="'$(BuildMode)' != 'Package' and !Exists('$(ApWorldSource)')"
     />
 
     <!-- The preset architecture applies to executables, not this PCK-only export. -->
     <Exec Command="&quot;$(GodotExePath)&quot; --headless --path &quot;$(GodotProject)&quot; --export-pack &quot;$(GodotPackPreset)&quot; &quot;$(ModsOutputDir)/$(ModName).pck&quot;" />
   </Target>
-  <Target Name="AssembleLocalCompatibilityBundle" AfterTargets="PostBuild" Condition="'$(BuildMode)' == 'Local'">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/../../scripts/assemble_client_variants.ps1&quot; -Configuration &quot;$(Configuration)&quot; -ClientProject &quot;$(MSBuildProjectFullPath)&quot; -LoaderProject &quot;$(MSBuildProjectDirectory)/../StS2AP.Loader/StS2AP.Loader.csproj&quot; -PublicReferenceDir &quot;$(STS2ReferenceDataDir01071)&quot; -BetaReferenceDir &quot;$(STS2ReferenceDataDir01110)&quot; -ModsOutputDir &quot;$(ModsOutputDir)&quot;" />
-  </Target>
-  <Target Name="AssemblePackageCompatibilityBundle" AfterTargets="PostBuild" Condition="'$(BuildMode)' == 'Package'">
-    <Exec Command="&quot;$(PythonExe)&quot; &quot;$(MSBuildProjectDirectory)/../../scripts/package_client_bundle.py&quot; --configuration &quot;$(Configuration)&quot; --output &quot;$(ModsOutputDir)&quot; --public &quot;$(Sts2PublicApiCompat)&quot; --beta &quot;$(Sts2BetaApiCompat)&quot;" />
+  <Target Name="AssembleCompatibilityBundle" AfterTargets="PostBuild" Condition="'$(BuildMode)' == 'Local' or '$(BuildMode)' == 'Package'">
+    <PropertyGroup>
+      <LocalBundleArgument Condition="'$(BuildMode)' == 'Local'">--local</LocalBundleArgument>
+    </PropertyGroup>
+    <Exec Command="&quot;$(PythonExe)&quot; &quot;$(MSBuildProjectDirectory)/../../scripts/package_client_bundle.py&quot; --configuration &quot;$(Configuration)&quot; --output &quot;$(ModsOutputDir)&quot; --public &quot;$(Sts2PublicApiCompat)&quot; --beta &quot;$(Sts2BetaApiCompat)&quot; $(LocalBundleArgument)" />
   </Target>
 </Project>

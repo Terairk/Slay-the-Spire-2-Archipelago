@@ -28,5 +28,8 @@
 
     <!-- Godot 4.5.1 .NET executable used to export the mod's PCK. -->
     <GodotExePath>???\Godot_v4.5.1-stable_mono_win64.exe</GodotExePath>
+
+    <!-- Bundle assembly uses Python 3 on Windows and WSL; defaults to python on PATH. -->
+    <!-- <PythonExe>???\python.exe</PythonExe> -->
   </PropertyGroup>
 </Project>

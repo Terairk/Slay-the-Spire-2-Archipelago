@@ -1,3 +1,19 @@
+# Local client build and deployment
+
+Rider Build and `dotnet build client/StS2AP/StS2AP.csproj` default to `BuildMode=Local`:
+export the PCK, build both supported game API variants and the loader, and copy
+the bundle into `$(STS2GamePath)/mods/Archipelago`. The bundle step uses Python 3
+on both Windows and WSL; set `PythonExe` in `client/StS2AP/local.props` if Python
+is not on PATH. `GodotExePath` must point to an editor executable for the OS
+running the build. WSL builds use Linux paths, including `/mnt/d/...` for a
+Windows game installation; native Windows builds use Windows paths.
+
+Remove `BuildMode=CompileOnly` and any staging `ModsOutputDir` override from
+`local.props` to enable normal deployment. For a check without deployment, run
+`dotnet build client/StS2AP/StS2AP.csproj -p:BuildMode=CompileOnly`.
+The APWorld is copied from `dist/spire2.apworld` when present; build it from WSL
+with `.venv/bin/python scripts/build_apworld_local.py`.
+
 # Local multiplayer test from WSL
 
 The game runs on Windows. From WSL, use the shell wrapper to launch the existing Windows PowerShell test script:
