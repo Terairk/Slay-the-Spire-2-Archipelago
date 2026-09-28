@@ -533,12 +533,6 @@ public static class MultiplayerSupport
             return false;
         }
 
-        if (ArchipelagoClient.Settings?.IsLegacySingleplayerSlot == true)
-        {
-            reason = "This APWorld supports AP Singleplayer only. Use a shared-slot APWorld for AP Multiplayer.";
-            return false;
-        }
-
         if (!_apHistoryPrepared || _preparedSessionIdentity == null)
         {
             reason = "Archipelago is still preparing slot settings and received-item history.";

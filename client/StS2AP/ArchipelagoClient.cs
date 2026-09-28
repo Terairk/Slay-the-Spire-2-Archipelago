@@ -1131,12 +1131,6 @@ namespace StS2AP
                 return false;
             }
 
-            if (Settings?.IsLegacySingleplayerSlot == true)
-            {
-                reason = "This APWorld supports AP Singleplayer only. Use a shared-slot APWorld for AP Multiplayer.";
-                return false;
-            }
-
             IReadOnlyList<ItemInfo> receivedItems = Session.Items.AllItemsReceived;
             // A different AP owner may have used this process previously. Rebuild the
             // selectable set only from this slot's settings and authoritative history.
@@ -1514,29 +1508,14 @@ namespace StS2AP
                 throw new InvalidDataException("No slot data found for this player!");
             }
             slotData = ApSlotData.Normalize(slotData);
-            bool hasPlayerCount = slotData.TryGetValue("player_count", out object? playerCountValue);
-            bool hasPlayers = slotData.TryGetValue("players", out object? playersValue);
-            bool legacySingleplayer = !hasPlayerCount && !hasPlayers && apWorldVersion.Major < 2;
-            if (!legacySingleplayer && (!hasPlayerCount || !hasPlayers))
-                throw new InvalidDataException("The AP slot is missing player_count or players.");
-
+            var player = ApSlotData.ReadPlayer(slotData, LocalSettings.Value.MultiplayerPlayerNumber);
             ArchipelagoSettings settings = new()
             {
                 APWorldVersion = apWorldVersion,
-                PlayerCount = legacySingleplayer ? 1 : Convert.ToInt32(playerCountValue),
-                PlayerNumber = legacySingleplayer ? 1 : LocalSettings.Value.MultiplayerPlayerNumber,
-                IsLegacySingleplayerSlot = legacySingleplayer,
+                PlayerCount = player.Count,
+                PlayerNumber = player.Number,
             };
-
-            if (!CoopPlayerSelection.IsValid(settings.PlayerCount, settings.PlayerNumber))
-                throw new InvalidDataException($"Player {settings.PlayerNumber} is outside this slot's player_count={settings.PlayerCount}. Change Player Number in Multiplayer Settings before connecting.");
-            JArray? playerCharacters = legacySingleplayer
-                ? slotData.GetValueOrDefault("characters") as JArray
-                : (playersValue as JObject)?[settings.PlayerNumber.ToString()] as JArray;
-            if (playerCharacters == null)
-                throw new InvalidDataException("The AP slot is missing the selected player's character configuration.");
-            if (legacySingleplayer)
-                LogUtility.Info($"Using legacy singleplayer AP slot data as Player 1 (selected Player {LocalSettings.Value.MultiplayerPlayerNumber}).");
+            JArray playerCharacters = player.Characters;
 
             // Apply all found settings
             if (slotData.ContainsKey("seeded"))
