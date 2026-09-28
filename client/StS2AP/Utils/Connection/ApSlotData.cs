@@ -20,7 +20,7 @@ internal static class ApSlotData
         int count = hasCount ? Convert.ToInt32(countValue) : 1;
         int number = hasPlayers ? selectedPlayer : 1;
         if (!CoopPlayerSelection.IsValid(count, number))
-            throw new InvalidDataException($"Player {number} is outside this slot's player_count={count}. Change Player Number in Multiplayer Settings before connecting.");
+            throw new InvalidDataException($"Player {number} is outside this slot's player_count={count}. Change Shared-slot player number in Custom APWorld settings before connecting.");
 
         JArray? characters = hasPlayers
             ? (playersValue as JObject)?[number.ToString()] as JArray
