@@ -72,6 +72,25 @@ class TestCoopGeneration(unittest.TestCase):
                 self.assertEqual("Silent", starts[0][0])
                 self.assertIn("Silent", [config.name for config in worlds[0].player_characters[1]])
 
+    def test_starting_unlocks_are_precollected_once(self):
+        mw = setup_multiworld(SlayTheSpire2World, steps=("generate_early",), seed=42, options={
+            "characters": self.roster, "player_count": 4,
+            "lock_characters": 2, "unlocked_character": "Ironclad",
+        })
+        world = mw.worlds[1]
+
+        # Match Main.py: it consumes start_inventory after generate_early, before create_items.
+        for name, count in world.options.start_inventory.value.items():
+            for _ in range(count):
+                mw.push_precollected(world.create_item(name))
+        call_all(mw, "create_regions")
+        call_all(mw, "create_items")
+
+        for config in world.all_player_characters:
+            unlock = f"{config.ap_name} Unlock"
+            copies = sum(item.name == unlock for item in mw.precollected_items[1])
+            self.assertEqual(0 if config.locked else 1, copies, unlock)
+
     def test_each_player_rolls_an_independent_roster(self):
         options = {
             "characters": [*self.roster, "Necrobinder"],

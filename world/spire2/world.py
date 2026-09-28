@@ -129,9 +129,6 @@ class SlayTheSpire2World(World):
             for name, amount in original_inventory.items():
                 if split_player_name(name)[0] == 1:
                     self.options.start_inventory.value[player_name(name, number)] = amount
-        for config in self.all_player_characters:
-            if not config.locked:
-                self.options.start_inventory.value[f"{config.ap_name} Unlock"] = 1
 
     def _get_unlocked_char(self, characters: List[str], player_number: int) -> Optional[str]:
         if len(characters) <= 0:
