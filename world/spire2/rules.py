@@ -235,5 +235,5 @@ def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
         world.set_rule(world.get_entrance(f"{prefix} Act 2 Shop"),
                        SpireHasGold(prefix, 150, options=[OptionFilter(GoldSanity,1)], filtered_resolution=True))
 
-        world.set_rule(world.get_entrance(f"{prefix} Act 2 Shop"),
+        world.set_rule(world.get_entrance(f"{prefix} Act 3 Shop"),
                        SpireHasGold(prefix, 270, options=[OptionFilter(GoldSanity,1)], filtered_resolution=True))
