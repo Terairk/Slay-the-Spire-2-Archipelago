@@ -154,6 +154,9 @@ namespace StS2AP.Patches
             public static string SerializeAndCompress(SerializableRun vanillaSave)
             {
                 var save = ArchipelagoClient.Progress.ToSerializable(vanillaSave);
+                if (RunManager.Instance.DebugOnlyGetState() is { } run
+                    && ApRunData.TryGetSharedState(run, out var shared))
+                    save.RunId = shared.RunId;
                 var json = JsonSerializer.Serialize(
                     save,
                     SerializationUtility.CombinedOptions.GetTypeInfo(typeof(SerializableAP))
@@ -236,6 +239,7 @@ namespace StS2AP.Patches
                 || serializableRun.Players[0].CharacterId?.Entry != expectedCharacter)
                 throw new InvalidDataException("The checkpoint character does not match the selected AP run.");
             RunState runState = RunState.FromSerializable(serializableRun);
+            ApRunData.RestoreSingleplayerRunId(runState, apSave.RunId);
             NAudioManager.Instance?.StopMusic();
             await RunManager.Instance.SetUpSavedSingleplayer(runState, serializableRun);
             Log.Info(

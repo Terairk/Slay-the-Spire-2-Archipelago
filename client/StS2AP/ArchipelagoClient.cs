@@ -770,6 +770,7 @@ namespace StS2AP
 
                 Settings = preparedSettings;
                 OnConnected();
+                if (IsConnected) ApGameplayTelemetry.ObserveSettings();
             }
             else
             {

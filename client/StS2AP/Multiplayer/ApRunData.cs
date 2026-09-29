@@ -171,6 +171,13 @@ public static class ApRunData
 
     public static ApRunSharedState GetSharedState(RunState runState) => _sharedRun.Get(runState);
 
+    internal static void RestoreSingleplayerRunId(RunState runState, Guid runId)
+    {
+        // Older experimental checkpoints have no identity; do not invent one on every reload.
+        if (_initialized && runId != Guid.Empty)
+            _sharedRun.Modify(runState, state => state.RunId = runId);
+    }
+
     public static void ModifyRelicReceipts(RunState runState, Action<ApRelicReceiptState> update) =>
         _sharedRun.Modify(runState, state => update(state.RelicReceipts));
 
