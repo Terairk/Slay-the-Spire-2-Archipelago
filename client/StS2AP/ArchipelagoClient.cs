@@ -1110,8 +1110,7 @@ namespace StS2AP
             _ = GameUtility.RestoreGoaledCharsFromStorage();
 
             // Load the set of already-consumed buff indices from DataStorage before item processing begins.
-            if (!MultiplayerSupport.IsMultiplayerScope)
-                _ = BuffUtility.LoadFromStorageAsync();
+            _ = BuffUtility.LoadFromStorageAsync();
 
             // Let the game know that we've connected
             PublishConnectionState();

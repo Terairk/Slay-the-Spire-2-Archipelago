@@ -448,4 +448,4 @@ client/StS2AP/godot/.godot/uid_cache.bin
 terairkdocs/
 
 # Local Cloudflare Worker runtime state
-/.wrangler/
+.wrangler/
