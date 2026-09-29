@@ -1025,9 +1025,10 @@ public static class MultiplayerSupport
             reason = "The local game is disconnected from its multiplayer session.";
             return false;
         }
-        if (IsSynchronizedCombatActive)
+        // Potions may refill inventory during any combat phase; other AP grants stay noncombat.
+        if (kind != ApMirroredRewardKind.Potion && IsSynchronizedCombatActive)
         {
-            reason = "Multiplayer AP rewards can only be claimed outside combat.";
+            reason = "Multiplayer non-potion AP rewards can only be claimed outside combat.";
             return false;
         }
 
