@@ -66,11 +66,11 @@ public sealed class BuffReceiptQueueTests
     }
 
     [Fact]
-    public void OnlyTheThreePostCombatBuffsContributeToMultiplayerGold()
+    public void OnlyAdditionalCardRewardContributesToMultiplayerGold()
     {
         var fallbacks = new[]
         {
-            APItem.PostCombatCardUpgrade, APItem.PostCombatCardRemoval, APItem.AdditionalCardReward,
+            APItem.AdditionalCardReward,
         };
         foreach (APItem item in Enum.GetValues<APItem>())
         {
@@ -82,7 +82,7 @@ public sealed class BuffReceiptQueueTests
             && ItemTable.IsMultiplayerBuffGoldFallback((long)item));
         var bank = new Dictionary<long, int>();
         UniversalBuffGold.AddToBank(bank, new long[] { 1000 }, 0, converted);
-        Assert.Equal(15, bank[1000]);
+        Assert.Equal(5, bank[1000]);
     }
 }
 }
