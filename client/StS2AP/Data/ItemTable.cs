@@ -144,9 +144,12 @@
         // controls live delivery, gold history reconstruction, and action validation.
         private static readonly HashSet<APItem> MultiplayerBuffGoldFallbacks = new()
         {
-            APItem.PostCombatCardUpgrade,
-            APItem.PostCombatCardRemoval,
-            APItem.AdditionalCardReward,
+            // APItem.PostCombatCardUpgrade,
+            // APItem.PostCombatCardRemoval,
+            
+            // doesn't give additional checks nor does it give additional card rewards in multiplayer
+            APItem.AdditionalCardReward, 
+            
         };
 
         public static bool IsMultiplayerBuffGoldFallback(long itemId) =>
