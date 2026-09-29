@@ -9,6 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../StS2AP/Utils/Diagnostics/ApTelemetryException.cs" Link="Utils/ApTelemetryException.cs" />
+    <Compile Include="../StS2AP/Persistence/SerializableAP.cs" Link="Persistence/SerializableAP.cs" />
+    <Compile Include="../StS2AP/Persistence/ApSerializationContext.cs" Link="Persistence/ApSerializationContext.cs" />
+    <Compile Include="../StS2AP/Utils/Diagnostics/ApGameplayLedger.cs" Link="Utils/ApGameplayLedger.cs" />
+    <Compile Include="../StS2AP/Utils/Diagnostics/ApGameplayOptions.cs" Link="Utils/ApGameplayOptions.cs" />
     <PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.1" />
     <Compile Include="../StS2AP/Extensions/ItemInfoExtensions.cs" Link="Extensions/ItemInfoExtensions.cs" />
     <Compile Include="..\StS2AP\Data\ArchipelagoIdCodec.cs" Link="Data\ArchipelagoIdCodec.cs" />

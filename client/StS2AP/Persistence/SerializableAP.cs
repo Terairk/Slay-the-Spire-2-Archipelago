@@ -6,6 +6,10 @@ namespace StS2AP.Persistence;
 /// <summary>Singleplayer envelope around canonical AP progress and the native run save.</summary>
 public sealed class SerializableAP
 {
+    // Custom checkpoints bypass RitsuLib's native save writer, so keep the run identity explicitly.
+    [JsonPropertyName("run_id")]
+    public Guid RunId { get; set; }
+
     [JsonPropertyName("progress")]
     public ApRunProgressState Progress { get; set; } = new();
 
