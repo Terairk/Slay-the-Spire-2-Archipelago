@@ -47,6 +47,7 @@ public static class MultiplayerSupport
         MultiplayerFeature.VictoryChecks,
         MultiplayerFeature.ProgressiveStarters,
         MultiplayerFeature.AscensionEffects,
+        MultiplayerFeature.CombatEffects,
         MultiplayerFeature.DeathLink,
         MultiplayerFeature.SaveAndReconnect,
     };
@@ -256,7 +257,8 @@ public static class MultiplayerSupport
                 ? (ShouldRunReplicatedConstruction(MultiplayerFeature.BonusItems)
                     ? MultiplayerFeature.BonusItems : MultiplayerFeature.GoldRewards)
                 : IsUniversalCombatBuff(item.ItemId)
-                ? MultiplayerFeature.GoldRewards
+                ? (IsMultiplayerBuffGoldFallback(item.ItemId)
+                    ? MultiplayerFeature.GoldRewards : MultiplayerFeature.CombatEffects)
                 : MultiplayerFeature.UnknownReceivedItems;
 
         return item.GetCharacterItemType() switch
