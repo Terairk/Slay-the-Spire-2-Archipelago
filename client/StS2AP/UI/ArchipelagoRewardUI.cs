@@ -23,6 +23,8 @@ namespace StS2AP.UI;
 /// </summary>
 public static class ArchipelagoRewardUI
 {
+    private const string MultiplayerCombatBlockedMessage =
+        "Multiplayer AP rewards can only be claimed outside combat.";
     private const string NativeChoiceBlockedMessage =
         "Finish the current card or relic selection before opening AP rewards.";
     private const string TreasureRoomBlockedMessage =
@@ -133,7 +135,8 @@ public static class ArchipelagoRewardUI
     {
         if (IsOpen || _opening)
             return;
-        if (TryBlockTravel() || TryBlockTreasureRoomOpen() || TryBlockNativeChoiceOpen())
+        if (TryBlockTravel() || TryBlockMultiplayerCombatOpen()
+            || TryBlockTreasureRoomOpen() || TryBlockNativeChoiceOpen())
             return;
 
         _opening = true;
@@ -146,6 +149,7 @@ public static class ArchipelagoRewardUI
 
     internal static bool CanBuildMenuAfterAwait(int apLifecycleVersion) =>
         Travel.CanOpen(apLifecycleVersion, RunManager.Instance.NetService.IsGameLoading)
+        && !TryBlockMultiplayerCombatOpen()
         && !TryBlockTreasureRoomOpen()
         && !TryBlockNativeChoiceOpen();
 
@@ -157,9 +161,10 @@ public static class ArchipelagoRewardUI
         {
             if (IsOpen)
                 return;
-            // ShowRewards is deferred, so repeat the opening guards before OpenMenu creates
-            // a synchronized RewardsSet. Combat restrictions apply to individual claims.
+            // ShowRewards is deferred, so combat or a native choice can begin after the click-time
+            // guard. Repeat both checks before OpenMenu creates a synchronized RewardsSet.
             if (apLifecycleVersion != Travel.ApLifecycleVersion || TryBlockTravel()
+                || TryBlockMultiplayerCombatOpen()
                 || TryBlockTreasureRoomOpen()
                 || TryBlockNativeChoiceOpen())
                 return;
@@ -313,6 +318,22 @@ public static class ArchipelagoRewardUI
             && message.Contains("outside combat", StringComparison.OrdinalIgnoreCase);
         ShowBlockedMessage(message, blockedByCombat);
         return false;
+    }
+
+    private static bool TryBlockMultiplayerCombatOpen()
+    {
+        if (!MultiplayerSupport.IsRealMultiplayerRun
+            || !MultiplayerSupport.IsSynchronizedCombatActive)
+        {
+            return false;
+        }
+
+        ShowBlockedMessage(
+            MultiplayerCombatBlockedMessage,
+            blockedByCombat: true,
+            includeInDevConsole: false
+        );
+        return true;
     }
 
     private static bool TryBlockTravel()

@@ -15,6 +15,7 @@
     <Compile Include="../StS2AP/Utils/Diagnostics/ApGameplayLedger.cs" Link="Utils/ApGameplayLedger.cs" />
     <Compile Include="../StS2AP/Utils/Diagnostics/ApGameplayOptions.cs" Link="Utils/ApGameplayOptions.cs" />
     <PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.1" />
+    <Compile Include="../StS2AP/Extensions/ItemInfoExtensions.cs" Link="Extensions/ItemInfoExtensions.cs" />
     <Compile Include="..\StS2AP\Data\ArchipelagoIdCodec.cs" Link="Data\ArchipelagoIdCodec.cs" />
     <Compile Include="..\StS2AP\Utils\CoopGoalPolicy.cs" Link="Utils\CoopGoalPolicy.cs" />
     <Compile Include="..\StS2AP\Utils\CoopPlayerSelection.cs" Link="Utils\CoopPlayerSelection.cs" />
