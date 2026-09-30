@@ -1,4 +1,5 @@
 import unittest
+from itertools import product
 
 from BaseClasses import CollectionState
 from Fill import distribute_items_restrictive
@@ -89,4 +90,8 @@ class TestSlotGeneration(unittest.TestCase):
         self.assertTrue(all(loc.can_reach(full_state) for loc in mw.get_locations()))
         distribute_items_restrictive(mw, panic_method="raise")
         self.assertFalse(mw.get_unfilled_locations())
-        self.assertTrue(mw.can_beat_game())
+        self.assertTrue(mw.can_beat_game()) 
+
+    def test_floor_checks_do_not_request_opening_items(self):
+        mw = self.generate(include_floor_checks=True, campfire_sanity=True, neow_sanity=True)
+        self.assertFalse(mw.early_items[1])

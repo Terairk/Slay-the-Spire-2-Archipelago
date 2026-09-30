@@ -103,6 +103,18 @@ class SlayTheSpire2World(World):
         num_chars_goal = self.options.num_chars_goal.value
         if num_chars_goal > len(self.characters):
             self.options.num_chars_goal.value = 0
+        if not self.options.include_floor_checks:
+            # this is for helping the generator when we have one world and disabling floor checks
+            # as sometimes generation fails due to not being able to fulfill the early mid act 1 spec
+            early_items = self.multiworld.early_items[self.player]
+            for config in self.characters:
+                if config.locked:
+                    continue
+                early_items[f"{config.name} Card Reward"] = 3 if self.options.shuffle_all_cards else 2
+                if self.options.campfire_sanity:
+                    early_items[f"{config.name} Progressive Rest"] = 1
+                if self.options.neow_sanity:
+                    early_items[f"{config.name} Progressive Ancient"] = 1
         # for weight in self.options.trap_weights.values():
         #     if weight > 0:
         #         break
