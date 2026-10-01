@@ -52,7 +52,7 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
             act=self.act,
             neow_sanity=bool(options.neow_sanity),
             ancient_anytime=bool(options.ancient_relic_location),
-            shop_scale=(1, 0.5, 0.25)[self.act - 1] if self.shop and options.shop_sanity else 0,
+            shop_scale=(2 / 3, 1 / 3, 1 / 6)[self.act - 1] if self.shop and options.shop_sanity else 0,
             shuffled_shop_slots=(options.shop_card_slots.value, options.shop_neutral_card_slots.value,
                                  options.shop_relic_slots.value, options.shop_potion_slots.value),
             # The APWorld cannot verify a modded character's Orobas mappings. Do not assume

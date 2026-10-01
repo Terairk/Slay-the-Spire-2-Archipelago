@@ -256,7 +256,7 @@ class ShopSanity(Toggle):
 
     Logic allows stronger rewards to compensate for missing normal-shop choices, rather than
     requiring an increasing number of restored slots. First useful slots matter most;
-    the penalty for a completely locked shop is 4.5 power in Act 1, 2.25 in Act 2, and 1.125
+    the penalty for a completely locked shop is 3 power in Act 1, 1.5 in Act 2, and 0.75
     in Act 3. Unshuffled slots already contribute. AP check affordability and removal access
     are handled separately."""
     display_name = "Shop Sanity"
