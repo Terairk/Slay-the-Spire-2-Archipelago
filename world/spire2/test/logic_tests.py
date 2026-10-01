@@ -63,7 +63,7 @@ logic_map: dict[PowerLevel, List[str]] = {
         *_create_floor_check(17, 17),
         # *_create_combat_check(9, 11),
     ],
-    PowerLevel(draw=4, relic=3, ancient=1, rest=1, smith=1, shop=1, shop_remove=1): [
+    PowerLevel(draw=4, relic=3, ancient=1, smith=1, shop=1, shop_remove=1): [
         "Card Reward 5",
         "Potion Drop 4",
         "Act 2 Campfire 1",
@@ -94,7 +94,7 @@ logic_map: dict[PowerLevel, List[str]] = {
         "Boss Gold 2",
         *_create_floor_check(33, 33),
     ],
-    PowerLevel(draw=7, relic=4, ancient=2, smith=2, shop=5, shop_remove=2): [
+    PowerLevel(draw=7, relic=4, ancient=2, smith=2, shop=1, shop_remove=2): [
     # PowerLevel(draw=7, relic=4, boss_relic=1, rest=2, smith=2, shop=6, shop_remove=2, gold=5): [
         "Card Reward 8",
         "Potion Drop 7",

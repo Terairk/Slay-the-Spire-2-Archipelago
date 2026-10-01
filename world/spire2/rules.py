@@ -91,17 +91,18 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
             if self.starter_relic and state.has(f"{self.char} Progressive Starter Relic", self.player, 2):
                 power += 2.5
 
+            # if you don't have enough progressive rest's for that act, you need a bit more power to support yourself
             required = self.power_level
             if self.rest_level and not state.has(f"{self.char} Progressive Rest", self.player, self.rest_level):
-                required += 4.5
+                required += (3, 4, 5)[self.act - 1]
 
             # earlier progressive smith's matter way more, act 3 one is weaker
             # for progressive shop remove's - early on it doesn't matter but later on
             # it matters more? its sort of unclear how to do shop remove's here
             # its all vibe based anyway
             for item, level, weights in (
-                ("Progressive Smith", self.smith_level, (3, 2, 1)),
-                ("Progressive Shop Remove", self.remove_level, (1, 2, 2)),
+                ("Progressive Smith", self.smith_level, (3, 2.5, 1)),
+                ("Progressive Shop Remove", self.remove_level, (1, 1.5, 2)),
             ):
                 received = state.count(f"{self.char} {item}", self.player)
                 required += sum(weights[received:level])
@@ -136,8 +137,8 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
         @typing.override
         def explain_json(self, state: CollectionState | None = None) -> List[JSONMessagePart]:
             description = (f"{self.char} requires power {self.power_level} and card strength "
-                           f"{self.minimum_cards}; missing current Rest adds 4.5, "
-                           "missing Smith tiers add 3/2/1, removal tiers add 1/2/2 "
+                           f"{self.minimum_cards}; missing current Rest adds {(3, 4, 5)[self.act - 1]}, "
+                           "missing Smith tiers add 3/2.5/1, removal tiers add 1/1.5/2 "
                            "as their acts become available; Ancient support adjusts the threshold "
                            "by 2.5/4/4 relative to this act's expected rewards; "
                            f"missing shop choice adds up to {4.5 * self.shop_scale} power; "
