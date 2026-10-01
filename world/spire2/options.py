@@ -1,5 +1,6 @@
 import typing
 from dataclasses import dataclass
+from math import ceil
 
 from Options import OptionSet, OptionList, Range, Toggle, Visibility, Choice, TextChoice, OptionDict, \
     PerGameCommonOptions, OptionGroup, DeathLink as ArchipelagoDeathLink
@@ -117,16 +118,41 @@ class Ascension(OptionSet):
 class NeowSanity(Toggle):
     """Adds Neow's starting Ancient Relic as a Progressive Ancient reward.
 
-    With Anytime mode, Neow's relic choices appear in the Archipelago reward menu."""
+    With Anytime mode, Neow's relic choices appear in the Archipelago reward menu.
+    """
     display_name = "Neow Sanity"
     default = 0
+
+
+class LogicDifficulty(Choice):
+    """Controls the combat strength assumed by generation, independently of in-game Ascension.
+
+    Easy requires 20 percent more base strength; Normal uses the experimental baseline;
+    Hard requires 20 percent less. Requirements round up to the next half point.
+    Missing Rest, Smith and removal support still adds the same penalties in every preset,
+    and all presets retain the minimum card-strength requirements and purchase budgets.
+    Hard assumes more skill and favourable reward choices; it does not guarantee easy runs.
+    """
+    display_name = "Logic Difficulty"
+    option_easy = 0
+    option_normal = 1
+    option_hard = 2
+    default = 1
+
+    def combat_requirement(self, power: float) -> float:
+        return ceil(power * (1.2, 1.0, 0.8)[self.value] * 2) / 2
 
 
 class AncientRelicLocation(Choice):
     """Controls when Progressive Ancient relic choices are offered.
 
     Start Of Act presents them through the normal Ancient encounter. Anytime presents
-    them as linked choices in the Archipelago reward menu as soon as they are received."""
+    them as linked choices in the Archipelago reward menu as soon as they are received.
+
+    Logic values Neow at 2.5 power and each later Ancient at 4 power. Base combat requirements
+    assume the normal rewards through the current act. Missing rewards increase those
+    requirements; later rewards received in Anytime mode can lower them early.
+    These values are provisional averages across the available reward pools."""
     display_name = "Ancient Relic Location"
     option_start_of_act = 0
     option_anytime = 1
@@ -152,6 +178,8 @@ class RelicRewardsAvailableAnytime(Range):
     i.e. A value of 2 here and receiving 3 relics from AP means you get 2 relics in your AP menu and the 3rd 
     requires beating one elite or visiting one chest. 
     tldr; fight elites and go to chests to get more relics. Lower value = elites matter more so don't skip them
+
+    Logic credits every received Relic with 1.5 power immediately, regardless of this claim setting.
     """
     display_name = "Relic Rewards Available Anytime"
     range_start = 0
@@ -171,7 +199,8 @@ class ProgressiveStarterCard(Toggle):
     Requires Include Floor Checks. Each character gets two Progressive Starter Card items, which
     replace two floor-check filler items. With none received, the character
     starts without the special starter card that Archaic Tooth would transform (Bash, Neutralize, a compatible modded equivalent etc).
-    The first item restores the normal card.
+    The first item restores the normal card; the second applies its Archaic Tooth transformation.
+    For vanilla characters, logic credits the second tier with 2.5 additional card strength.
 
     Characters without an Archaic Tooth transformation are left unchanged, although their two
     Progressive Starter Card items are still present in the multiworld.
@@ -190,6 +219,9 @@ class ProgressiveStarterRelic(Toggle):
     starts without the starter relic that Touch of Orobas would refine (such as Burning Blood, or a
     compatible modded equivalent).
 
+    The first item restores the normal relic; the second applies its Touch of Orobas refinement.
+    For vanilla characters, logic credits the second tier with 2.5 additional power.
+
     Characters without a Touch of Orobas refinement are left unchanged, although their two
     Progressive Starter Relic items are still present in the multiworld.
 
@@ -202,19 +234,31 @@ class ProgressiveStarterRelic(Toggle):
 
 class IncludeFloorChecks(Toggle):
     """Add locations for reaching new floors and fill the corresponding item-pool space with
-    configurable filler. Ascension Down and Progressive Starter options require these locations."""
+    configurable filler. Ascension Down and Progressive Starter options require these locations.
+
+    Combat requirements and support-item values are unchanged when floor checks are disabled."""
     display_name = "Include Floor Checks"
     default = 1
 
 class CampfireSanity(Toggle):
     """Whether to shuffle being able to rest and smith at each campsite per act.  Also adds
-    new locations at campsites per act."""
+    new locations at campsites per act.
+
+    Logic requires the first Smith tier before the Act 1 boss. Stronger decks can
+    compensate for missing Rest access and later Smith tiers. Earlier Smith tiers
+    contribute more than later tiers, and their benefit carries into subsequent acts."""
     display_name = "Campfire Sanity"
     default = 0
 
 class ShopSanity(Toggle):
     """Move the configured shop slots to a separate AP shop page as purchasable location checks and
-    shuffle items that progressively restore the corresponding slots on the normal shop page."""
+    shuffle items that progressively restore the corresponding slots on the normal shop page.
+
+    Logic allows stronger rewards to compensate for missing normal-shop choices, rather than
+    requiring an increasing number of restored slots. First useful slots matter most;
+    the penalty for a completely locked shop is 4.5 power in Act 1, 2.25 in Act 2, and 1.125
+    in Act 3. Unshuffled slots already contribute. AP check affordability and removal access
+    are handled separately."""
     display_name = "Shop Sanity"
     option_true = 1
     option_false = 0
@@ -251,7 +295,9 @@ class ShopPotionSlots(Range):
 class ShopRemoveSlots(Toggle):
     """When shop_sanity is enabled, whether to shuffle the ability to remove cards at the shop.
     Progressive based on Act; i.e. you'll gain the ability to remove cards per Act, starting from Act 1.
-    Act 4 will be treated as Act 3."""
+    Act 4 will be treated as Act 3.
+    Logic permits stronger decks to compensate for missing removal access. Earlier tiers
+    contribute more than later tiers, and their benefit carries into subsequent acts."""
     display_name = "Shop Remove Slots"
     default = 0
 
@@ -264,7 +310,8 @@ class ShopSanityCosts(Choice):
     Discount Tiered: 50 percent of the calculated baseline.
     Tiered: the full calculated baseline.
 
-    Generation logic does not account for these prices."""
+    With Gold Sanity enabled, logic requires 50 / 150 / 270 gold for the Act 1 / 2 / 3 shops,
+    independently of this price setting. Gold is required for shop checks, rather than for boss access."""
     display_name = "Shop Sanity Costs"
     option_Fixed = 0
     option_Super_Discount_Tiered = 1
@@ -283,7 +330,10 @@ class PotionSanity(Toggle):
     default = 0
 
 class CardReward(Toggle):
-    """Whether every card reward is shuffled.  If false, then every other card reward is shuffled
+    """Whether every card reward is shuffled. If false, every other reward remains a normal card choice.
+
+    Received ordinary cards always count as 1 power. Half-shuffle logic also credits the free
+    choices along the route: about 3.5 power per completed act, with smaller Mid/Late Act allowances.
     """
     display_name = "Shuffle All Card Rewards"
     default = False
@@ -638,6 +688,7 @@ class Spire2Options(PerGameCommonOptions):
     ascension_down: AscensionDown
 
     # Main game flow
+    logic_difficulty: LogicDifficulty
     ancient_relic_location: AncientRelicLocation
     ancient_relic_pool: AncientRelicPool
     relic_rewards_available_anytime: RelicRewardsAvailableAnytime

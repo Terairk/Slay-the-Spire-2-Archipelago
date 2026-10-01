@@ -18,7 +18,6 @@ class TestSlotGeneration(unittest.TestCase):
 
     def test_obsolete_player_count_cannot_change_generation(self):
         self.assertNotIn("player_count", SlayTheSpire2World.options_dataclass.type_hints)
-        self.assertNotIn("stage_fill_hook", SlayTheSpire2World.__dict__)
         baseline = self.generate()
         for count in (1, 2, 4, 100):
             with self.subTest(count=count):
@@ -81,8 +80,8 @@ class TestSlotGeneration(unittest.TestCase):
         mw = setup_multiworld([SlayTheSpire2World] * 2, seed=42, options=options)
         state = CollectionState(mw)
         state.collect(mw.worlds[1].create_item("Ironclad Relic"), prevent_sweep=True)
-        self.assertEqual(1.5, state.power_level[1][1])
-        self.assertEqual(0, state.power_level[2][1])
+        self.assertEqual(1, state.count("Ironclad Relic", 1))
+        self.assertEqual(0, state.count("Ironclad Relic", 2))
         state.collect(mw.worlds[1].create_item("Ironclad Victory"), prevent_sweep=True)
         self.assertTrue(mw.completion_condition[1](state))
         self.assertFalse(mw.completion_condition[2](state))

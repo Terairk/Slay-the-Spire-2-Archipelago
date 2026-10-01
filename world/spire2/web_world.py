@@ -7,7 +7,7 @@ from .options import (
     IncludeFloorChecks, NeowSanity, CampfireSanity, GoldSanity, PotionSanity,
     ShopSanity, ShopCardSlots, ShopNeutralSlots, ShopRelicSlots, ShopPotionSlots, ShopRemoveSlots, ShopSanityCosts,
     AncientRelicLocation, AncientRelicPool, RelicRewardsAvailableAnytime, ReleaseOnVictory,
-    CardReward, ProgressiveStarterCard, ProgressiveStarterRelic, BonusItems, SeededRun,
+    CardReward, ProgressiveStarterCard, ProgressiveStarterRelic, BonusItems, SeededRun, LogicDifficulty,
     OneGoldFillerWeight, FiveGoldFillerWeight,
     FreeAttackFillerWeight, FreePowerFillerWeight, FreeSkillFillerWeight,
     DexterityFillerWeight, StrengthFillerWeight, PlatingFillerWeight,
@@ -42,6 +42,7 @@ class SlayTheSpire2Web(WebWorld):
         OptionGroup("Game Options", [
             ProgressionBalancing,
             Accessibility,
+            LogicDifficulty,
             AncientRelicLocation,
             AncientRelicPool,
             RelicRewardsAvailableAnytime,

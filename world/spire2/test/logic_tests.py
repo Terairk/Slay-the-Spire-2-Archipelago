@@ -35,7 +35,7 @@ logic_map: dict[PowerLevel, List[str]] = {
     PowerLevel(gold=2): [
         *_create_shop_check(1, 5),
     ],
-    PowerLevel(draw=2,relic=0, rest=1): [
+    PowerLevel(draw=2, rest=1): [
         "Relic 1",
         "Relic 2",
         "Card Reward 3",
@@ -44,7 +44,7 @@ logic_map: dict[PowerLevel, List[str]] = {
         *_create_combat_check(5, 6),
         *_create_floor_check(7, 11)
     ],
-    PowerLevel(draw=2,relic=2,rest=1, shop=2): [
+    PowerLevel(draw=1, relic=4, rest=1, shop=2): [
         "Relic 3",
         "Card Reward 4",
         "Potion Drop 3",
@@ -52,7 +52,7 @@ logic_map: dict[PowerLevel, List[str]] = {
         # *_create_floor_check(11, 15)
         *_create_floor_check(12, 16)
     ],
-    PowerLevel(draw=3,relic=2, rest=1, smith=1, shop=3, shop_remove=1, gold=2): [
+    PowerLevel(draw=3, relic=4, rest=1, smith=1, shop=2, shop_remove=1): [
         "Act 1 Boss",
         "Rare Card Reward 1",
         # "Boss Relic 1",
@@ -63,14 +63,14 @@ logic_map: dict[PowerLevel, List[str]] = {
         *_create_floor_check(17, 17),
         # *_create_combat_check(9, 11),
     ],
-    PowerLevel(draw=4,relic=2, ancient=1, rest=1, smith=1, shop=3, shop_remove=1, gold=2): [
+    PowerLevel(draw=4, relic=3, ancient=1, rest=1, smith=1, shop=1, shop_remove=1): [
         "Card Reward 5",
         "Potion Drop 4",
         "Act 2 Campfire 1",
         *_create_floor_check(18, 22),
         *_create_combat_check(9, 10),
     ],
-    PowerLevel(draw=5,relic=2, ancient=1, rest=2, smith=1, shop=4, shop_remove=1, gold=2): [
+    PowerLevel(draw=5, relic=3, ancient=1, rest=2, smith=1, shop_remove=1): [
         "Relic 4",
         "Relic 5",
         "Card Reward 6",
@@ -79,14 +79,14 @@ logic_map: dict[PowerLevel, List[str]] = {
         *_create_floor_check(23, 27),
         *_create_combat_check(11, 12),
     ],
-    PowerLevel(draw=6,relic=2, ancient=1, rest=2, smith=1, shop=5, shop_remove=1, gold=2): [
+    PowerLevel(draw=6, relic=3, ancient=1, rest=2, smith=1, shop=5, shop_remove=1): [
         "Relic 6",
         "Card Reward 7",
         "Potion Drop 6",
         *_create_floor_check(28, 32),
         *_create_combat_check(13, 14),
     ],
-    PowerLevel(draw=6, relic=4, ancient=1, rest=2, smith=2, shop=6, shop_remove=2, gold=5): [
+    PowerLevel(draw=5, relic=5, ancient=1, rest=2, smith=2, shop=5, shop_remove=2): [
     # PowerLevel(draw=7, relic=4, boss_relic=1, rest=2, smith=2, shop=6, shop_remove=2, gold=5): [
         "Act 2 Boss",
         "Rare Card Reward 2",
@@ -94,7 +94,7 @@ logic_map: dict[PowerLevel, List[str]] = {
         "Boss Gold 2",
         *_create_floor_check(33, 33),
     ],
-    PowerLevel(draw=7, relic=4, ancient=2, rest=2, smith=2, shop=6, shop_remove=2, gold=5): [
+    PowerLevel(draw=7, relic=4, ancient=2, smith=2, shop=5, shop_remove=2): [
     # PowerLevel(draw=7, relic=4, boss_relic=1, rest=2, smith=2, shop=6, shop_remove=2, gold=5): [
         "Card Reward 8",
         "Potion Drop 7",
@@ -102,7 +102,7 @@ logic_map: dict[PowerLevel, List[str]] = {
         *_create_floor_check(34, 38),
         *_create_combat_check(15, 16),
     ],
-    PowerLevel(draw=8,relic=4, ancient=2, rest=3,smith=2, shop=8, shop_remove=2, gold=5): [
+    PowerLevel(draw=8, relic=4, ancient=2, rest=3, smith=2, shop_remove=2): [
     # PowerLevel(draw=8,relic=4,boss_relic=1, rest=3,smith=2, shop=8, shop_remove=2, gold=5): [
         "Relic 7",
         "Relic 8",
@@ -112,7 +112,7 @@ logic_map: dict[PowerLevel, List[str]] = {
         *_create_floor_check(39, 43),
         *_create_combat_check(17, 18),
     ],
-    PowerLevel(draw=8,relic=6, ancient=2, rest=3,smith=2, shop=10, shop_remove=2, gold=5): [
+    PowerLevel(draw=7, relic=6, ancient=2, rest=3, smith=2, shop_remove=2): [
     # PowerLevel(draw=8,relic=6,boss_relic=1, rest=3,smith=2, shop=10, shop_remove=2, gold=5): [
         "Card Reward 10",
         "Relic 9",
@@ -121,7 +121,7 @@ logic_map: dict[PowerLevel, List[str]] = {
         *_create_floor_check(44, 47),
         *_create_combat_check(19, 20),
     ],
-    PowerLevel(draw=8,relic=8, ancient=2, rest=3,smith=3, shop=10,shop_remove=3, gold=9): [
+    PowerLevel(draw=6, relic=8, ancient=2, rest=3, smith=3, shop_remove=3): [
     # PowerLevel(draw=8,relic=8,boss_relic=2,rest=3,smith=3, shop=10,shop_remove=3, gold=9): [
         "Act 3 Boss",
         *_create_floor_check(48, 48),

@@ -2,13 +2,14 @@ import re
 import string
 import typing
 from copy import deepcopy
+from math import ceil
 from typing import List, Optional, Any
 
-from BaseClasses import Item, Location, Region, MultiWorld, ItemClassification, CollectionState
+from BaseClasses import Item, Location, Region, MultiWorld, ItemClassification
 from Options import OptionError
 from worlds.AutoWorld import World
 from .regions import create_regions
-from .rules import set_rules, spire_logic
+from .rules import set_rules
 from .web_world import SlayTheSpire2Web
 from .characters import CharacterConfig, character_list, character_offset_map
 from .constants import NUM_CUSTOM, ASCENSION_LIST, CHAR_OFFSET
@@ -104,15 +105,25 @@ class SlayTheSpire2World(World):
         if num_chars_goal > len(self.characters):
             self.options.num_chars_goal.value = 0
         if not self.options.include_floor_checks:
-            # this is for helping the generator when we have one world and disabling floor checks
-            # as sometimes generation fails due to not being able to fulfill the early mid act 1 spec
+            # Give sparse starts enough support to open Mid Act 1.
+            # Mixing cards and relics meets the power/card floor within the available checks;
+            # ordinary cards alone can fill every opening slot and still fall short.
             early_items = self.multiworld.early_items[self.player]
+            opening_power = self.options.logic_difficulty.combat_requirement(3)
+            cards = 1 if self.options.shuffle_all_cards else 0
+            vanilla_cards = 0 if self.options.shuffle_all_cards else 1.5
+            relics = ceil((opening_power - cards - vanilla_cards) / 1.5)
             for config in self.characters:
                 if config.locked:
                     continue
-                early_items[f"{config.name} Card Reward"] = 3 if self.options.shuffle_all_cards else 2
+                if cards:
+                    early_items[f"{config.name} Card Reward"] = cards
+                early_items[f"{config.name} Relic"] = relics
                 if self.options.campfire_sanity:
                     early_items[f"{config.name} Progressive Rest"] = 1
+                    if self.options.logic_difficulty == "easy" and self.options.shuffle_all_cards:
+                        # Secure the Act 1 boss gate while the sparse opening has room.
+                        early_items[f"{config.name} Progressive Smith"] = 1
                 if self.options.neow_sanity:
                     early_items[f"{config.name} Progressive Ancient"] = 1
         # for weight in self.options.trap_weights.values():
@@ -673,25 +684,25 @@ class SlayTheSpire2World(World):
     def set_rules(self) -> None:
         set_rules(self)
 
-    def collect(self, state: CollectionState, item: Item) -> bool:
-        change = super().collect(state, item)
-        item_data = typing.cast(SlayTheSpire2Item, item).item_data
-        spire_state = spire_logic(state)
-        if change and item_data.type in spire_state.item_levels[self.player]:
-            level = spire_state.item_levels[self.player].get(item_data.type, 0.0)
-            char_level = spire_state.power_level[item.player]
-            char_level[item_data.char_offset] = char_level[item_data.char_offset] + level
-        return change
-
-    def remove(self, state: CollectionState, item: Item) -> bool:
-        change = super().remove(state, item)
-        item_data = typing.cast(SlayTheSpire2Item, item).item_data
-        spire_state = spire_logic(state)
-        if change and item_data.type in spire_state.item_levels[self.player]:
-            level = spire_state.item_levels[self.player].get(item_data.type, 0.0)
-            char_level = spire_state.power_level[item.player]
-            char_level[item_data.char_offset] = char_level[item_data.char_offset] - level
-        return change
+    # Inspired by Super Mario Sunshine's stage fill hook, credited there to @Mysteryem:
+    # https://github.com/Joshark/archipelago-sms/blob/main/worlds/sms/__init__.py#L245
+    # Floorless worlds have few early checks; cards/relics can crowd out the support
+    # needed to reach later checks and cause FillErrors. Restrictive fill consumes the
+    # pool from the end, so sorting support first keeps it in the assumed inventory
+    # longer and tends to place it earlier in progression. This is a placement heuristic;
+    # access rules still apply. Sort once for all floorless Spire players, preserving
+    # the relative order of other items.
+    @classmethod
+    def stage_fill_hook(cls, multiworld: MultiWorld, progitempool: List[Item], usefulitempool: List[Item],
+                        filleritempool: List[Item], fill_locations: List[Location]) -> None:
+        support_order = {(world.player, f"{config.name} {name}"): rank
+                         for world in multiworld.get_game_worlds(cls.game)
+                         if not world.options.include_floor_checks
+                         for config in world.characters
+                         for rank, name in enumerate(("Unlock", "Progressive Ancient", "Progressive Rest",
+                                                      "Progressive Smith", "Progressive Shop Remove"))}
+        if support_order:
+            progitempool.sort(key=lambda item: support_order.get((item.player, item.name), 5))
 
     def fill_slot_data(self) -> dict:
         slot_data = {
@@ -715,6 +726,7 @@ class SlayTheSpire2World(World):
             "ascension",
             "num_chars_goal",
             "shuffle_all_cards",
+            "logic_difficulty",
             "include_floor_checks",
             "neow_sanity",
             "ancient_relic_location",
@@ -745,6 +757,7 @@ class SlayTheSpire2World(World):
         self.options.shop_neutral_card_slots.value = slot_data["shop_sanity_options"]["neutral_slots"]
         self.options.shop_relic_slots.value = slot_data["shop_sanity_options"]["relic_slots"]
         self.options.shop_potion_slots.value = slot_data["shop_sanity_options"]["potion_slots"]
+        self.options.shop_sanity_costs.value = slot_data["shop_sanity_options"]["costs"]
         for char_dict in slot_data['characters']:
             config = CharacterConfig(
                 char_dict['name'],
@@ -765,6 +778,7 @@ class SlayTheSpire2World(World):
         if self.total_shop_locations <= 0:
             self.options.shop_sanity.value = 0
         self.options.shuffle_all_cards.value = slot_data['shuffle_all_cards']
+        self.options.logic_difficulty.value = slot_data.get('logic_difficulty', 1)
         self.options.include_floor_checks.value = slot_data['include_floor_checks']
         self.options.neow_sanity.value = slot_data['neow_sanity']
         self.options.ancient_relic_location.value = slot_data['ancient_relic_location']
