@@ -24,6 +24,25 @@ SHOP_SLOT_VALUES = (
 )
 
 
+# Marginal power per received tier: restore the starter, then upgrade it.
+# these are somewhat arbitrary, like you could reason that neutralize/falling star
+# should be worth 1 instead of 1.5
+STARTER_CARD_POWER = {
+    "Ironclad": (1, 4),       # Bash -> Break
+    "Silent": (1.5, 4),         # Neutralize -> Suppress
+    "Defect": (1, 2),         # Dualcast -> Quadcast
+    "Necrobinder": (1, 2),    # Unleash -> Protector
+    "Regent": (1.5, 5),         # Falling Star -> Meteor Shower
+}
+STARTER_RELIC_POWER = {
+    "Ironclad": (3.5, 1.5),     # Burning Blood -> Black Blood
+    "Silent": (2, 3),           # Ring of the Snake -> Ring of the Drake
+    "Defect": (1, 2.5),         # Cracked Core -> Infused Core
+    "Necrobinder": (4.5, 4.5),  # Bound Phylactery -> Phylactery Unbound
+    "Regent": (1.5, 2),         # Divine Right -> Divine Destiny
+}
+
+
 @dataclasses.dataclass()
 class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
     char_offset: int
@@ -57,8 +76,11 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
                                  options.shop_relic_slots.value, options.shop_potion_slots.value),
             # The APWorld cannot verify a modded character's Orobas mappings. Do not assume
             # those receipts grant upgrades when the client may leave its starters unchanged.
-            starter_card=config.mod_num == 0 and bool(options.progressive_starter_card),
-            starter_relic=config.mod_num == 0 and bool(options.progressive_starter_relic),
+            starter_card_power=STARTER_CARD_POWER[config.name]
+                               if config.mod_num == 0 and options.progressive_starter_card else (0, 0),
+            starter_relic_power=STARTER_RELIC_POWER[config.name]
+                                if config.mod_num == 0 and options.progressive_starter_relic else (0, 0),
+            starter_relic_shuffled=bool(options.progressive_starter_relic),
             player=world.player,
         )
 
@@ -75,21 +97,26 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
         ancient_anytime: bool
         shop_scale: float
         shuffled_shop_slots: tuple[int, int, int, int]
-        starter_card: bool
-        starter_relic: bool
+        starter_card_power: tuple[float, float]
+        starter_relic_power: tuple[float, float]
+        starter_relic_shuffled: bool
 
         def strength(self, state: CollectionState) -> tuple[float, float, float]:
             cards = (state.count(f"{self.char} Card Reward", self.player)
                      + 1.5 * state.count(f"{self.char} Rare Card Reward", self.player)
                      + self.vanilla_cards)
-            if self.starter_card and state.has(f"{self.char} Progressive Starter Card", self.player, 2):
-                cards += 2.5
+            starter_cards = state.count(f"{self.char} Progressive Starter Card", self.player)
+            cards += sum(self.starter_card_power[:starter_cards])
+            # Necrobinder's starter card is more useful with its starter relic, including when unshuffled.
+            if (self.char == "Necrobinder" and self.starter_card_power[0] and starter_cards
+                    and (not self.starter_relic_shuffled
+                         or state.has(f"{self.char} Progressive Starter Relic", self.player))):
+                cards += 1
             # Credit receipts immediately, as in the previous APWorld. Claim timing
             # remains a client setting rather than an additional logic restriction.
             relics = state.count(f"{self.char} Relic", self.player)
             power = cards + 1.5 * relics
-            if self.starter_relic and state.has(f"{self.char} Progressive Starter Relic", self.player, 2):
-                power += 2.5
+            power += sum(self.starter_relic_power[:state.count(f"{self.char} Progressive Starter Relic", self.player)])
 
             # if you don't have enough progressive rest's for that act, you need a bit more power to support yourself
             required = self.power_level
@@ -110,7 +137,7 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
             # instead of ancients being fixed and necessary for an act, spice things up
             # and make them give more power
             # anytime mode can provide later rewards early; encounter mode cannot.
-            ancient_weights = (2.5, 4, 4)
+            ancient_weights = (2, 4, 4)
             received = state.count(f"{self.char} Progressive Ancient", self.player) + int(not self.neow_sanity)
             claimable = min(3 if self.ancient_anytime else self.act, received)
             required += sum(ancient_weights[:self.act]) - sum(ancient_weights[:claimable])
@@ -140,9 +167,13 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
                            f"{self.minimum_cards}; missing current Rest adds {(3, 4, 5)[self.act - 1]}, "
                            "missing Smith tiers add 3/2.5/1, removal tiers add 1/1.5/2 "
                            "as their acts become available; Ancient support adjusts the threshold "
-                           "by 2.5/4/4 relative to this act's expected rewards; "
+                           "by 2/4/4 relative to this act's expected rewards; "
                            f"missing shop choice adds up to {4.5 * self.shop_scale} power; "
-                           f"free-card credit {self.vanilla_cards}, received relics count as 1.5 each")
+                           f"free-card credit {self.vanilla_cards}, received relics count as 1.5 each; "
+                           f"starter card tiers add {self.starter_card_power} card strength, "
+                           f"starter relic tiers add {self.starter_relic_power} power")
+            if self.char == "Necrobinder" and self.starter_card_power[0]:
+                description += "; received starter card gains 1 extra strength when the starter relic is available"
             if state is not None:
                 cards, power, required = self.strength(state)
                 description += (f" (currently power {power}/{required}, cards {cards}/{self.minimum_cards}, "
@@ -191,10 +222,12 @@ def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
     # seven before the boss. Half shuffle leaves half of those rewards as free cards.
     world.set_rule(world.get_entrance(f"{prefix} Mid Act 1"),
                    SpireHasPower(offset, 3, card_rewards=3, minimum_cards=1, rest=True))
-    world.set_rule(world.get_entrance(f"{prefix} Late Act 1"),
-                   SpireHasPower(offset, 6, card_rewards=5, minimum_cards=1, rest=True, shop=True)
-                   & Has(f"{prefix} Progressive Starter Relic", options=[OptionFilter(ProgressiveStarterRelic, 1)], filtered_resolution=True)
-                   & Has(f"{prefix} Progressive Starter Card", options=[OptionFilter(ProgressiveStarterCard, 1)], filtered_resolution=True))
+    late_act_1 = SpireHasPower(offset, 6, card_rewards=5, minimum_cards=1, rest=True, shop=True)
+    if config.mod_num:
+        # Unknown starter effects keep the conservative 'gates' for modded characters.
+        late_act_1 &= Has(f"{prefix} Progressive Starter Relic", options=[OptionFilter(ProgressiveStarterRelic, 1)], filtered_resolution=True)
+        late_act_1 &= Has(f"{prefix} Progressive Starter Card", options=[OptionFilter(ProgressiveStarterCard, 1)], filtered_resolution=True)
+    world.set_rule(world.get_entrance(f"{prefix} Late Act 1"), late_act_1)
     world.set_rule(world.get_entrance(f"{prefix} Act 1 Boss Arena"),
                    SpireHasPower(offset, 9, card_rewards=7, minimum_cards=3,
                                  rest=True, smith=True, remove=True, shop=True)

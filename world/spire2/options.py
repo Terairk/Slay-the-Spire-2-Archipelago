@@ -149,7 +149,7 @@ class AncientRelicLocation(Choice):
     Start Of Act presents them through the normal Ancient encounter. Anytime presents
     them as linked choices in the Archipelago reward menu as soon as they are received.
 
-    Logic values Neow at 2.5 power and each later Ancient at 4 power. Base combat requirements
+    Logic values Neow at 2 power and each later Ancient at 4 power. Base combat requirements
     assume the normal rewards through the current act. Missing rewards increase those
     requirements; later rewards received in Anytime mode can lower them early.
     These values are provisional averages across the available reward pools."""
@@ -200,13 +200,12 @@ class ProgressiveStarterCard(Toggle):
     replace two floor-check filler items. With none received, the character
     starts without the special starter card that Archaic Tooth would transform (Bash, Neutralize, a compatible modded equivalent etc).
     The first item restores the normal card; the second applies its Archaic Tooth transformation.
-    For vanilla characters, logic credits the second tier with 2.5 additional card strength.
 
     Characters without an Archaic Tooth transformation are left unchanged, although their two
     Progressive Starter Card items are still present in the multiworld.
 
-    WARNING: This can make the early game significantly harder for some characters. Logic expects you to reach
-    Late Act 1 (may need to beat 1 Elite) without your starters."""
+    WARNING: This can make the early game significantly harder for some characters. Logic can
+    require progression without the starter card when other rewards provide enough strength."""
     display_name = "Progressive Starter Card"
     default = 0
 
@@ -220,14 +219,13 @@ class ProgressiveStarterRelic(Toggle):
     compatible modded equivalent).
 
     The first item restores the normal relic; the second applies its Touch of Orobas refinement.
-    For vanilla characters, logic credits the second tier with 2.5 additional power.
 
     Characters without a Touch of Orobas refinement are left unchanged, although their two
     Progressive Starter Relic items are still present in the multiworld.
 
     WARNING: This can make the early game significantly harder for characters whose starting relic
-    is central to their early power. Logic expects you to reach Late Act 1 (may require beating 1 Elite) without
-    your starters."""
+    is central to their early power. Logic can require progression without it when other rewards
+    provide enough strength."""
     display_name = "Progressive Starter Relic"
     default = 0
 
