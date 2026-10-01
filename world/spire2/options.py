@@ -149,9 +149,11 @@ class AncientRelicLocation(Choice):
     Start Of Act presents them through the normal Ancient encounter. Anytime presents
     them as linked choices in the Archipelago reward menu as soon as they are received.
 
-    Logic values Neow at 2 power and each later Ancient at 4 power. Base combat requirements
+    Logic values Neow at 2 power and each later Ancient at 4.5 power. Base combat requirements
     assume the normal rewards through the current act. Missing rewards increase those
     requirements; later rewards received in Anytime mode can lower them early.
+    Start Of Act also requires the corresponding Ancient reward to enter Acts 2 and 3
+    so that their checkpoints are available.
     These values are provisional averages across the available reward pools."""
     display_name = "Ancient Relic Location"
     option_start_of_act = 0

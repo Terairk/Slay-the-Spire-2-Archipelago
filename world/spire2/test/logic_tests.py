@@ -63,6 +63,45 @@ class LogicTests(unittest.TestCase):
             with self.subTest(boss=boss.name):
                 self.assertTrue(boss.access_rule(state))
 
+    def test_start_of_act_ancients_unlock_checkpoints_after_their_checks(self):
+        for mode in ("start_of_act", "anytime"):
+            for neow in (False, True):
+                world = self.make_world(ancient_relic_location=mode, neow_sanity=neow)
+                state = CollectionState(world.multiworld)
+                state.collect(world.create_item("Silent Progressive Smith"), prevent_sweep=True)
+                for _ in range(100):
+                    state.collect(world.create_item("Silent Card Reward"), prevent_sweep=True)
+                for received in range(4):
+                    for act in (2, 3):
+                        with self.subTest(mode=mode, neow=neow, received=received, act=act):
+                            required = act - 1 + int(neow)
+                            entrance = world.get_entrance(f"Silent Early Act {act}")
+                            self.assertEqual(mode == "anytime" or received >= required,
+                                             entrance.access_rule(state))
+                            if mode == "start_of_act" and received == required - 1:
+                                # The encounter check must stay reachable before its reward gate.
+                                self.assertTrue(world.get_location(f"Silent Ancient Act {act}").can_reach(state))
+                    state.collect(world.create_item("Silent Progressive Ancient"), prevent_sweep=True)
+
+    def test_ordinary_card_diminishing_returns_follow_shuffle_mode(self):
+        for full_shuffle, first_discounted in ((True, 12), (False, 6)):
+            world = self.make_world(shuffle_all_cards=full_shuffle)
+            rule = SpireHasPower(world.characters[0].char_offset, 9, card_rewards=21).resolve(world)
+            state = CollectionState(world.multiworld)
+            before = rule.strength(state)
+            self.assertEqual(0 if full_shuffle else 10.5, before[0])
+            for received in range(1, first_discounted + 3):
+                with self.subTest(full_shuffle=full_shuffle, received=received):
+                    state.collect(world.create_item("Silent Card Reward"), prevent_sweep=True)
+                    after = rule.strength(state)
+                    expected = 1 if received < first_discounted else 0.5
+                    self.assertEqual(expected, after[0] - before[0])
+                    self.assertEqual(expected, after[1] - before[1])
+                    self.assertEqual(before[2], after[2])
+                    before = after
+            state.collect(world.create_item("Silent Rare Card Reward"), prevent_sweep=True)
+            self.assertEqual(1.5, rule.strength(state)[1] - before[1])
+
     def test_unshuffled_slots_count_as_available(self):
         world = self.make_world()
         state = CollectionState(world.multiworld)
