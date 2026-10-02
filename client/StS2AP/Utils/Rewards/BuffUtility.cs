@@ -8,6 +8,8 @@ using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models.Powers;
+using MegaCrit.Sts2.Core.Rewards;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using StS2AP.DomainAdapters;
 using STS2RitsuLib;
@@ -335,7 +337,7 @@ public static class BuffUtility
     }
 
     /// <summary>
-    /// Applies the buff's native power. Multiplayer supplies the managed action's choice
+    /// Applies the buff's combat effect. Multiplayer supplies the managed action's choice
     /// context so power hooks and any choices stay within the synchronized action.
     /// </summary>
     /// <returns>False when the target cannot receive the buff, leaving its receipt pending.</returns>
@@ -345,6 +347,17 @@ public static class BuffUtility
             || player.Creature.CombatState == null || CombatManager.Instance.IsEnding)
         {
             return false;
+        }
+
+        if (buffType == APItem.AdditionalCardReward)
+        {
+            if (player.RunState.CurrentRoom is not CombatRoom room)
+                return false;
+            // The Hunt power is only an indicator; its card stores the reward on the room.
+            await PowerCmd.Apply<TheHuntPower>(context, player.Creature, 1, player.Creature, null);
+            room.AddExtraReward(player,
+                new CardReward(CardCreationOptions.ForRoom(player, room.RoomType), 3, player));
+            return true;
         }
 
         Task effect = buffType switch
@@ -364,7 +377,6 @@ public static class BuffUtility
             // ItemTable's gold fallback list; removing an entry enables its effect for trials.
             APItem.PostCombatCardUpgrade => PowerCmd.Apply<ImprovementPower>(context, player.Creature, 1, player.Creature, null),
             APItem.PostCombatCardRemoval => PowerCmd.Apply<ForbiddenGrimoirePower>(context, player.Creature, 1, player.Creature, null),
-            APItem.AdditionalCardReward => PowerCmd.Apply<TheHuntPower>(context, player.Creature, 1, player.Creature, null),
             _ => throw new ArgumentOutOfRangeException(nameof(buffType)),
         };
         await effect;

@@ -66,23 +66,19 @@ public sealed class BuffReceiptQueueTests
     }
 
     [Fact]
-    public void OnlyAdditionalCardRewardContributesToMultiplayerGold()
+    public void CombatBuffTrialsDoNotContributeToMultiplayerGold()
     {
-        var fallbacks = new[]
-        {
-            APItem.AdditionalCardReward,
-        };
         foreach (APItem item in Enum.GetValues<APItem>())
         {
             long id = ArchipelagoIdCodec.ForPlayer((long)item, 2);
-            Assert.Equal(fallbacks.Contains(item), ItemTable.IsMultiplayerBuffGoldFallback(id));
+            Assert.False(ItemTable.IsMultiplayerBuffGoldFallback(id));
         }
         int converted = Enum.GetValues<APItem>().Count(item =>
             ItemTable.IsUniversalCombatBuff((long)item)
             && ItemTable.IsMultiplayerBuffGoldFallback((long)item));
         var bank = new Dictionary<long, int>();
         UniversalBuffGold.AddToBank(bank, new long[] { 1000 }, 0, converted);
-        Assert.Equal(5, bank[1000]);
+        Assert.Equal(0, bank[1000]);
     }
 }
 }

@@ -146,10 +146,10 @@
         {
             // APItem.PostCombatCardUpgrade,
             // APItem.PostCombatCardRemoval,
-            
-            // doesn't give additional checks nor does it give additional card rewards in multiplayer
-            APItem.AdditionalCardReward, 
-            
+
+            // Temporarily enabled for multiplayer trials; uncomment to restore gold fallback.
+            // APItem.AdditionalCardReward,
+
         };
 
         public static bool IsMultiplayerBuffGoldFallback(long itemId) =>
