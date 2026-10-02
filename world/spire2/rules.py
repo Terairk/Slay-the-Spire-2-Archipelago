@@ -133,14 +133,14 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
             # Share the actual adjustments with UT's explanation so it cannot drift from logic.
             adjustments = {}
             if self.rest_level and not state.has(f"{self.char} Progressive Rest", self.player, self.rest_level):
-                adjustments[f"Missing Rest tier {self.rest_level}"] = (3, 4, 5)[self.act - 1]
+                adjustments[f"Missing Rest tier {self.rest_level}"] = (3, 3.5, 4)[self.act - 1]
 
             # earlier progressive smith's matter way more, act 3 one is weaker
             # for progressive shop remove's - early on it doesn't matter but later on
             # it matters more? its sort of unclear how to do shop remove's here
             # its all vibe based anyway
             for item, level, weights in (
-                ("Progressive Smith", self.smith_level, (3, 2.5, 1)),
+                ("Progressive Smith", self.smith_level, (3.5, 3.0, 1.5)),
                 ("Progressive Shop Remove", self.remove_level, (1, 1.5, 2)),
             ):
                 received = state.count(f"{self.char} {item}", self.player)
@@ -262,10 +262,12 @@ def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
     world.set_rule(world.get_entrance(f"{prefix} Early Act 2"),
                    SpireHasPower(offset, 10.5, card_rewards=7, act=2, minimum_cards=3.0, shop=True)
                    & Has(f"{prefix} Progressive Ancient", count=1 + neow_tier, **ancient_filter))
+    # Later acts account for current-act smithing from Mid Act, after the first campfire.
+    # Act 1 keeps smithing at the boss to avoid tightening the sparse floorless opening.
     world.set_rule(world.get_entrance(f"{prefix} Mid Act 2"),
-                   SpireHasPower(offset, 12.5, card_rewards=10, act=2, minimum_cards=3.0, rest=True, shop=True))
+                   SpireHasPower(offset, 12.5, card_rewards=10, act=2, minimum_cards=3.0, rest=True, smith=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Late Act 2"),
-                   SpireHasPower(offset, 15.5, card_rewards=12, act=2, minimum_cards=3.0, rest=True, shop=True))
+                   SpireHasPower(offset, 15.5, card_rewards=12, act=2, minimum_cards=3.0, rest=True, smith=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Act 2 Boss Arena"),
                    SpireHasPower(offset, 18.5, card_rewards=14, act=2, minimum_cards=5.0,
                                  rest=True, smith=True, remove=True, shop=True))
@@ -274,9 +276,9 @@ def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
                    SpireHasPower(offset, 19.5, card_rewards=14, act=3, minimum_cards=5.0, shop=True)
                    & Has(f"{prefix} Progressive Ancient", count=2 + neow_tier, **ancient_filter))
     world.set_rule(world.get_entrance(f"{prefix} Mid Act 3"),
-                   SpireHasPower(offset, 21.5, card_rewards=17, act=3, minimum_cards=5.0, rest=True, shop=True))
+                   SpireHasPower(offset, 21.5, card_rewards=17, act=3, minimum_cards=5.0, rest=True, smith=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Late Act 3"),
-                   SpireHasPower(offset, 24.5, card_rewards=19, act=3, minimum_cards=5.0, rest=True, shop=True))
+                   SpireHasPower(offset, 24.5, card_rewards=19, act=3, minimum_cards=5.0, rest=True, smith=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Act 3 Boss Arena"),
                    SpireHasPower(offset, 27.5, card_rewards=21, act=3, minimum_cards=7.0,
                                  rest=True, smith=True, remove=True, shop=True))

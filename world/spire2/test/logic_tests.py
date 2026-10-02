@@ -153,6 +153,18 @@ class LogicTests(unittest.TestCase):
                         else:
                             self.assertLess(after, before[act - 1])
 
+        for act in (1, 2, 3):
+            state = CollectionState(world.multiworld)
+            for _ in range(act - 1):
+                state.collect(world.create_item("Silent Progressive Smith"), prevent_sweep=True)
+            for stage in ("Mid", "Late"):
+                with self.subTest(act=act, stage=stage):
+                    rule = world.get_entrance(f"Silent {stage} Act {act}").access_rule
+                    assert isinstance(rule, SpireHasPower.Resolved)
+                    with_smith = state.copy()
+                    with_smith.collect(world.create_item("Silent Progressive Smith"), prevent_sweep=True)
+                    self.assertEqual(act > 1, rule.strength(with_smith)[2] < rule.strength(state)[2])
+
     def test_difficulty_scales_base_power_without_scaling_support_penalties(self):
         penalties = []
         for difficulty, expected, rounded in (("normal", 20, 27.5), ("hard", 18, 25),
