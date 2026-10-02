@@ -42,7 +42,7 @@ public sealed partial class ApSingleplayerCheckpointPicker : Control, IScreenCon
         var panel = new PanelContainer();
         panel.SetAnchorsPreset(LayoutPreset.Center);
         panel.OffsetLeft = -530; panel.OffsetRight = 530;
-        panel.OffsetTop = -350; panel.OffsetBottom = 350;
+        panel.OffsetTop = -410; panel.OffsetBottom = 410;
         panel.AddThemeStyleboxOverride("panel", CreatePanelStyle());
         overlay.AddChild(panel);
         var root = new VBoxContainer();
@@ -53,7 +53,7 @@ public sealed partial class ApSingleplayerCheckpointPicker : Control, IScreenCon
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         root.AddChild(scroll);
         _list = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        _list.AddThemeConstantOverride("separation", 8);
+        _list.AddThemeConstantOverride("separation", 6);
         scroll.AddChild(_list);
         var cancel = CreateButton("Cancel");
         cancel.Pressed += () => { if (!_loading) NModalContainer.Instance?.Clear(); };
