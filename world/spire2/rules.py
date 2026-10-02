@@ -124,10 +124,16 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
             power = cards + 1.5 * relics
             power += sum(self.starter_relic_power[:state.count(f"{self.char} Progressive Starter Relic", self.player)])
 
-            # if you don't have enough progressive rest's for that act, you need a bit more power to support yourself
             required = self.power_level
+            for adjustment in self.power_adjustments(state).values():
+                required += adjustment
+            return cards, power, required
+
+        def power_adjustments(self, state: CollectionState) -> dict[str, float]:
+            # Share the actual adjustments with UT's explanation so it cannot drift from logic.
+            adjustments = {}
             if self.rest_level and not state.has(f"{self.char} Progressive Rest", self.player, self.rest_level):
-                required += (3, 4, 5)[self.act - 1]
+                adjustments[f"Missing Rest tier {self.rest_level}"] = (3, 4, 5)[self.act - 1]
 
             # earlier progressive smith's matter way more, act 3 one is weaker
             # for progressive shop remove's - early on it doesn't matter but later on
@@ -138,16 +144,23 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
                 ("Progressive Shop Remove", self.remove_level, (1, 1.5, 2)),
             ):
                 received = state.count(f"{self.char} {item}", self.player)
-                required += sum(weights[received:level])
+                missing = sum(weights[received:level])
+                if missing:
+                    adjustments[f"Missing {item} tiers {received + 1}-{level}"] = missing
 
             # Anytime can provide later rewards early; Start of Act cannot.
             # Missing rewards need replacement power wherever no hard gate applies.
             ancient_weights = (2, 4.5, 4.5)
             received = state.count(f"{self.char} Progressive Ancient", self.player) + int(not self.neow_sanity)
             claimable = min(3 if self.ancient_anytime else self.act, received)
-            required += sum(ancient_weights[:self.act]) - sum(ancient_weights[:claimable])
-            required += self.shop_penalty(state)
-            return cards, power, required
+            ancient_adjustment = sum(ancient_weights[:self.act]) - sum(ancient_weights[:claimable])
+            if ancient_adjustment:
+                mode = "Anytime" if self.ancient_anytime else "Start of Act"
+                adjustments[f"Ancient support ({mode})"] = ancient_adjustment
+            shop_penalty = self.shop_penalty(state)
+            if shop_penalty:
+                adjustments["Missing shop choices"] = shop_penalty
+            return adjustments
 
         def shop_penalty(self, state: CollectionState) -> float:
             if not self.shop_scale:
@@ -168,23 +181,27 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
 
         @typing.override
         def explain_json(self, state: CollectionState | None = None) -> List[JSONMessagePart]:
-            description = (f"{self.char} requires power {self.power_level} and card strength "
-                           f"{self.minimum_cards}; missing current Rest adds {(3, 4, 5)[self.act - 1]}, "
-                           "missing Smith tiers add 3/2.5/1, removal tiers add 1/1.5/2 "
-                           "as their acts become available; Ancient support adjusts the threshold "
-                           "by 2/4.5/4.5 relative to this act's expected rewards; "
-                           f"missing shop choice adds up to {4.5 * self.shop_scale} power; "
-                           f"first {self.full_value_cards} ordinary card receipts count as 1 each, later ones as 0.5; "
-                           f"free-card credit {self.vanilla_cards}, received relics count as 1.5 each; "
-                           f"starter card tiers add {self.starter_card_power} card strength, "
-                           f"starter relic tiers add {self.starter_relic_power} power")
-            if self.char == "Necrobinder" and self.starter_card_power[0]:
-                description += "; received starter card gains 0.5 extra strength when the starter relic is available"
+            lines = [f"{self.char} Act {self.act} power check"]
             if state is not None:
                 cards, power, required = self.strength(state)
-                description += (f" (currently power {power}/{required}, cards {cards}/{self.minimum_cards}, "
-                                f"shop penalty {self.shop_penalty(state)})")
-            return [{"type": "text", "text": description}]
+                lines.extend((
+                    f"  Power: {power:g} / {required:g} required ({'met' if power >= required else 'not met'})",
+                    f"  Card strength: {cards:g} / {self.minimum_cards:g} required "
+                    f"({'met' if cards >= self.minimum_cards else 'not met'})",
+                    f"  Power includes {cards:g} card strength and {power - cards:g} relic/starter relic power.",
+                ))
+            lines.append(f"  Base power requirement (after difficulty): {self.power_level:g}")
+            if state is not None:
+                for label, adjustment in self.power_adjustments(state).items():
+                    lines.append(f"    {label}: {adjustment:+g}")
+            else:
+                lines.append(f"  Minimum card strength: {self.minimum_cards:g}; support adjusts required power.")
+            lines.extend((
+                f"  Ordinary cards: first {self.full_value_cards} worth 1 each, later cards 0.5; rare cards 1.5.",
+                f"  Expected unshuffled card power: {self.vanilla_cards:g}.",
+                "  Support adjustments can be offset by power. Separate item gates still apply.",
+            ))
+            return [{"type": "text", "text": "\n".join(lines) + "\n"}]
 
 
 @dataclasses.dataclass()

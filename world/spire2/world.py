@@ -324,6 +324,14 @@ class SlayTheSpire2World(World):
 
     def create_regions(self) -> None:
         create_regions(self, self.player)
+        # Region creation already follows character/act/stage order, including shop branches.
+        self._ut_region_order = {region.name: index for index, region in enumerate(self.get_regions())}
+
+    def custom_ut_sort(self, region_label: str, location_label: str) -> str:
+        region_order = self._ut_region_order.get(region_label, len(self._ut_region_order))
+        # UT may append a modded-character alias; retain it while sorting check numbers naturally.
+        location_key = re.sub(r"\d+", lambda match: match.group().zfill(10), location_label.casefold())
+        return f"{region_order:04d}:{location_key}"
 
     def create_region(
             self,

@@ -77,6 +77,18 @@ class TestSlotGeneration(unittest.TestCase):
             self.assertEqual(f"{config.official_name} Reached Floor 1",
                              world.location_id_to_alias[location.address])
 
+        # Sort the same labels UT builds, including its appended modded-character aliases.
+        labels = []
+        for config in world.characters:
+            for suffix in ("Reached Floor 1", "Reached Floor 7", "Reached Floor 9",
+                           "Reached Floor 10", "Reached Floor 12", "Act 1 Boss", "Reached Floor 18"):
+                location = world.get_location(f"{config.name} {suffix}")
+                label = location.name
+                if location.address in world.location_id_to_alias:
+                    label += f" ({world.location_id_to_alias[location.address]})"
+                labels.append((location.parent_region.name, label))
+        self.assertEqual(labels, sorted(reversed(labels), key=lambda pair: world.custom_ut_sort(*pair)))
+
     def test_separate_ap_slots_keep_independent_progress_and_fill(self):
         options = {"characters": ["Ironclad", "Silent"], "num_chars_goal": 1,
                    "lock_characters": 2, "unlocked_character": "Ironclad",
