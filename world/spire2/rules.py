@@ -32,7 +32,7 @@ STARTER_CARD_POWER = {
     "Silent": (1.5, 4.5),         # Neutralize -> Suppress
     "Defect": (1, 3.0),         # Dualcast -> Quadcast
     "Necrobinder": (1, 2.5),    # Unleash -> Protector
-    "Regent": (1.5, 5.5),         # Falling Star -> Meteor Shower
+    "Regent": (1.5, 5.0),         # Falling Star -> Meteor Shower
 }
 STARTER_RELIC_POWER = {
     "Ironclad": (3.5, 2.5),     # Burning Blood -> Black Blood
@@ -117,7 +117,7 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
             if (self.char == "Necrobinder" and self.starter_card_power[0] and starter_cards
                     and (not self.starter_relic_shuffled
                          or state.has(f"{self.char} Progressive Starter Relic", self.player))):
-                cards += 1
+                cards += 0.5
             # Credit receipts immediately, as in the previous APWorld. Claim timing
             # remains a client setting rather than an additional logic restriction.
             relics = state.count(f"{self.char} Relic", self.player)
@@ -179,7 +179,7 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
                            f"starter card tiers add {self.starter_card_power} card strength, "
                            f"starter relic tiers add {self.starter_relic_power} power")
             if self.char == "Necrobinder" and self.starter_card_power[0]:
-                description += "; received starter card gains 1 extra strength when the starter relic is available"
+                description += "; received starter card gains 0.5 extra strength when the starter relic is available"
             if state is not None:
                 cards, power, required = self.strength(state)
                 description += (f" (currently power {power}/{required}, cards {cards}/{self.minimum_cards}, "
@@ -230,38 +230,38 @@ def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
     # Budget roughly seven combat rewards per act: three before Mid, five before Late,
     # seven before the boss. Half shuffle leaves half of those rewards as free cards.
     world.set_rule(world.get_entrance(f"{prefix} Mid Act 1"),
-                   SpireHasPower(offset, 3, card_rewards=3, minimum_cards=1, rest=True))
-    late_act_1 = SpireHasPower(offset, 6.5, card_rewards=5, minimum_cards=1, rest=True, shop=True)
+                   SpireHasPower(offset, 3, card_rewards=3, minimum_cards=1.0, rest=True))
+    late_act_1 = SpireHasPower(offset, 6.5, card_rewards=5, minimum_cards=1.0, rest=True, shop=True)
     if config.mod_num:
         # Unknown starter effects keep the conservative 'gates' for modded characters.
         late_act_1 &= Has(f"{prefix} Progressive Starter Relic", options=[OptionFilter(ProgressiveStarterRelic, 1)], filtered_resolution=True)
         late_act_1 &= Has(f"{prefix} Progressive Starter Card", options=[OptionFilter(ProgressiveStarterCard, 1)], filtered_resolution=True)
     world.set_rule(world.get_entrance(f"{prefix} Late Act 1"), late_act_1)
     world.set_rule(world.get_entrance(f"{prefix} Act 1 Boss Arena"),
-                   SpireHasPower(offset, 9.5, card_rewards=7, minimum_cards=3,
+                   SpireHasPower(offset, 9.5, card_rewards=7, minimum_cards=3.0,
                                  rest=True, smith=True, remove=True, shop=True)
                    & Has(f"{prefix} Progressive Smith", options=[OptionFilter(CampfireSanity, 1)], filtered_resolution=True))
 
     world.set_rule(world.get_entrance(f"{prefix} Early Act 2"),
-                   SpireHasPower(offset, 10.5, card_rewards=7, act=2, minimum_cards=3, shop=True)
+                   SpireHasPower(offset, 10.5, card_rewards=7, act=2, minimum_cards=3.0, shop=True)
                    & Has(f"{prefix} Progressive Ancient", count=1 + neow_tier, **ancient_filter))
     world.set_rule(world.get_entrance(f"{prefix} Mid Act 2"),
-                   SpireHasPower(offset, 12.5, card_rewards=10, act=2, minimum_cards=3, rest=True, shop=True))
+                   SpireHasPower(offset, 12.5, card_rewards=10, act=2, minimum_cards=3.0, rest=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Late Act 2"),
-                   SpireHasPower(offset, 15.5, card_rewards=12, act=2, minimum_cards=3, rest=True, shop=True))
+                   SpireHasPower(offset, 15.5, card_rewards=12, act=2, minimum_cards=3.0, rest=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Act 2 Boss Arena"),
-                   SpireHasPower(offset, 18.5, card_rewards=14, act=2, minimum_cards=5,
+                   SpireHasPower(offset, 18.5, card_rewards=14, act=2, minimum_cards=5.0,
                                  rest=True, smith=True, remove=True, shop=True))
 
     world.set_rule(world.get_entrance(f"{prefix} Early Act 3"),
-                   SpireHasPower(offset, 19.5, card_rewards=14, act=3, minimum_cards=5, shop=True)
+                   SpireHasPower(offset, 19.5, card_rewards=14, act=3, minimum_cards=5.0, shop=True)
                    & Has(f"{prefix} Progressive Ancient", count=2 + neow_tier, **ancient_filter))
     world.set_rule(world.get_entrance(f"{prefix} Mid Act 3"),
-                   SpireHasPower(offset, 21.5, card_rewards=17, act=3, minimum_cards=5, rest=True, shop=True))
+                   SpireHasPower(offset, 21.5, card_rewards=17, act=3, minimum_cards=5.0, rest=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Late Act 3"),
-                   SpireHasPower(offset, 24.5, card_rewards=19, act=3, minimum_cards=5, rest=True, shop=True))
+                   SpireHasPower(offset, 24.5, card_rewards=19, act=3, minimum_cards=5.0, rest=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Act 3 Boss Arena"),
-                   SpireHasPower(offset, 27.5, card_rewards=21, act=3, minimum_cards=7,
+                   SpireHasPower(offset, 27.5, card_rewards=21, act=3, minimum_cards=7.0,
                                  rest=True, smith=True, remove=True, shop=True))
 
     if world.options.shop_sanity:

@@ -16,7 +16,8 @@ class TestOptionDefaults(Spire2TestBase):
         )
 
     def test_unlocked_character_default_is_a_named_choice(self):
-        self.assertIn(UnlockedCharacter.default, UnlockedCharacter.name_lookup)
+        option = UnlockedCharacter.from_any(UnlockedCharacter.default)
+        self.assertIn(option.value, option.name_lookup)
 
     def test_filler_weight_defaults_are_picklable(self):
         for option in filler_item_options.options:
@@ -33,6 +34,8 @@ class TestUniversalTrackerCardRewards(Spire2TestBase):
     def test_regeneration_preserves_card_reward_locations(self):
         slot_data = self.world.fill_slot_data()
         regenerated = setup_solo_multiworld(SlayTheSpire2World, steps=())
+        # Universal Tracker attaches this extension to MultiWorld dynamically.
+        # noinspection PyUnresolvedReferences
         regenerated.re_gen_passthrough = {
             self.game: SlayTheSpire2World.interpret_slot_data(slot_data),
         }

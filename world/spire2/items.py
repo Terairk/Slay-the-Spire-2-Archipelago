@@ -129,7 +129,7 @@ def create_item_tables(vanilla_chars: typing.List[str], extras: int) -> typing.T
     item_name_to_data = universal_items | universal_bonus_items
 
     characters_to_items: dict[typing.Union[str, int],dict[str, ItemData]] = defaultdict(dict)
-    event_item_pairs: dict[str, str] = dict()
+    character_event_pairs: dict[str, str] = dict()
     char_num = 1
 
     for char in vanilla_chars:
@@ -139,7 +139,7 @@ def create_item_tables(vanilla_chars: typing.List[str], extras: int) -> typing.T
             item_name_to_data[newkey] = newval
             characters_to_items[char][newkey] = newval
         for key, val in base_event_item_pairs.items():
-            event_item_pairs[f"{char} {key}"] = f"{char} {val}"
+            character_event_pairs[f"{char} {key}"] = f"{char} {val}"
         char_num += 1
 
     for i in range(extras):
@@ -149,11 +149,11 @@ def create_item_tables(vanilla_chars: typing.List[str], extras: int) -> typing.T
             item_name_to_data[newkey] = newval
             characters_to_items[i+1][newkey] = newval
         for key, val in base_event_item_pairs.items():
-            event_item_pairs[f"Custom Character {i+1} {key}"] = f"Custom Character {i+1} {val}"
+            character_event_pairs[f"Custom Character {i+1} {key}"] = f"Custom Character {i+1} {val}"
         char_num += 1
 
 
-    return item_name_to_data, characters_to_items, event_item_pairs
+    return item_name_to_data, characters_to_items, character_event_pairs
 
 item_table, chars_to_items, event_item_pairs = create_item_tables(character_list, NUM_CUSTOM)
 

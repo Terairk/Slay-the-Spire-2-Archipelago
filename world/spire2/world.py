@@ -176,7 +176,7 @@ class SlayTheSpire2World(World):
             if char.lower() in character_offset_map and char not in selected_chars
         )
         replace_num = len(modded_chars) - NUM_CUSTOM
-        if unlocked_char in modded_chars:
+        if unlocked_char is not None and unlocked_char in modded_chars:
             modded_chars.remove(unlocked_char)
         for char in self.random.sample(modded_chars, k=replace_num):
             selected_chars.remove(char)
@@ -497,9 +497,12 @@ class SlayTheSpire2World(World):
 
         # Merge the universal pools with the character-specific gold pools.
         # List concatenation is cheap here since the pools are pre-built.
-        high_items = self.filler_universal_high + self.filler_char_high.get(character, [])
-        medium_items = self.filler_universal_medium + self.filler_char_medium.get(character, [])
-        low_items = self.filler_universal_low + self.filler_char_low.get(character, [])
+        high_items = self.filler_universal_high + (
+            self.filler_char_high.get(character, []) if character is not None else [])
+        medium_items = self.filler_universal_medium + (
+            self.filler_char_medium.get(character, []) if character is not None else [])
+        low_items = self.filler_universal_low + (
+            self.filler_char_low.get(character, []) if character is not None else [])
 
         # If the player has disabled every filler item (all weights set to 0),
         # return the pre-computed safe fallback.
@@ -654,7 +657,7 @@ class SlayTheSpire2World(World):
 
         self.multiworld.itempool += pool
 
-    def _should_include_location(self, data: LocationData, config: CharacterConfig) -> bool:
+    def _should_include_location(self, data: Optional[LocationData], config: CharacterConfig) -> bool:
         if data is None:
             return True
         if data.type == LocationType.Floor and self.options.include_floor_checks == 0:
@@ -689,9 +692,10 @@ class SlayTheSpire2World(World):
     # longer and tends to place it earlier in progression. This is a placement heuristic;
     # access rules still apply. Sort once for all floorless Spire players, preserving
     # the relative order of other items.
+    # Archipelago supplies the full hook signature, including unused pools.
     @classmethod
-    def stage_fill_hook(cls, multiworld: MultiWorld, progitempool: List[Item], usefulitempool: List[Item],
-                        filleritempool: List[Item], fill_locations: List[Location]) -> None:
+    def stage_fill_hook(cls, multiworld: MultiWorld, progitempool: List[Item], _usefulitempool: List[Item],
+                        _filleritempool: List[Item], _fill_locations: List[Location]) -> None:
         support_order = {(world.player, f"{config.name} {name}"): rank
                          for world in multiworld.get_game_worlds(cls.game)
                          if not world.options.include_floor_checks

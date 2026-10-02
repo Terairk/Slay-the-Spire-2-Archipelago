@@ -1,5 +1,4 @@
 import unittest
-from itertools import product
 
 from BaseClasses import CollectionState
 from Fill import distribute_items_restrictive
@@ -61,16 +60,20 @@ class TestSlotGeneration(unittest.TestCase):
                            logic_difficulty="harder")
         data = mw.worlds[1].fill_slot_data()
         regenerated = setup_solo_multiworld(SlayTheSpire2World, steps=())
+        # Universal Tracker attaches this extension to MultiWorld dynamically.
+        # noinspection PyUnresolvedReferences
         regenerated.re_gen_passthrough = {SlayTheSpire2World.game: data}
         for step in ("generate_early", "create_regions", "create_items", "set_rules"):
             call_all(regenerated, step)
         world = regenerated.worlds[1]
+        assert isinstance(world, SlayTheSpire2World)
         self.assertEqual(data["characters"], world.fill_slot_data()["characters"])
         self.assertEqual("harder", world.options.logic_difficulty.current_key)
         self.assertEqual({(loc.name, loc.address) for loc in mw.get_locations()},
                          {(loc.name, loc.address) for loc in regenerated.get_locations()})
         for config in world.modded_chars:
             location = world.get_location(f"{config.name} Reached Floor 1")
+            assert location.address is not None
             self.assertEqual(f"{config.official_name} Reached Floor 1",
                              world.location_id_to_alias[location.address])
 

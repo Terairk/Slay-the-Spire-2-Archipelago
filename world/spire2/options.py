@@ -428,12 +428,12 @@ class BonusItems(OptionList):
 
     schema = Schema([
         And(
-            {
+            Schema({
                 str: {
                     Optional("Pools"): [And(str, len)],
                     Optional("Value"): And(str, len),
                 }
-            },
+            }),
             _has_exactly_one_selector,
         )
     ])

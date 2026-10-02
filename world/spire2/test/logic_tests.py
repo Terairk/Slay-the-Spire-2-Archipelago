@@ -27,13 +27,18 @@ class LogicTests(unittest.TestCase):
         ("shop_potion_slots", "Shop Potion Slot", 3),
     )
 
-    def make_world(self, **options):
-        return setup_multiworld(SlayTheSpire2World, seed=42,
-                                options={**self.options, **options}).worlds[1]
+    def make_world(self, **options) -> SlayTheSpire2World:
+        world = setup_multiworld(SlayTheSpire2World, seed=42,
+                                 options={**self.options, **options}).worlds[1]
+        assert isinstance(world, SlayTheSpire2World)
+        return world
 
-    def power_rule(self, world, act=1):
-        return SpireHasPower(world.characters[0].char_offset, 9, act=act,
+    @staticmethod
+    def power_rule(world, act=1) -> SpireHasPower.Resolved:
+        rule = SpireHasPower(world.characters[0].char_offset, 9, act=act,
                              rest=True, smith=True, remove=True, shop=True).resolve(world)
+        assert isinstance(rule, SpireHasPower.Resolved)
+        return rule
 
     def test_first_smith_is_required_only_with_campfire_sanity(self):
         for enabled in (False, True):
@@ -86,7 +91,8 @@ class LogicTests(unittest.TestCase):
     def test_ordinary_card_diminishing_returns_follow_shuffle_mode(self):
         for full_shuffle, first_discounted in ((True, 12), (False, 6)):
             world = self.make_world(shuffle_all_cards=full_shuffle)
-            rule = SpireHasPower(world.characters[0].char_offset, 9, card_rewards=21).resolve(world)
+            rule: SpireHasPower.Resolved = SpireHasPower(
+                world.characters[0].char_offset, 9, card_rewards=21).resolve(world)
             state = CollectionState(world.multiworld)
             before = rule.strength(state)
             self.assertEqual(0 if full_shuffle else 10.5, before[0])
@@ -154,8 +160,9 @@ class LogicTests(unittest.TestCase):
             with self.subTest(difficulty=difficulty):
                 world = self.make_world(logic_difficulty=difficulty)
                 state = CollectionState(world.multiworld)
-                rule = SpireHasPower(world.characters[0].char_offset, 20, act=3,
-                                     rest=True, smith=True, remove=True, shop=True).resolve(world)
+                rule: SpireHasPower.Resolved = SpireHasPower(
+                    world.characters[0].char_offset, 20, act=3,
+                    rest=True, smith=True, remove=True, shop=True).resolve(world)
                 self.assertEqual(expected, rule.power_level)
                 self.assertEqual(rounded, world.options.logic_difficulty.combat_requirement(27.5))
                 penalties.append(rule.strength(state)[2] - rule.power_level)
@@ -165,7 +172,7 @@ class LogicTests(unittest.TestCase):
         world = self.make_world(characters=["Ironclad", "Silent", "Defect", "Necrobinder", "Regent"],
                                 progressive_starter_card=True, progressive_starter_relic=True)
         for config in world.characters:
-            rule = SpireHasPower(config.char_offset, 9).resolve(world)
+            rule: SpireHasPower.Resolved = SpireHasPower(config.char_offset, 9).resolve(world)
             for kind in ("Card", "Relic"):
                 state = CollectionState(world.multiworld)
                 before = rule.strength(state)
@@ -242,12 +249,12 @@ class LogicTests(unittest.TestCase):
                         state.collect(world.create_item("Necrobinder Progressive Starter Relic"),
                                       prevent_sweep=True)
                         after = rule.strength(state)[0]
-                        bonus = 1 if card_enabled and card_count and relic_shuffled else 0
+                        bonus = 0.5 if card_enabled and card_count and relic_shuffled else 0
                         self.assertEqual(bonus, after - before)
                         if not card_enabled or not card_count:
                             self.assertEqual(0, after)
                         elif card_count == 1:
-                            self.assertEqual(2, after)
+                            self.assertEqual(1.5, after)
                         state.collect(world.create_item("Necrobinder Progressive Starter Relic"),
                                       prevent_sweep=True)
                         self.assertEqual(after, rule.strength(state)[0])
