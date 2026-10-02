@@ -147,13 +147,19 @@ class LogicTests(unittest.TestCase):
                         else:
                             self.assertLess(after, before[act - 1])
 
-    def test_difficulty_orders_power_requirements(self):
-        requirements = []
-        for difficulty in ("easy", "normal", "hard"):
-            world = self.make_world(logic_difficulty=difficulty)
-            requirements.append(self.power_rule(world).strength(CollectionState(world.multiworld))[2])
-        self.assertGreater(requirements[0], requirements[1])
-        self.assertGreater(requirements[1], requirements[2])
+    def test_difficulty_scales_base_power_without_scaling_support_penalties(self):
+        penalties = []
+        for difficulty, expected, rounded in (("normal", 20, 27.5), ("hard", 18, 25),
+                                              ("harder", 17, 23.5)):
+            with self.subTest(difficulty=difficulty):
+                world = self.make_world(logic_difficulty=difficulty)
+                state = CollectionState(world.multiworld)
+                rule = SpireHasPower(world.characters[0].char_offset, 20, act=3,
+                                     rest=True, smith=True, remove=True, shop=True).resolve(world)
+                self.assertEqual(expected, rule.power_level)
+                self.assertEqual(rounded, world.options.logic_difficulty.combat_requirement(27.5))
+                penalties.append(rule.strength(state)[2] - rule.power_level)
+        self.assertEqual(penalties, [penalties[0]] * 3)
 
     def test_vanilla_starters_add_power_immediately_without_hard_gates(self):
         world = self.make_world(characters=["Ironclad", "Silent", "Defect", "Necrobinder", "Regent"],

@@ -127,20 +127,20 @@ class NeowSanity(Toggle):
 class LogicDifficulty(Choice):
     """Controls the combat strength assumed by generation, independently of in-game Ascension.
 
-    Easy requires 20 percent more base strength; Normal uses the experimental baseline;
-    Hard requires 20 percent less. Requirements round up to the next half point.
-    Missing Rest, Smith and removal support still adds the same penalties in every preset,
-    and all presets retain the minimum card-strength requirements and purchase budgets.
-    Hard assumes more skill and favourable reward choices; it does not guarantee easy runs.
+    Normal uses the standard requirements. Hard requires 10 percent less base strength;
+    Harder requires 15 percent less. Requirements round up to the next half point.
+    Missing-support penalties, minimum card strength, shop budgets and hard item gates
+    are unchanged. Hard and Harder assume more skill and favourable reward choices.
     """
     display_name = "Logic Difficulty"
-    option_easy = 0
+    # Preserve Normal and Hard's existing slot-data values.
     option_normal = 1
     option_hard = 2
+    option_harder = 3
     default = 1
 
     def combat_requirement(self, power: float) -> float:
-        return ceil(power * (1.2, 1.0, 0.8)[self.value] * 2) / 2
+        return ceil(power * {1: 1.0, 2: 0.9, 3: 0.85}[self.value] * 2) / 2
 
 
 class AncientRelicLocation(Choice):

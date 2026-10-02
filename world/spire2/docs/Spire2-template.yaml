@@ -23,8 +23,8 @@ Slay the Spire II:
   seeded: false
   progressive_starter_card: true
   progressive_starter_relic: true
-  # Can be set to easy, normal or hard. Normal is the default.
-  # Easy requires 20% more base power; hard requires 20% less. This does not change Ascension.
+  # Can be set to normal (default), hard (-10%), or harder (-15%).
+  # Changes base logic power requirements, not in-game Ascension.
   logic_difficulty: normal
   ancient_relic_location: "anytime"
   ancient_relic_pool: "true_chaos"

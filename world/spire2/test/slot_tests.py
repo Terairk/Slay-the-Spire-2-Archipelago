@@ -57,7 +57,8 @@ class TestSlotGeneration(unittest.TestCase):
                             item.name == f"{config.name} Unlock" for item in mw.precollected_items[1]))
 
     def test_tracker_regeneration_preserves_roster_checks_and_modded_aliases(self):
-        mw = self.generate(modded_characters=["ModA", "ModB"], pick_num_characters=0)
+        mw = self.generate(modded_characters=["ModA", "ModB"], pick_num_characters=0,
+                           logic_difficulty="harder")
         data = mw.worlds[1].fill_slot_data()
         regenerated = setup_solo_multiworld(SlayTheSpire2World, steps=())
         regenerated.re_gen_passthrough = {SlayTheSpire2World.game: data}
@@ -65,6 +66,7 @@ class TestSlotGeneration(unittest.TestCase):
             call_all(regenerated, step)
         world = regenerated.worlds[1]
         self.assertEqual(data["characters"], world.fill_slot_data()["characters"])
+        self.assertEqual("harder", world.options.logic_difficulty.current_key)
         self.assertEqual({(loc.name, loc.address) for loc in mw.get_locations()},
                          {(loc.name, loc.address) for loc in regenerated.get_locations()})
         for config in world.modded_chars:

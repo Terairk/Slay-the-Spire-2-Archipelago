@@ -121,9 +121,6 @@ class SlayTheSpire2World(World):
                 early_items[f"{config.name} Relic"] = relics
                 if self.options.campfire_sanity:
                     early_items[f"{config.name} Progressive Rest"] = 1
-                    if self.options.logic_difficulty == "easy" and self.options.shuffle_all_cards:
-                        # Secure the Act 1 boss gate while the sparse opening has room.
-                        early_items[f"{config.name} Progressive Smith"] = 1
                 if self.options.neow_sanity:
                     early_items[f"{config.name} Progressive Ancient"] = 1
         # for weight in self.options.trap_weights.values():
