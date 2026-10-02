@@ -42,7 +42,8 @@ public sealed partial class ApSingleplayerCheckpointPicker : Control, IScreenCon
         var panel = new PanelContainer();
         panel.SetAnchorsPreset(LayoutPreset.Center);
         panel.OffsetLeft = -530; panel.OffsetRight = 530;
-        panel.OffsetTop = -410; panel.OffsetBottom = 410;
+        float halfHeight = ApRemoteSingleplayerSave.IsEnabled ? 400 : 370;
+        panel.OffsetTop = -halfHeight; panel.OffsetBottom = halfHeight;
         panel.AddThemeStyleboxOverride("panel", CreatePanelStyle());
         overlay.AddChild(panel);
         var root = new VBoxContainer();
