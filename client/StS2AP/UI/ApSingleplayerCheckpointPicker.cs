@@ -7,7 +7,7 @@ using static StS2AP.UI.ApCampaignUi;
 
 namespace StS2AP.UI;
 
-/// <summary>Character selection opens its six shared checkpoint positions directly.</summary>
+/// <summary>Character selection opens its nine shared checkpoint positions directly.</summary>
 public sealed partial class ApSingleplayerCheckpointPicker : Control, IScreenContext
 {
     private NCharacterSelectScreen _screen = null!;
@@ -94,6 +94,7 @@ public sealed partial class ApSingleplayerCheckpointPicker : Control, IScreenCon
                     "1-ancient" => "Act 1 — Initial Ancient",
                     "1-boss" => "Act 1 — Boss defeated",
                     "2-boss" => "Act 2 — Boss defeated",
+                    "1-campfire" or "2-campfire" or "3-campfire" => $"Act {key[0]} — Pre-boss Campfire",
                     _ => $"Act {key[0]} — Treasure",
                 };
                 bool exists = bank.Checkpoints.TryGetValue(key, out var snapshot);
