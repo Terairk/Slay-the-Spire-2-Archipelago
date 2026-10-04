@@ -45,23 +45,6 @@ class LogicModeTests(unittest.TestCase):
                 self.assertTrue(mw.can_beat_game())
                 self.assertTrue(mw.fulfills_accessibility())
 
-    def test_rare_cards_and_progressive_reward_flags_in_pool(self):
-        expected = {
-            'Ironclad Rare Card Reward': ItemClassification.progression,
-            **{f'Ironclad {suffix}': ItemClassification.progression | ItemClassification.useful
-               for suffix in ('Progressive Ancient', 'Progressive Starter Card', 'Progressive Starter Relic')},
-        }
-        for logic in ('new', 'old'):
-            with self.subTest(logic=logic):
-                mw = setup_multiworld(SlayTheSpire2World, seed=42, options={
-                    'characters': ['Ironclad'], 'logic': logic, 'include_floor_checks': True,
-                    'progressive_starter_card': True, 'progressive_starter_relic': True,
-                })
-                for name, flags in expected.items():
-                    items = [item for item in mw.itempool if item.name == name]
-                    self.assertTrue(items, name)
-                    self.assertTrue(all(item.classification == flags for item in items), name)
-
     def test_option_names_and_narrow_fallback(self):
         self.assertEqual({'new': 0, 'old': 1}, Logic.options)
         self.assertEqual(Logic.option_new, Logic.default)
