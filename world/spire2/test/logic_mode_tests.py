@@ -6,7 +6,6 @@ from Fill import distribute_items_restrictive
 from test.general import setup_multiworld
 from worlds.AutoWorld import call_all
 from worlds.spire2 import SlayTheSpire2World
-from worlds.spire2.options import Logic
 from worlds.spire2.rules_old import LegacySpireHasPower
 
 
@@ -23,9 +22,9 @@ class LogicModeTests(unittest.TestCase):
             'Boss Gold': ItemClassification.progression,
         }
         cases = [
-            {'logic': logic, 'shop_sanity': shops, 'include_floor_checks': True, 'gold_sanity': True}
-            for logic in ('new', 'old') for shops in (False, True)
-        ] + [{**self.sparse, 'logic': 'new'}]
+            {'use_new_logic': use_new_logic, 'shop_sanity': shops, 'include_floor_checks': True, 'gold_sanity': True}
+            for use_new_logic in (True, False) for shops in (False, True)
+        ] + [{**self.sparse, 'use_new_logic': True}]
         for options in cases:
             with self.subTest(options=options):
                 mw = setup_multiworld(SlayTheSpire2World, seed=42,
@@ -45,14 +44,12 @@ class LogicModeTests(unittest.TestCase):
                 self.assertTrue(mw.can_beat_game())
                 self.assertTrue(mw.fulfills_accessibility())
 
-    def test_option_names_and_narrow_fallback(self):
-        self.assertEqual({'new': 0, 'old': 1}, Logic.options)
-        self.assertEqual(Logic.option_new, Logic.default)
+    def test_default_new_logic_and_narrow_fallback(self):
         for timing in ('start_of_act', 'anytime'):
             for shops in (False, True):
                 sparse = {**self.sparse, 'ancient_relic_location': timing, 'shop_sanity': shops}
                 world = setup_multiworld(SlayTheSpire2World, options=sparse, seed=42).worlds[1]
-                self.assertEqual('new', world.options.logic.current_key)
+                self.assertTrue(world.options.use_new_logic)
                 self.assertEqual('old', world.effective_logic)
                 self.assertTrue(world.logic_fallback_reason)
                 self.assertTrue(world.multiworld.early_items[1])
@@ -63,7 +60,7 @@ class LogicModeTests(unittest.TestCase):
                         self.assertEqual('new', world.effective_logic)
                         self.assertIsNone(world.logic_fallback_reason)
         world = setup_multiworld(SlayTheSpire2World, seed=42,
-                                 options={'logic': 'old', 'include_floor_checks': True}).worlds[1]
+                                 options={'use_new_logic': False, 'include_floor_checks': True}).worlds[1]
         self.assertEqual('old', world.effective_logic)
         self.assertIsNone(world.logic_fallback_reason)
 
@@ -91,14 +88,14 @@ class LogicModeTests(unittest.TestCase):
         self.assertEqual(0, world.multiworld.early_items[1].get('Ironclad Card Reward', 0))
         self.assertEqual(2, world.multiworld.early_items[1]['Ironclad Relic'])
         world = setup_multiworld(SlayTheSpire2World, seed=42, options={
-            **self.sparse, 'logic': 'old', 'include_floor_checks': True, 'shuffle_all_cards': False,
+            **self.sparse, 'use_new_logic': False, 'include_floor_checks': True, 'shuffle_all_cards': False,
         }).worlds[1]
         self.assertFalse(world.multiworld.early_items[1])
 
     def test_legacy_power_copy_remove_and_mixed_slots(self):
         mw = setup_multiworld([SlayTheSpire2World] * 2, seed=42, options=[
-            {'logic': 'old', 'shuffle_all_cards': False, 'characters': ['Ironclad']},
-            {'logic': 'new', 'include_floor_checks': True, 'characters': ['Ironclad']},
+            {'use_new_logic': False, 'shuffle_all_cards': False, 'characters': ['Ironclad']},
+            {'use_new_logic': True, 'include_floor_checks': True, 'characters': ['Ironclad']},
         ])
         old, new = mw.worlds[1], mw.worlds[2]
         state = CollectionState(mw)
@@ -119,21 +116,24 @@ class LogicModeTests(unittest.TestCase):
         self.assertTrue(mw.fulfills_accessibility())
 
     def test_tracker_preserves_generated_mode_and_power(self):
-        for logic, floors, timing in [('new', True, 'start_of_act'), ('new', False, 'start_of_act'),
-                                      ('new', True, 'anytime'), ('new', False, 'anytime'),
-                                      ('old', True, 'anytime')]:
+        for use_new_logic, floors, timing in [(True, True, 'start_of_act'), (True, False, 'start_of_act'),
+                                              (True, True, 'anytime'), (True, False, 'anytime'),
+                                              (False, True, 'anytime')]:
             world = setup_multiworld(SlayTheSpire2World, seed=42, options={
-                **self.sparse, 'logic': logic, 'include_floor_checks': floors,
+                **self.sparse, 'use_new_logic': use_new_logic, 'include_floor_checks': floors,
                 'shuffle_all_cards': True, 'ancient_relic_location': timing,
             }).worlds[1]
             slot_data = world.fill_slot_data()
+            self.assertNotIn('logic_fallback_reason', slot_data)
+            # Older clients call ToString() on every top-level slot value during login.
+            self.assertTrue(all(value is not None for value in slot_data.values()))
             regenerated = setup_multiworld(SlayTheSpire2World, seed=42, steps=())
             regenerated.re_gen_passthrough = {world.game: slot_data}
             for step in ('generate_early', 'create_regions', 'create_items', 'set_rules'):
                 call_all(regenerated, step)
             restored = regenerated.worlds[1]
             self.assertEqual(world.effective_logic, restored.effective_logic)
-            self.assertEqual(world.options.logic.value, restored.options.logic.value)
+            self.assertEqual(world.options.use_new_logic.value, restored.options.use_new_logic.value)
             self.assertEqual(world.logic_fallback_reason, restored.logic_fallback_reason)
             output = io.StringIO()
             restored.write_spoiler_header(output)

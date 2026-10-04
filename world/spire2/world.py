@@ -10,7 +10,7 @@ from BaseClasses import CollectionState, Item, Location, Region, MultiWorld, Ite
 from Options import OptionError
 from worlds.AutoWorld import World
 from .regions import create_regions
-from .rules import MID_ACT_1_POWER, select_logic, set_rules
+from .rules import FALLBACK_REASON, MID_ACT_1_POWER, select_logic, set_rules
 from . import rules_old
 from .web_world import SlayTheSpire2Web
 from .characters import CharacterConfig, character_list, character_offset_map
@@ -339,8 +339,11 @@ class SlayTheSpire2World(World):
 
     def custom_ut_sort(self, region_label: str, location_label: str) -> str:
         region_order = self._ut_region_order.get(region_label, len(self._ut_region_order))
+        def pad_number(match: re.Match[str]) -> str:
+            return match.group().zfill(10)
+
         # UT may append a modded-character alias; retain it while sorting check numbers naturally.
-        location_key = re.sub(r"\d+", lambda match: match.group().zfill(10), location_label.casefold())
+        location_key = re.sub(r"\d+", pad_number, location_label.casefold())
         return f"{region_order:04d}:{location_key}"
 
     def create_region(
@@ -725,7 +728,6 @@ class SlayTheSpire2World(World):
     def fill_slot_data(self) -> dict:
         slot_data = {
             "effective_logic": self.effective_logic,
-            "logic_fallback_reason": self.logic_fallback_reason,
             'characters': [
                 c.to_dict() for c in self.characters
             ],
@@ -741,7 +743,7 @@ class SlayTheSpire2World(World):
             "CompatFlag": self.compat_flag,
         }
         slot_data.update(self.options.as_dict(
-            "logic",
+            "use_new_logic",
             "lock_characters",
             "seeded",
             "ascension",
@@ -771,10 +773,12 @@ class SlayTheSpire2World(World):
         return slot_data
 
     def _setup_ut(self, slot_data: dict[str, Any]) -> None:
-        self.options.logic = self.options.logic.from_any(slot_data.get("logic", "new"))
+        self.options.use_new_logic.value = self.options.use_new_logic.from_any(slot_data.get("use_new_logic", True)).value
         # Reconstruct the generated mode; do not rerun fallback selection on tracker input.
         self.effective_logic = slot_data.get("effective_logic", "new")
-        self.logic_fallback_reason = slot_data.get("logic_fallback_reason")
+        self.logic_fallback_reason = (
+            FALLBACK_REASON if self.options.use_new_logic and self.effective_logic == "old" else None
+        )
         self.options.lock_characters.value = slot_data['lock_characters']
         self.options.shop_card_slots.value = slot_data["shop_sanity_options"]["card_slots"]
         self.options.shop_remove_slots.value = slot_data["shop_sanity_options"]["card_remove"]

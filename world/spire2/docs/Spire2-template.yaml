@@ -28,7 +28,7 @@ Slay the Spire II:
   neow_sanity: true
   include_floor_checks: true
   campfire_sanity: true
-  logic: new
+  use_new_logic: true
   gold_sanity: true
   potion_sanity: true
   shuffle_all_cards: true

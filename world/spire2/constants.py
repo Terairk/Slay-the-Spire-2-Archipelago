@@ -1,6 +1,7 @@
 # 10,000 this time to create plenty of space for items and locations
 CHAR_OFFSET = 10000
 
+# maximum number of modded characters allowed
 NUM_CUSTOM = 5
 
 ASCENSIONS = {

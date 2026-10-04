@@ -1,4 +1,4 @@
-"""Release 1.1.2 rules and scoring, preserved including its shop-gate behavior.
+"""Release 1.1.2 or earlier rules and scoring, preserved including its shop-gate behavior.
 
 Rule/mixin names are prefixed to coexist with new logic in Archipelago's registries.
 The diagnostic name lookup is adapted; access rules and scoring are unchanged.
@@ -15,15 +15,15 @@ from BaseClasses import CollectionState, MultiWorld, Item
 from NetUtils import JSONMessagePart
 from rule_builder.field_resolvers import FieldResolver
 from rule_builder.options import OptionFilter
-from rule_builder.rules import HasFromList, Rule, TWorld, True_, Has, HasFromListUnique, HasAnyCount, HasAllCounts
+from rule_builder.rules import Rule, True_, Has, HasFromListUnique
 from .characters import CharacterConfig, character_offset_map
 from .items import ItemType
-from .options import CampfireSanity, ShopSanity, GoldSanity, NeowSanity, ShopRemoveSlots, ProgressiveStarterCard, \
+from .options import CampfireSanity, ShopSanity, GoldSanity, ShopRemoveSlots, ProgressiveStarterCard, \
     ProgressiveStarterRelic
-from ..AutoWorld import LogicMixin
-from ..generic.Rules import set_rule
+from worlds.AutoWorld import LogicMixin
 
 if TYPE_CHECKING:
+    from worlds.AutoWorld import World
     from .world import SlayTheSpire2World, SlayTheSpire2Item
 
 
@@ -45,12 +45,14 @@ class LegacySpireLogic(LogicMixin):
         }
 
     def copy_mixin(self, new_state: CollectionState) -> CollectionState:
+        # Archipelago attaches these fields at runtime without making CollectionState a subclass.
+        new_logic = typing.cast(LegacySpireLogic, typing.cast(object, new_state))
         for k,v in self.power_level.items():
             new_char_pl = defaultdict(float)
-            new_state.power_level[k] = new_char_pl
+            new_logic.power_level[k] = new_char_pl
             for ik, iv in v.items():
                 new_char_pl[ik] = iv
-        new_state.item_levels = {
+        new_logic.item_levels = {
             k: {inner: inner_v for inner, inner_v in v.items() } for k,v in self.item_levels.items()
         }
         return new_state
@@ -81,7 +83,8 @@ class LegacySpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
 
         @typing.override
         def _evaluate(self, state: CollectionState) -> bool:
-            return state.power_level[self.player][self.char_offset] >= self.power_level
+            logic = typing.cast(LegacySpireLogic, typing.cast(object, state))
+            return logic.power_level[self.player][self.char_offset] >= self.power_level
 
         @typing.override
         def explain_json(self, state: CollectionState | None = None) -> List[JSONMessagePart]:
@@ -152,8 +155,9 @@ class LegacySpireHasShop(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
 class LegacyNumberOfProgressiveAncients(FieldResolver, game="Slay the Spire II"):
     default_amount: int
     @typing.override
-    def resolve(self, world: 'SlayTheSpire2World') -> typing.Any:
-        return self.default_amount + (0 if world.options.neow_sanity.value == 0 else 1)
+    def resolve(self, world: 'World') -> int:
+        spire_world = typing.cast('SlayTheSpire2World', world)
+        return self.default_amount + (0 if spire_world.options.neow_sanity.value == 0 else 1)
 
 
 
@@ -237,10 +241,11 @@ def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
 def collect(world, state: CollectionState, item: Item) -> bool:
     from worlds.AutoWorld import World
     change = World.collect(world, state, item)
-    item_data = item.item_data
-    if change and item_data.type in state.item_levels[world.player]:
-        level = state.item_levels[world.player].get(item_data.type, 0.0)
-        char_level = state.power_level[item.player]
+    item_data = typing.cast('SlayTheSpire2Item', item).item_data
+    logic = typing.cast(LegacySpireLogic, typing.cast(object, state))
+    if change and item_data.type in logic.item_levels[world.player]:
+        level = logic.item_levels[world.player].get(item_data.type, 0.0)
+        char_level = logic.power_level[item.player]
         char_level[item_data.char_offset] = char_level[item_data.char_offset] + level
     return change
 
@@ -248,10 +253,11 @@ def collect(world, state: CollectionState, item: Item) -> bool:
 def remove(world, state: CollectionState, item: Item) -> bool:
     from worlds.AutoWorld import World
     change = World.remove(world, state, item)
-    item_data = item.item_data
-    if change and item_data.type in state.item_levels[world.player]:
-        level = state.item_levels[world.player].get(item_data.type, 0.0)
-        char_level = state.power_level[item.player]
+    item_data = typing.cast('SlayTheSpire2Item', item).item_data
+    logic = typing.cast(LegacySpireLogic, typing.cast(object, state))
+    if change and item_data.type in logic.item_levels[world.player]:
+        level = logic.item_levels[world.player].get(item_data.type, 0.0)
+        char_level = logic.power_level[item.player]
         char_level[item_data.char_offset] = char_level[item_data.char_offset] - level
     return change
 
