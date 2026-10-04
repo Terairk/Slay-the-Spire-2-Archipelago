@@ -371,7 +371,12 @@ class SlayTheSpire2World(World):
     def create_item(self, name: str) -> SlayTheSpire2Item:
         data = item_table[name]
         item_id = data.code
-        return SlayTheSpire2Item(data, name, data.classification, item_id, self.player)
+        classification = data.classification
+        if (self.effective_logic == 'new' and not self.options.shop_sanity
+                and name.endswith((' Elite Gold', ' Boss Gold'))):
+            # Only shops require gold in new logic; legacy boss gates still need it.
+            classification = ItemClassification.useful
+        return SlayTheSpire2Item(data, name, classification, item_id, self.player)
 
     def build_filler_pools(self) -> None:
         """Pre-compute filler item tier buckets for efficient repeated use.

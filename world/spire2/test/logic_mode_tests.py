@@ -1,7 +1,7 @@
 import io
 import unittest
 
-from BaseClasses import CollectionState
+from BaseClasses import CollectionState, ItemClassification
 from Fill import distribute_items_restrictive
 from test.general import setup_multiworld
 from worlds.AutoWorld import call_all
@@ -16,6 +16,51 @@ class LogicModeTests(unittest.TestCase):
         'gold_sanity': False, 'potion_sanity': False, 'shop_sanity': False,
         'ancient_relic_location': 'start_of_act',
     }
+
+    def test_gold_classification_follows_effective_logic_and_shops(self):
+        legacy_flags = {
+            'Elite Gold': ItemClassification.progression_deprioritized_skip_balancing,
+            'Boss Gold': ItemClassification.progression,
+        }
+        cases = [
+            {'logic': logic, 'shop_sanity': shops, 'include_floor_checks': True, 'gold_sanity': True}
+            for logic in ('new', 'old') for shops in (False, True)
+        ] + [{**self.sparse, 'logic': 'new'}]
+        for options in cases:
+            with self.subTest(options=options):
+                mw = setup_multiworld(SlayTheSpire2World, seed=42,
+                                      options={'characters': ['Ironclad'], **options})
+                world = mw.worlds[1]
+                useful_gold = world.effective_logic == 'new' and not world.options.shop_sanity
+                for suffix, legacy in legacy_flags.items():
+                    expected = ItemClassification.useful if useful_gold else legacy
+                    # Includes names used for modded characters and explicit item creation.
+                    for character in ('Ironclad', 'Custom Character 1'):
+                        self.assertEqual(expected, world.create_item(f'{character} {suffix}').classification)
+                    if world.options.gold_sanity:
+                        items = [item for item in mw.itempool if item.name == f'Ironclad {suffix}']
+                        self.assertTrue(items)
+                        self.assertTrue(all(item.classification == expected for item in items))
+                distribute_items_restrictive(mw)
+                self.assertTrue(mw.can_beat_game())
+                self.assertTrue(mw.fulfills_accessibility())
+
+    def test_rare_cards_and_progressive_reward_flags_in_pool(self):
+        expected = {
+            'Ironclad Rare Card Reward': ItemClassification.progression,
+            **{f'Ironclad {suffix}': ItemClassification.progression | ItemClassification.useful
+               for suffix in ('Progressive Ancient', 'Progressive Starter Card', 'Progressive Starter Relic')},
+        }
+        for logic in ('new', 'old'):
+            with self.subTest(logic=logic):
+                mw = setup_multiworld(SlayTheSpire2World, seed=42, options={
+                    'characters': ['Ironclad'], 'logic': logic, 'include_floor_checks': True,
+                    'progressive_starter_card': True, 'progressive_starter_relic': True,
+                })
+                for name, flags in expected.items():
+                    items = [item for item in mw.itempool if item.name == name]
+                    self.assertTrue(items, name)
+                    self.assertTrue(all(item.classification == flags for item in items), name)
 
     def test_option_names_and_narrow_fallback(self):
         self.assertEqual({'new': 0, 'old': 1}, Logic.options)
