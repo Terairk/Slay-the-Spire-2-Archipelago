@@ -1,0 +1,63 @@
+# Change this to your Archipelago slot name.
+name: Spire2Player
+description: "Example settings for APWorld 1.2.3; customise them before generating."
+game: "Slay the Spire II"
+Slay the Spire II:
+  characters:
+    - "Ironclad"
+    - "Silent"
+    - "Defect"
+    - "Regent"
+    - "Necrobinder"
+  modded_characters: []
+  pick_num_characters: 0
+  num_chars_goal: 0
+  lock_characters: "locked_random"
+  unlocked_character: ""
+  use_advanced_characters: false
+  ascension:
+    - 10
+  ascension_down: []
+  relic_rewards_available_anytime: 2
+  release_on_victory: true
+  seeded: false
+  progressive_starter_card: true
+  progressive_starter_relic: true
+  ancient_relic_location: "anytime"
+  ancient_relic_pool: "true_chaos"
+  neow_sanity: true
+  include_floor_checks: true
+  campfire_sanity: true
+  logic: new
+  gold_sanity: true
+  potion_sanity: true
+  shuffle_all_cards: true
+  shop_sanity: true
+  shop_card_slots: 2
+  shop_neutral_card_slots: 1
+  shop_relic_slots: 2
+  shop_potion_slots: 2
+  shop_remove_slots: true
+  shop_sanity_costs: "Discount_Tiered"
+  bonus_items: []
+  one_gold_filler_weight: "none"
+  five_gold_filler_weight: "high"
+  free_attack_filler_weight: "high"
+  free_power_filler_weight: "high"
+  free_skill_filler_weight: "high"
+  vigor_filler_weight: "high"
+  artifact_filler_weight: "high"
+  thorns_filler_weight: "high"
+  buffer_filler_weight: "low"
+  dexterity_filler_weight: "medium"
+  strength_filler_weight: "medium"
+  plating_filler_weight: "medium"
+  friendship_filler_weight: "medium"
+  post_combat_card_upgrade_filler_weight: "low"
+  post_combat_card_removal_filler_weight: "low"
+  additional_card_reward_filler_weight: "low"
+  death_link: false
+  enable_death_fragments: true
+  death_link_damage_percent: 0
+  progression_balancing: 50
+  accessibility: "full"
