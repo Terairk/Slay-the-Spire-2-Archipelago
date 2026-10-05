@@ -274,27 +274,27 @@ def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
                    & Has(f"{prefix} Progressive Smith", options=[OptionFilter(CampfireSanity, 1)], filtered_resolution=True))
 
     world.set_rule(world.get_entrance(f"{prefix} Early Act 2"),
-                   SpireHasPower(offset, 11.5, card_rewards=7, act=2, minimum_cards=3.0, shop=True)
+                   SpireHasPower(offset, 12.0, card_rewards=7, act=2, minimum_cards=3.0, smith=True, shop=True)
                    & Has(f"{prefix} Progressive Ancient", count=1 + neow_tier, **ancient_filter))
-    # Later acts account for current-act smithing from Mid Act, after the first campfire.
+    # Later acts account for current-act smithing from entry, and resting from Mid Act.
     # Act 1 keeps smithing at the boss to avoid tightening the sparse floorless opening.
     world.set_rule(world.get_entrance(f"{prefix} Mid Act 2"),
                    SpireHasPower(offset, 14.0, card_rewards=10, act=2, minimum_cards=3.0, rest=True, smith=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Late Act 2"),
                    SpireHasPower(offset, 18.0, card_rewards=12, act=2, minimum_cards=3.0, rest=True, smith=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Act 2 Boss Arena"),
-                   SpireHasPower(offset, 24.0, card_rewards=14, act=2, minimum_cards=5.0,
+                   SpireHasPower(offset, 23.5, card_rewards=14, act=2, minimum_cards=5.0,
                                  rest=True, smith=True, remove=True, shop=True))
 
     world.set_rule(world.get_entrance(f"{prefix} Early Act 3"),
-                   SpireHasPower(offset, 24.0, card_rewards=14, act=3, minimum_cards=5.0, shop=True)
+                   SpireHasPower(offset, 23.5, card_rewards=14, act=3, minimum_cards=5.0, smith=True, shop=True)
                    & Has(f"{prefix} Progressive Ancient", count=2 + neow_tier, **ancient_filter))
     world.set_rule(world.get_entrance(f"{prefix} Mid Act 3"),
-                   SpireHasPower(offset, 25.0, card_rewards=17, act=3, minimum_cards=5.0, rest=True, smith=True, shop=True))
+                   SpireHasPower(offset, 25.5, card_rewards=17, act=3, minimum_cards=5.0, rest=True, smith=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Late Act 3"),
-                   SpireHasPower(offset, 25.5, card_rewards=19, act=3, minimum_cards=5.0, rest=True, smith=True, shop=True))
+                   SpireHasPower(offset, 27.0, card_rewards=19, act=3, minimum_cards=5.0, rest=True, smith=True, shop=True))
     world.set_rule(world.get_entrance(f"{prefix} Act 3 Boss Arena"),
-                   SpireHasPower(offset, 29.5, card_rewards=21, act=3, minimum_cards=7.0,
+                   SpireHasPower(offset, 30.0, card_rewards=21, act=3, minimum_cards=7.0,
                                  rest=True, smith=True, remove=True, shop=True))
 
     if world.options.shop_sanity:

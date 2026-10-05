@@ -201,7 +201,7 @@ class LogicTests(unittest.TestCase):
                     with_smith.collect(world.create_item("Silent Progressive Smith"), prevent_sweep=True)
                     self.assertEqual(act > 1, rule.strength(with_smith)[2] < rule.strength(state)[2])
 
-    def test_early_acts_ignore_rest_and_smith_support(self):
+    def test_early_acts_ignore_rest_but_account_for_smith_support(self):
         world = self.make_world(ancient_relic_location="anytime")
         for act in (2, 3):
             with self.subTest(act=act):
@@ -209,10 +209,17 @@ class LogicTests(unittest.TestCase):
                 assert isinstance(rule, SpireHasPower.Resolved)
                 state = CollectionState(world.multiworld)
                 before = rule.strength(state)
-                for kind in ("Rest", "Smith"):
-                    for _ in range(3):
-                        state.collect(world.create_item(f"Silent Progressive {kind}"), prevent_sweep=True)
-                        self.assertEqual(before, rule.strength(state))
+                for _ in range(3):
+                    state.collect(world.create_item("Silent Progressive Rest"), prevent_sweep=True)
+                    self.assertEqual(before, rule.strength(state))
+                for tier in range(1, 4):
+                    before = rule.strength(state)
+                    state.collect(world.create_item("Silent Progressive Smith"), prevent_sweep=True)
+                    after = rule.strength(state)
+                    if tier <= act:
+                        self.assertLess(after[2], before[2])
+                    else:
+                        self.assertEqual(before, after)
 
     def test_starters_restore_baseline_then_add_upgrade_power_without_hard_gates(self):
         world = self.make_world(characters=["Ironclad", "Silent", "Defect", "Necrobinder", "Regent"],
