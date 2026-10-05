@@ -22,6 +22,27 @@ CHECKPOINTS = tuple(cp for act in (1, 2, 3) for cp in
                     (f'Early Act {act}', f'Mid Act {act}', f'Late Act {act}', f'Act {act} Boss Arena'))
 
 
+def option_note(options):
+    return ('<p><strong>Configuration:</strong> progressive starter cards '
+            + ('on' if options['progressive_starter_card'] else 'off')
+            + ', progressive starter relics ' + ('on' if options['progressive_starter_relic'] else 'off')
+            + ', Campfire Sanity ' + ('on' if options['campfire_sanity'] else 'off')
+            + '. Disabled starters retain their normal card/relic; disabled Campfire Sanity retains native Rest/Smith access. '
+            'Zero receipts in a disabled category mean it is not randomized, not that the ability is missing. '
+            'Database variant <code>current</code> means new logic. CSV columns prefixed '
+            '<code>baseline</code> describe the comparison mode shown alongside it.</p>')
+
+
+def mode_wording(body, metadata):
+    if metadata.get('compare_logic'):
+        body = body.replace('Release 1.1.2', 'Old logic').replace('release 1.1.2', 'old logic')
+        body = body.replace("The release's", "Old logic's").replace('release inventories', 'old-logic inventories')
+        body = body.replace('converted release inventory', 'converted old-logic inventory')
+        body = body.replace('in the release.', 'under old logic.').replace('Current minus release.', 'New minus old logic.')
+        body = body.replace('current branch', 'new logic').replace('Current branch', 'New logic')
+    return body
+
+
 def read_data(path):
     with sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True) as db:
         db.row_factory = sqlite3.Row
@@ -80,7 +101,7 @@ def group_rows(rows):
     return groups
 
 
-def analyze(rows):
+def analyze(rows, variants=VARIANTS):
     groups = group_rows(rows)
     summaries, combinations, discovery = [], [], []
     for key, group in sorted(groups.items()):
@@ -107,10 +128,10 @@ def analyze(rows):
     for checkpoint in CHECKPOINTS:
         for role in ('all','starting','locked'):
             sets = [{r['combination'] for r in rows if r['variant']==v and r['checkpoint']==checkpoint
-                     and (role=='all' or r['role']==role)} for v in VARIANTS]
+                     and (role=='all' or r['role']==role)} for v in variants]
             old,new = sets
             overlaps.append(dict(checkpoint=checkpoint,role=role,shared=len(old & new),
-                                 only_release=len(old-new),only_current=len(new-old)))
+                                 only_baseline=len(old-new),only_current=len(new-old)))
     return summaries, combinations, discovery, overlaps
 
 
@@ -218,16 +239,19 @@ def main():
     output=args.output or args.database.parent/'support-report'
     output.mkdir(parents=True,exist_ok=True)
     rows,outcomes,metadata=read_data(args.database)
-    summaries,combinations,discovery,overlaps=analyze(rows)
+    with sqlite3.connect(args.database.resolve().as_uri()+'?mode=ro',uri=True) as db:
+        options=json.loads(db.execute("SELECT details FROM runs WHERE variant='current' AND status='success' LIMIT 1").fetchone()[0])['resolved_options']
+    variants=tuple(metadata.get('variants',VARIANTS))
+    summaries,combinations,discovery,overlaps=analyze(rows,variants)
     broaden_combinations(rows,combinations)
     contrasts,cohorts,evidence=ancient_analysis(rows)
     lookup={(r['variant'],r['checkpoint'],r['character'],r['role']):r for r in summaries}
     comparison=[]
     for cp in CHECKPOINTS:
-        old,new=(lookup[(v,cp,'all','all')] for v in VARIANTS)
-        comparison.append(dict(checkpoint=cp,release_distinct=old['distinct'],current_distinct=new['distinct'],
-            release_effective=old['effective_combinations'],current_effective=new['effective_combinations'],
-            release_top_five_percent=old['top_five_percent'],current_top_five_percent=new['top_five_percent']))
+        old,new=(lookup[(v,cp,'all','all')] for v in variants)
+        comparison.append(dict(checkpoint=cp,baseline_distinct=old['distinct'],current_distinct=new['distinct'],
+            baseline_effective=old['effective_combinations'],current_effective=new['effective_combinations'],
+            baseline_top_five_percent=old['top_five_percent'],current_top_five_percent=new['top_five_percent']))
     pilot_growth=[]
     if args.pilot:
         pilot,_,pilot_meta=read_data(args.pilot)
@@ -235,7 +259,7 @@ def main():
             assert pilot_meta[key]==metadata[key], f'Pilot differs: {key}'
         assert {(r['variant'],r['seed']) for r in pilot} <= {(r['variant'],r['seed']) for r in rows}
         for cp in CHECKPOINTS:
-            for variant in VARIANTS:
+            for variant in variants:
                 sample=[r for r in pilot if r['variant']==variant and r['checkpoint']==cp]
                 counts=Counter(r['combination'] for r in sample)
                 full=lookup[(variant,cp,'all','all')]
@@ -255,11 +279,11 @@ def main():
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     colors=('#7a8699','#147d92')
-    labels=('Release 1.1.2','Current branch')
+    labels=('Old logic','New logic') if metadata.get('compare_logic') else ('Release 1.1.2','Current branch')
     fig,axes=plt.subplots(1,2,figsize=(15,6),layout='constrained')
     for ax,metric,title in zip(axes,('distinct','effective_combinations'),
                                ('All observed combinations','Effective number of common combinations')):
-        for variant,color,label in zip(VARIANTS,colors,labels):
+        for variant,color,label in zip(variants,colors,labels):
             ax.plot(range(12),[lookup[(variant,cp,'all','all')][metric] for cp in CHECKPOINTS],
                     marker='o',color=color,label=label)
         ax.set_xticks(range(12),[cp.replace('Boss Arena','boss') for cp in CHECKPOINTS],rotation=50,ha='right')
@@ -272,7 +296,7 @@ def main():
     selected=('Mid Act 1','Late Act 1','Early Act 2','Act 2 Boss Arena','Early Act 3','Act 3 Boss Arena')
     fig,axes=plt.subplots(2,3,figsize=(14,8),layout='constrained')
     for ax,cp in zip(axes.flat,selected):
-        for variant,color,label in zip(VARIANTS,colors,labels):
+        for variant,color,label in zip(variants,colors,labels):
             sample=[r for r in discovery if r['variant']==variant and r['checkpoint']==cp and r['role']=='all']
             ax.plot([r['sampled_seeds'] for r in sample],[r['expected_distinct'] for r in sample],marker='.',color=color,label=label)
         ax.set_title(cp)
@@ -284,7 +308,7 @@ def main():
     fig.savefig(output/'discovery-curves.png',dpi=160)
     plt.close(fig)
     totals=[dict(variant=v,seeds=len({r['seed'] for r in rows if r['variant']==v}),
-                 characters=lookup[(v,'Mid Act 1','all','all')]['observations']) for v in VARIANTS]
+                 characters=lookup[(v,'Mid Act 1','all','all')]['observations']) for v in variants]
     title='Support inventories: an expanded comparison'
     body=f'''<!doctype html><html lang="en"><meta charset="utf-8"><title>{title}</title>
     <style>body{{font:16px/1.5 system-ui;max-width:1300px;margin:36px auto;padding:0 24px;color:#192a38}}
@@ -292,7 +316,7 @@ def main():
     th,td{{padding:7px 9px;border-bottom:1px solid #dce3e8;text-align:left;white-space:nowrap}}th{{background:#eef3f6}}
     .scroll{{overflow:auto;margin:18px 0}}img{{width:100%}}a{{color:#147d92}}details{{margin:24px 0}}
     select{{font:inherit;padding:6px;margin:5px 14px 5px 0}}label{{display:inline-block}}.note{{background:#eef6f7;padding:16px}}
-    </style><h1>{title}</h1><p>Same frozen APWorlds and original five-character YAML.
+    </style><h1>{title}</h1>{option_note(options)}<p>Frozen APWorlds and the recorded five-character YAML configuration.
     Each inventory is observed when that character's checkpoint checks first become logically reachable,
     before collecting the newly accessible sphere. No gameplay or combat is simulated.</p>'''
     body+=table(totals,['variant','seeds','characters'])
@@ -326,7 +350,7 @@ def main():
                and r['character']=='all' and r['role']=='all' and r['tier']==2}
     early_two_test=next((r for r in evidence if r['checkpoint']=='Early Act 2' and r['character']=='all'
                         and r['role']=='all' and r['tier']==2 and r['source']=='any_tested_category'),None)
-    top_old=next(r for r in combinations if r['variant']=='release-1.1.2' and r['checkpoint']=='Early Act 2'
+    top_old=next(r for r in combinations if r['variant']==variants[0] and r['checkpoint']=='Early Act 2'
                  and r['character']=='all' and r['role']=='all' and r['rank']==1)
     body+=f'''<div class="note"><strong>What the broader view changes</strong>
     <p>The release's most common Early Act 2 five-upgrade combination alone contains
@@ -397,10 +421,10 @@ def main():
     <h2>Which combinations are shared?</h2>
     <p>These compare the sets observed in each version, not all theoretically legal states. A combination absent from
     one sample may be rare rather than impossible. Different item classifications and fill behavior can also affect
-    inventories; this experiment isolates APWorld versions, not individual rule changes.</p>'''
-    body+=table([r for r in overlaps if r['role']=='all'],['checkpoint','shared','only_release','only_current'])
-    body+='''<h2>Interpretation and saved data</h2><p>There are 576 possible count tuples before considering logic
-    restrictions (4 × 4 × 4 × 3 × 3). Many are not feasible at a particular checkpoint, so this is not a coverage target.
+    inventories; this comparison includes each mode's effective generation behavior, not just its power formula.</p>'''
+    body+=table([r for r in overlaps if r['role']=='all'],['checkpoint','shared','only_baseline','only_current'])
+    body+='''<h2>Interpretation and saved data</h2><p>Disabled categories have a constant zero receipt count.
+    Compare diversity within the same option configuration; disabling categories reduces the signature's dimensions.
     More combinations does not by itself mean better balance, independent randomness, or fewer real-world out-of-logic
     checks. Generation reliability under randomized options is outside this fixed-YAML experiment.</p>
     <p>The original progression report remains unchanged. The database contains every placement, sphere inventory,
@@ -408,7 +432,7 @@ def main():
     body+=''.join(f'<li><a href="{name}.csv">{name}.csv</a></li>' for name,data in datasets.items() if data)
     body+='</ul><details><summary>Generation outcomes</summary>'+table(outcomes,['variant','status','runs'])+'</details>'
     # Only the top combinations enter the browser; complete frequencies remain in CSV.
-    payload=json.dumps(dict(summary=summaries,combinations=[r for r in combinations if r['rank']<=15],
+    payload=json.dumps(dict(variants=variants,summary=summaries,combinations=[r for r in combinations if r['rank']<=15],
                            contrasts=contrasts,cohorts=cohorts,evidence=evidence)).replace('<','\\u003c')
     body+='<script type="application/json" id="data">'+payload+'</script>'
     body+='''<script>
@@ -429,14 +453,14 @@ def main():
       const target=document.getElementById('explorer');target.replaceChildren();
       const match=r=>r.checkpoint===cp&&r.character===character&&r.role===role;
       target.append(makeTable(data.summary.filter(match),['variant','seeds','observations','distinct','effective_combinations','most_common_percent','top_five_percent','singleton_combinations']));
-      for(const variant of ['release-1.1.2','current']){const heading=document.createElement('h3');heading.textContent=variant;target.append(heading);
+      for(const variant of data.variants){const heading=document.createElement('h3');heading.textContent=variant;target.append(heading);
         const combos=data.combinations.filter(r=>match(r)&&r.variant===variant).map(r=>({...r,
           ...Object.fromEntries(['card_rewards','rare_cards','relics'].map(f=>[f,`${number(r[f+'_median'])} [${number(r[f+'_p10'])}–${number(r[f+'_p90'])}]`]))}));
         target.append(makeTable(combos,fields));}
       const tier=Number(document.getElementById('tier').value);
       const comparison=document.getElementById('ancient-explorer');comparison.replaceChildren();
       const probe=document.getElementById('evidence-explorer');probe.replaceChildren();
-      for(const variant of ['release-1.1.2','current']){
+      for(const variant of data.variants){
         const selected=r=>match(r)&&r.variant===variant&&r.tier===tier;
         const heading=document.createElement('h4');heading.textContent=variant;comparison.append(heading);
         comparison.append(makeTable(data.cohorts.filter(selected),['status','observations','seeds',...support.map(f=>f+'_mean')]));
@@ -453,7 +477,7 @@ def main():
     for(const id of ['checkpoint','character','role','tier'])document.getElementById(id).addEventListener('change',render);
     document.getElementById('checkpoint').value='Early Act 2';render();
     </script></html>'''
-    (output/'report.html').write_text(body)
+    (output/'report.html').write_text(mode_wording(body,metadata))
     provenance=dict(database=str(args.database.resolve()),metadata=metadata,
         analysis_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),matplotlib_version=matplotlib.__version__)
     (output/'provenance.json').write_text(json.dumps(provenance,indent=2))

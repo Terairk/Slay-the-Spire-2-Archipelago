@@ -18,7 +18,7 @@ import zipfile
 if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.progression_stats import power_rules
-from scripts.report_support_diversity import CHECKPOINTS, VARIANTS, distribution, group_rows, table, write_csv
+from scripts.report_support_diversity import CHECKPOINTS, VARIANTS, distribution, group_rows, table, write_csv, option_note, mode_wording
 
 
 class ReceiptState:
@@ -118,10 +118,12 @@ def main():
     with sqlite3.connect(args.database.resolve().as_uri()+'?mode=ro',uri=True) as db:
         db.row_factory=sqlite3.Row
         metadata={r['key']:json.loads(r['value']) for r in db.execute('select * from metadata')}
+        variants=tuple(metadata.get('variants',VARIANTS))
         options={json.dumps(json.loads(r['details'])['resolved_options'],sort_keys=True)
                  for r in db.execute("select details from runs where variant='current' and status='success'")}
         assert len(options)==1, 'This report requires a fixed current-world option set'
-        rules=reference_rules(root,json.loads(next(iter(options))),metadata,output)
+        options=json.loads(next(iter(options)))
+        rules=reference_rules(root,options,metadata,output)
         checkpoints=defaultdict(list)
         for r in db.execute('select * from first_checkpoints'):
             checkpoints[(r['variant'],r['seed'])].append(dict(r))
@@ -159,11 +161,11 @@ def main():
     lookup={(r['variant'],r['checkpoint'],r['character'],r['role']):r for r in summaries}
     comparison=[]
     for cp in CHECKPOINTS:
-        old,new=(lookup[v,cp,'all','all'] for v in VARIANTS)
-        comparison.append(dict(checkpoint=cp,release_power=old['power_mean'],current_power=new['power_mean'],
-            release_adjusted_power=old['adjusted_power_mean'],current_adjusted_power=new['adjusted_power_mean'],
+        old,new=(lookup[v,cp,'all','all'] for v in variants)
+        comparison.append(dict(checkpoint=cp,baseline_power=old['power_mean'],current_power=new['power_mean'],
+            baseline_adjusted_power=old['adjusted_power_mean'],current_adjusted_power=new['adjusted_power_mean'],
             current_base_requirement=new['base_required'],
-            release_passes_current_power_rule_percent=old['passes_power_rule_percent']))
+            baseline_passes_current_power_rule_percent=old['passes_power_rule_percent']))
     write_csv(output/'comparison.csv',comparison)
     os.environ.setdefault('MPLCONFIGDIR',str(output/'.matplotlib'))
     import matplotlib
@@ -172,7 +174,8 @@ def main():
     fig,axes=plt.subplots(1,2,figsize=(15,6),layout='constrained')
     for ax,metric,title in zip(axes,('power','adjusted_power'),('Card/relic power on the current scale','Power after subtracting support adjustments')):
         cps=CHECKPOINTS if metric=='power' else CHECKPOINTS[1:]
-        for variant,color,label in zip(VARIANTS,('#7a8699','#147d92'),('Release 1.1.2 inventories','Current inventories')):
+        labels=('Old logic inventories','New logic inventories') if metadata.get('compare_logic') else ('Release 1.1.2 inventories','Current inventories')
+        for variant,color,label in zip(variants,('#7a8699','#147d92'),labels):
             sample=[lookup[variant,cp,'all','all'] for cp in cps]
             ax.plot(range(len(cps)),[r[f'{metric}_mean'] for r in sample],marker='o',color=color,label=label)
             ax.fill_between(range(len(cps)),[r[f'{metric}_p10'] for r in sample],
@@ -189,7 +192,7 @@ def main():
     <style>body{{font:16px/1.5 system-ui;max-width:1350px;margin:36px auto;padding:0 24px;color:#192a38}}
     table{{border-collapse:collapse;font-size:13px;width:100%;font-variant-numeric:tabular-nums}}th,td{{padding:8px;border-bottom:1px solid #dce3e8;text-align:left;white-space:nowrap}}
     th{{background:#eef3f6}}.scroll{{overflow:auto;margin:20px 0}}img{{width:100%}}select{{font:inherit;padding:6px;margin:8px 14px}}a{{color:#147d92}}</style>
-    <h1>{title}</h1><p>Both versions' recorded inventories are evaluated by the exact frozen current-world rules
+    <h1>{title}</h1>{option_note(options)}<p>Both versions' recorded inventories are evaluated by the exact frozen current-world rules
     from commit <code>{html.escape(metadata['current_commit'][:12])}</code>. Each observation is taken before collecting
     the sphere in which that character's checkpoint first becomes logically reachable in its <em>original</em> world.
     “Expected” here means the observed mean across seeds, not a fixed minimum or a combat prediction.</p>
@@ -197,7 +200,7 @@ def main():
     {lookup['current','Mid Act 1','all','all']['observations']:,} character observations per checkpoint.
     This rescoring uses existing runs; no new placements or routes were generated.</p>
     <ul><li><strong>Power</strong>: current weights for ordinary/rare cards, relics, starter tiers and Necrobinder's starter synergy.</li>
-    <li><strong>Required power</strong>: current base requirement plus that inventory's adjustments for Ancients, Rests, Smiths,
+    <li><strong>Required power</strong>: current base requirement plus that inventory's adjustments for missing starters, Ancients, Rests, Smiths,
     shop removals and shop choices. Early later-tier Ancients can make an adjustment negative in Anytime mode.</li>
     <li><strong>Adjusted power</strong> = power − total support adjustments. This puts support on the supply side;
     compare it with the current base requirement. It is an algebraic presentation of the rule, not a separate game stat.</li>
@@ -207,16 +210,16 @@ def main():
     <img src="power-comparison.png" alt="Mean power and adjusted power for both versions, with observed 10th to 90th percentile bands">
     <p>Lines show means; shading is the observed 10th–90th percentile range, not a confidence interval.
     Both versions include all five characters. Starting versus initially locked characters can arrive with very different inventories.</p>'''
-    old,new=(lookup[v,'Early Act 3','all','all'] for v in VARIANTS)
-    mid_old=lookup['release-1.1.2','Mid Act 2','all','all']
+    old,new=(lookup[v,'Early Act 3','all','all'] for v in variants)
+    mid_old=lookup[variants[0],'Mid Act 2','all','all']
     body+=f'''<h2>Main observations</h2><p>At Early Act 3, release inventories score
     <strong>{old['power_mean']:.2f}</strong> card/relic power versus <strong>{new['power_mean']:.2f}</strong>
     for current inventories. After support adjustments, that becomes
     <strong>{old['adjusted_power_mean']:.2f} versus {new['adjusted_power_mean']:.2f}</strong> against a
     base requirement of {new['base_required']:g}. Average surplus above the full requirement is therefore
     <strong>{old['margin_mean']:.2f} versus {new['margin_mean']:.2f}</strong>.
-    The old first-access inventories carry more surplus under the current model at this checkpoint.</p>
-    <p>The current formula is not uniformly easier for every old inventory: at Mid Act 2,
+    These are observed inventories, not minimum requirements.</p>
+    <p>At Mid Act 2,
     <strong>{100-mid_old['passes_power_rule_percent']:.2f}%</strong> of the old first-access inventories
     fail its local power/card-strength test. These are formula comparisons, not proof of actual game difficulty
     or complete-route reachability.</p>'''
@@ -241,14 +244,14 @@ def main():
     <p><a href="checkpoint_power.csv">Every converted observation (CSV)</a> · <a href="summary.csv">All grouped distributions (CSV)</a> ·
     <a href="comparison.csv">Overview (CSV)</a> · <a href="power_comparison.sqlite">Queryable converted data (SQLite)</a> ·
     <a href="provenance.json">Provenance</a></p>'''
-    payload=json.dumps(dict(summary=summaries,checkpoints=CHECKPOINTS)).replace('<','\\u003c')
+    payload=json.dumps(dict(variants=variants,summary=summaries,checkpoints=CHECKPOINTS)).replace('<','\\u003c')
     body+='<script type="application/json" id="data">'+payload+'</script>'
     body+='''<script>
     const data=JSON.parse(document.getElementById('data').textContent);
     function render(){
       const target=document.getElementById('explorer');target.replaceChildren();
       const character=document.getElementById('character').value,role=document.getElementById('role').value;
-      for(const variant of ['release-1.1.2','current']){
+      for(const variant of data.variants){
         const h=document.createElement('h3');h.textContent=variant;target.append(h);
         const wrap=document.createElement('div');wrap.className='scroll';const table=document.createElement('table');
         const cols=['checkpoint','seeds','observations','power_mean','power_p10','power_p90','required_mean','adjusted_power_mean','margin_mean','passes_power_rule_percent'];
@@ -261,7 +264,7 @@ def main():
     }
     for(const id of ['character','role'])document.getElementById(id).addEventListener('change',render);render();
     </script></html>'''
-    (output/'report.html').write_text(body)
+    (output/'report.html').write_text(mode_wording(body,metadata))
     provenance=dict(source_database=str(args.database.resolve()),metadata=metadata,
         analysis_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         helper_sha256={name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()

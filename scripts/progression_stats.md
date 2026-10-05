@@ -58,10 +58,8 @@ pilot; do not pool their repeated seeds as additional samples.
 - One AP slot using the fixed YAML. All five characters remain selected. The
   same 100 numeric seeds run against both versions. RNG consumption may differ,
   including the starting character; identical seeds are not identical playthroughs.
-- This collector's invariants target this YAML's three Ancients, three Smiths,
-  three Rests, two starter cards and two starter relics per character. Other option
-  combinations may deliberately fail those checks. A fixed two/three-character
-  subset with those options still works.
+- Progressive-item count invariants follow Neow Sanity, both starter options and
+  Campfire Sanity. Disabled categories correctly expect zero AP receipts.
 - Normal generation assertions, accessibility verification, game output and
   spoiler generation remain enabled. Generated ZIP files and logs are retained.
 - **Sphere 0** contains initially available AP checks. Before each sphere, events
@@ -415,3 +413,87 @@ correlated character observations per checkpoint per seed. Reported power gaps
 are properties of the model, not measured changes in gameplay difficulty. These
 reports do not measure randomized-option fuzz failure rates or the sparse-setting
 fallback, which needs its separate fuzz evidence.
+
+## Old/new logic × starter/campfire matrix (2026-10-05)
+
+The latest experiment is `artifacts/logic-matrix-7196038/`. It compares **old and
+new logic in the same committed APWorld**, using `use_new_logic`, rather than
+comparing against the historical 1.1.2 binary. The logic change is `7196038`;
+the frozen world snapshot is the statistics-branch merge `393382f`.
+
+Four configurations cross both progressive starter options together (on/off)
+with Campfire Sanity (on/off). Each uses the same 1,000 numeric seeds in both
+modes: 8,000 generation attempts, with five correlated character observations
+per checkpoint in each run. There are 1,000 shared seed clusters, not 8,000
+independent seed draws. The original five-character YAML is retained at the
+matrix root. Each case's `input.yaml` changes only those switches and removes
+the ignored `logic_difficulty` key. `players/old/` and `players/current/` preserve
+the exact effective YAMLs with `use_new_logic` false and true respectively.
+
+`--compare-logic` uses the same immutable source for both modes, selects the
+correct native power class for observations, and checks option-dependent item
+counts. The release-baseline workflow remains supported without that flag.
+
+Resume or reproduce each saved configuration with:
+
+```sh
+for case in starters-1-campfires-1 starters-1-campfires-0 starters-0-campfires-1 starters-0-campfires-0; do
+  folder="artifacts/logic-matrix-7196038/$case"
+  .venv/bin/python scripts/progression_stats.py run --compare-logic \
+    --output "$folder" --yaml "$folder/input.yaml" \
+    --fuzzer artifacts/progression-accepted-build/inputs/fuzz.py \
+    --runs 1000 --jobs 4 --timeout 300
+  .venv/bin/python scripts/report_progression_stats.py "$folder/results.sqlite"
+  .venv/bin/python scripts/report_support_diversity.py "$folder/results.sqlite"
+  .venv/bin/python scripts/report_power_comparison.py "$folder/results.sqlite"
+done
+.venv/bin/python scripts/report_logic_matrix.py artifacts/logic-matrix-7196038 --combine-database
+```
+
+The four collectors can run concurrently; the accepted batch used four workers
+per case (16 total). Reports must run after generation finishes. The combined
+report refuses incomplete batches or stale progression summaries. To start a
+new experiment, use a new root, copy its input YAMLs and `cases.json`, and record
+that root's new frozen commit. Do not resume a dataset with a modified collector.
+
+`index.html` links the twelve detailed reports and provides side-by-side power,
+Ancient-tier and diversity comparisons, including character and starting/locked
+filters. The five-count support signature is retained and an eight-count
+signature adds ordinary cards, rare cards and ordinary relics. Disabled families
+are omitted from missing-item/timing tables. Their recorded zero receipts mean
+natural starter/campfire access remains, not that the character lacks it.
+
+Power comparisons rescore both modes' first-access inventories with the exact
+new formula for the configuration. Missing starter penalties are included in
+adjusted power. Paired power intervals bootstrap per-seed pooled-character means;
+character-specific and starting/locked distributions are descriptive. Disabling
+Campfire Sanity also changes locations and the item pool, so differences across
+configurations include those effects. No runs simulate combat or player choices.
+
+The root `results.sqlite` contains all raw observation tables, the
+`first_checkpoints` and `tier_acquisition` views, and `converted_power`. Every
+identity includes `configuration`, then the original variant/seed keys. Join on
+all three to avoid mixing identical seed numbers from different configurations.
+The original per-case databases and logs remain in their experiment folders.
+The report CSVs now use `baseline_*` for comparison columns; this means old logic
+in this matrix and release 1.1.2 when the release-baseline workflow is used.
+
+```sql
+SELECT configuration, variant, checkpoint,
+       avg(adjusted_power) AS mean_adjusted_power
+FROM converted_power WHERE role='starting'
+GROUP BY configuration, variant, checkpoint;
+
+SELECT configuration, variant, character,
+       100.0 * avg(ancients < 2) AS percent_without_second_ancient
+FROM first_checkpoints WHERE checkpoint='Act 3 Boss Arena'
+GROUP BY configuration, variant, character;
+```
+
+Validation:
+
+```sh
+.venv/bin/python -m unittest scripts.tests.test_progression_stats \
+  scripts.tests.test_report_support_diversity scripts.tests.test_report_power_comparison \
+  scripts.tests.test_report_tuning_trial scripts.tests.test_report_logic_matrix
+```

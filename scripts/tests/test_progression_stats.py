@@ -25,6 +25,19 @@ class PowerRule:
 
 
 class ProgressionStatsTests(unittest.TestCase):
+    def test_disabled_families_are_omitted_rather_than_reported_missing(self):
+        checkpoint = dict(variant='old', seed=7, character='Silent', role='starting',
+                          checkpoint='Mid Act 1', sphere=2, ancients=1,
+                          starter_cards=0, starter_relics=0, rests=0, smiths=0)
+        arrivals = [dict(variant='old', seed=7, item_character='Silent',
+                         family='Progressive Ancient', tier=tier, sphere=tier)
+                    for tier in (1, 2, 3)]
+        rows = checkpoint_availability([checkpoint], arrivals, (TIER_FIELDS[0],))
+        self.assertEqual({'Progressive Ancient'}, {row['family'] for row in rows})
+        self.assertEqual(100, next(row for row in rows if row['tier'] == 1)['held_percent'])
+        with self.assertRaises(KeyError):
+            checkpoint_availability([checkpoint], arrivals)
+
     def test_checkpoint_availability_excludes_same_sphere_rewards(self):
         checkpoints = []
         for checkpoint, sphere, count in [('Late Act 1', 5, 1), ('Act 1 Boss Arena', 6, 2)]:

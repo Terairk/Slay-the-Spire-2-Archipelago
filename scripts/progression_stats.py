@@ -126,6 +126,8 @@ def collect(mw):
     from BaseClasses import CollectionState
     from worlds.spire2.rules import SpireHasPower
     world = mw.worlds[1]
+    if getattr(world, 'effective_logic', None) == 'old':
+        from worlds.spire2.rules_old import LegacySpireHasPower as SpireHasPower
     assert mw.players == 1
     chars = [c.name for c in world.characters]
     state = CollectionState(mw)
@@ -207,7 +209,11 @@ def collect(mw):
     assert mw.has_beaten_game(state), 'Goal unreachable'
     assert len(reached) == len(probes), 'Missing checkpoint observations'
     for char in chars:
-        for family, expected_count in zip(FAMILIES, (3, 2, 2, 3, 3)):
+        for family, expected_count in zip(FAMILIES, (
+                2 + int(bool(world.options.neow_sanity)),
+                2 * bool(world.options.progressive_starter_card),
+                2 * bool(world.options.progressive_starter_relic),
+                3 * bool(world.options.campfire_sanity), 3 * bool(world.options.campfire_sanity))):
             assert actual_inventory[f'{char} {family}'] == expected_count, (char, family)
     out.update(starting_character=starting[0], sphere_count=sphere, location_count=checks_before,
                resolved_options={name: getattr(world.options, name).value
@@ -241,7 +247,10 @@ def worker(args):
     # Keep normal generation assertions and output enabled. The fuzzer ordinarily
     # discards successful output; here each run keeps its generated zip and logs.
     stage.write_text('generation')
-    mw = fuzz.call_generate(str(args.output / 'players'), argparse.Namespace(skip_output=False),
+    players = args.output / 'players'
+    if (players / args.variant).is_dir():
+        players /= args.variant
+    mw = fuzz.call_generate(str(players), argparse.Namespace(skip_output=False),
                             str(args.output / 'runs' / args.variant / str(args.seed) / 'generated'))
     generation = time.perf_counter() - start
     start = time.perf_counter()
@@ -262,7 +271,8 @@ def prepare(args):
         assert manifest['collector_sha256'] == digest(__file__), 'Collector changed; use a new output directory'
         assert manifest['yaml_sha256'] == digest(args.yaml), 'YAML changed; use a new output directory'
         assert manifest['fuzzer_sha256'] == digest(args.fuzzer), 'Fuzzer changed'
-        assert manifest['baseline_sha256'] == digest(args.baseline), 'Baseline changed'
+        assert manifest.get('compare_logic', False) == args.compare_logic, 'Comparison changed'
+        assert manifest['baseline_sha256'] == (None if args.compare_logic else digest(args.baseline)), 'Baseline changed'
         assert manifest['archipelago_commit'] == subprocess.check_output(
             ['git', '-C', str(args.archipelago), 'rev-parse', 'HEAD'], text=True).strip(), 'AP revision changed'
         return manifest
@@ -270,8 +280,10 @@ def prepare(args):
     assert not subprocess.check_output(['git', '-C', str(REPO), 'status', '--porcelain', '--', 'world/spire2']), 'Commit APWorld first'
     inputs = root / 'inputs'
     inputs.mkdir(exist_ok=True)
-    for source, name in ((args.yaml, 'TeraSpire2.yaml'), (args.fuzzer, 'fuzz.py'),
-                         (args.baseline, 'spire2-1.1.2.apworld')):
+    sources = [(args.yaml, 'TeraSpire2.yaml'), (args.fuzzer, 'fuzz.py')]
+    if not args.compare_logic:
+        sources.append((args.baseline, 'spire2-1.1.2.apworld'))
+    for source, name in sources:
         if source.resolve() != (inputs / name).resolve():
             shutil.copy2(source, inputs / name)
     shutil.copy2(__file__, inputs / 'collector.py')
@@ -279,8 +291,18 @@ def prepare(args):
     (inputs / 'current-source.zip').write_bytes(archive)
     players = root / 'players'
     players.mkdir(exist_ok=True)
-    shutil.copy2(args.yaml, players / 'TeraSpire2.yaml')
-    for variant in ('release-1.1.2', 'current'):
+    variants = ('old', 'current') if args.compare_logic else ('release-1.1.2', 'current')
+    if args.compare_logic:
+        import yaml
+        for variant in variants:
+            config = yaml.safe_load(args.yaml.read_text())
+            config['Slay the Spire II']['use_new_logic'] = variant == 'current'
+            folder = players / variant
+            folder.mkdir(exist_ok=True)
+            (folder / 'TeraSpire2.yaml').write_text(yaml.safe_dump(config, sort_keys=False))
+    else:
+        shutil.copy2(args.yaml, players / 'TeraSpire2.yaml')
+    for variant in variants:
         runtime = root / 'runtime' / variant
         runtime.mkdir(parents=True)
         for source in args.archipelago.iterdir():
@@ -296,8 +318,9 @@ def prepare(args):
                 (worlds / source.name).symlink_to(source, target_is_directory=True)
             else:
                 shutil.copy2(source, worlds / source.name)
-        with zipfile.ZipFile(io.BytesIO(archive) if variant == 'current' else args.baseline) as z:
-            prefix = 'world/spire2/' if variant == 'current' else 'spire2/'
+        current_source = variant == 'current' or args.compare_logic
+        with zipfile.ZipFile(io.BytesIO(archive) if current_source else args.baseline) as z:
+            prefix = 'world/spire2/' if current_source else 'spire2/'
             for name in z.namelist():
                 if name.startswith(prefix) and not name.endswith('/'):
                     relative = Path(name[len(prefix):])
@@ -307,8 +330,9 @@ def prepare(args):
                     dest.write_bytes(z.read(name))
         (root / 'userdata' / variant).mkdir(parents=True)
     manifest = dict(schema_version=1, current_commit=commit, current_source_sha256=hashlib.sha256(archive).hexdigest(),
-        yaml_sha256=digest(args.yaml), baseline_sha256=digest(args.baseline),
-        baseline_url='https://github.com/dlueben1/Slay-the-Spire-2-Archipelago/releases/download/1.1.2/spire2.apworld',
+        yaml_sha256=digest(args.yaml), baseline_sha256=None if args.compare_logic else digest(args.baseline),
+        baseline_url=None if args.compare_logic else 'https://github.com/dlueben1/Slay-the-Spire-2-Archipelago/releases/download/1.1.2/spire2.apworld',
+        compare_logic=args.compare_logic, variants=variants,
         fuzzer_sha256=digest(args.fuzzer), fuzzer_version='0.6.2', collector_sha256=digest(__file__),
         archipelago_commit=subprocess.check_output(['git', '-C', str(args.archipelago), 'rev-parse', 'HEAD'], text=True).strip(),
         python=sys.version, seed_schedule=20261003,
@@ -361,6 +385,7 @@ def main():
     parser.add_argument('--archipelago', type=Path, default=REPO.parent / 'Archipelago')
     parser.add_argument('--yaml', type=Path)
     parser.add_argument('--baseline', type=Path)
+    parser.add_argument('--compare-logic', action='store_true', help='Compare old/new modes of the same committed APWorld')
     parser.add_argument('--fuzzer', type=Path)
     parser.add_argument('--runs', type=int, default=100)
     parser.add_argument('--jobs', type=int, default=4)
@@ -373,8 +398,8 @@ def main():
     if args.command == 'worker':
         worker(args)
         return
-    if not all((args.yaml, args.baseline, args.fuzzer)):
-        parser.error('run requires --yaml, --baseline, --fuzzer')
+    if not all((args.yaml, args.fuzzer)) or (not args.compare_logic and not args.baseline):
+        parser.error('run requires --yaml, --fuzzer, and either --baseline or --compare-logic')
     if args.runs < 1 or args.jobs < 1 or args.timeout <= 0:
         parser.error('runs, jobs and timeout must be positive')
     args.archipelago = args.archipelago.resolve()
@@ -391,7 +416,8 @@ def main():
             seeds.append(candidate)
     (args.output / 'seeds.json').write_text(packed(seeds) + '\n')
     done = set(db.execute('SELECT variant,seed FROM runs'))
-    tasks = [(variant, seed) for seed in seeds for variant in ('release-1.1.2', 'current') if (variant, seed) not in done]
+    tasks = [(variant, seed) for seed in seeds for variant in manifest.get('variants', ('release-1.1.2', 'current'))
+             if (variant, seed) not in done]
     start = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         futures = [pool.submit(attempt, args, variant, seed) for variant, seed in tasks]

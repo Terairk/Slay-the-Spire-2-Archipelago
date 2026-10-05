@@ -16,8 +16,10 @@ import statistics as stats
 
 if __package__:
     from .progression_stats import CHECKPOINTS, FAMILIES
+    from .report_support_diversity import option_note, mode_wording
 else:
     from progression_stats import CHECKPOINTS, FAMILIES
+    from report_support_diversity import option_note, mode_wording
 
 VARIANTS = ('release-1.1.2', 'current')
 CHECKPOINT_ORDER = tuple(checkpoint for act in (1, 2, 3) for checkpoint in
@@ -28,13 +30,13 @@ TIER_FIELDS = (('Progressive Ancient', 'ancients', 3),
                ('Progressive Smith', 'smiths', 3), ('Progressive Rest', 'rests', 3))
 
 
-def checkpoint_availability(checkpoints, acquisitions):
+def checkpoint_availability(checkpoints, acquisitions, tier_fields=TIER_FIELDS):
     """Compare acquisition with first checkpoint access, retaining same-sphere ties."""
     arrivals = {(r['variant'], r['seed'], r['item_character'], r['family'], r['tier']): r['sphere']
                 for r in acquisitions}
     groups = defaultdict(Counter)
     for row in checkpoints:
-        for family, field, tiers in TIER_FIELDS:
+        for family, field, tiers in tier_fields:
             for tier in range(1, tiers + 1):
                 arrival = arrivals[(row['variant'], row['seed'], row['character'], family, tier)]
                 held = row[field] >= tier
@@ -52,7 +54,7 @@ def checkpoint_availability(checkpoints, acquisitions):
     return results
 
 
-def checkpoint_matrix(availability, family, role='all'):
+def checkpoint_matrix(availability, family, role='all', variants=VARIANTS):
     rows = [r for r in availability if r['family'] == family and r['character'] == 'all' and r['role'] == role]
     lookup = {(r['variant'], r['checkpoint'], r['tier']): r for r in rows}
     tiers = next(tiers for f, _, tiers in TIER_FIELDS if f == family)
@@ -60,7 +62,7 @@ def checkpoint_matrix(availability, family, role='all'):
     for checkpoint in CHECKPOINT_ORDER:
         row = {'Checkpoint': checkpoint}
         for tier in range(1, tiers + 1):
-            old, new = (lookup[(v, checkpoint, tier)]['held_percent'] for v in VARIANTS)
+            old, new = (lookup[(v, checkpoint, tier)]['held_percent'] for v in variants)
             label = 'Neow / tier 1' if family == 'Progressive Ancient' and tier == 1 else f'Tier {tier}'
             row[label + ' — already held'] = f'{old:.1f}% → {new:.1f}%'
         result.append(row)
@@ -120,6 +122,14 @@ def main():
     db = sqlite3.connect(args.database.resolve().as_uri() + '?mode=ro', uri=True)
     db.row_factory = sqlite3.Row
     metadata = {r['key']: json.loads(r['value']) for r in db.execute('SELECT key,value FROM metadata')}
+    variants = tuple(metadata.get('variants', VARIANTS))
+    options = json.loads(db.execute("SELECT details FROM runs WHERE variant='current' AND status='success' LIMIT 1").fetchone()[0])['resolved_options']
+    enabled = {'Progressive Ancient': True,
+               'Progressive Starter Card': bool(options['progressive_starter_card']),
+               'Progressive Starter Relic': bool(options['progressive_starter_relic']),
+               'Progressive Smith': bool(options['campfire_sanity']),
+               'Progressive Rest': bool(options['campfire_sanity'])}
+    tier_fields = tuple(row for row in TIER_FIELDS if enabled[row[0]])
     runs = [dict(r) for r in db.execute('SELECT * FROM runs')]
     successful = [r for r in runs if r['status'] == 'success']
     checkpoints = [dict(r) for r in db.execute('SELECT * FROM first_checkpoints')]
@@ -139,7 +149,7 @@ def main():
         row['relative_to_unlock'] = row['sphere'] + 1 - row['unlock_sphere']
     for row in checkpoints:
         row['role'] = 'starting' if row['character'] == row['starting_character'] else 'locked'
-    availability = checkpoint_availability(checkpoints, acquisitions)
+    availability = checkpoint_availability(checkpoints, acquisitions, tier_fields)
     availability_lookup = {(r['variant'], r['checkpoint'], r['family'], r['tier'], r['character'], r['role']): r
                            for r in availability}
     starter_states = []
@@ -161,7 +171,7 @@ def main():
         **{status + '_percent': 100 * counts[status] / sum(counts.values())
            for status in ('neither','card_only','relic_only','both')}) for key,counts in sorted(pair_groups.items())]
     run_summary = []
-    for variant in VARIANTS:
+    for variant in variants:
         rows = [r for r in successful if r['variant'] == variant]
         if not rows:
             raise SystemExit(f'No successful data for {variant}')
@@ -192,7 +202,8 @@ def main():
         ('Late Act 1', 'first starter relic', 'starter_relics', 1),
         *[(f'Mid Act {act}', f'Rest tier {act}', 'rests', act) for act in (1, 2, 3)],
         *[(f'Act {act} Boss Arena', f'Smith tier {act}', 'smiths', act) for act in (1, 2, 3)]]
-    for variant in VARIANTS:
+    definitions = [row for row in definitions if row[2] in {field for _, field, _ in tier_fields}]
+    for variant in variants:
         for checkpoint, label, field, threshold in definitions:
             for character, role in [('all', 'all')] + sorted({(r['character'], r['role']) for r in checkpoints}):
                 rows = [r for r in checkpoints if r['variant'] == variant and r['checkpoint'] == checkpoint
@@ -205,7 +216,7 @@ def main():
     support = []
     diversity = []
     for checkpoint in CHECKPOINTS:
-        for variant in VARIANTS:
+        for variant in variants:
             rows = [r for r in checkpoints if r['variant'] == variant and r['checkpoint'] == checkpoint]
             combinations = Counter((r['ancients'], r['rests'], r['smiths'], r['starter_cards'], r['starter_relics']) for r in rows)
             if rows:
@@ -237,15 +248,15 @@ def main():
                 **{name + '_necessary': not values['passes'] for name, values in cf.items()},
                 **{name + '_ancient_specific': values['ancient_specific'] for name, values in cf.items()}))
     effects = []
-    old, new = [{r['seed']: r['sphere_count'] for r in successful if r['variant'] == v} for v in VARIANTS]
+    old, new = [{r['seed']: r['sphere_count'] for r in successful if r['variant'] == v} for v in variants]
     effects.append(dict(metric='total sphere count', **paired_interval(old, new)))
-    for family in FAMILIES:
+    for family in (family for family in FAMILIES if enabled[family]):
         for tier in range(1, 4 if family in ('Progressive Ancient', 'Progressive Smith', 'Progressive Rest') else 3):
             values = defaultdict(list)
             for r in acquisitions:
                 if r['family'] == family and r['tier'] == tier:
                     values[(r['variant'], r['seed'])].append(r['sphere'])
-            old, new = [{seed: stats.mean(x) for (v, seed), x in values.items() if v == variant} for variant in VARIANTS]
+            old, new = [{seed: stats.mean(x) for (v, seed), x in values.items() if v == variant} for variant in variants]
             effects.append(dict(metric=f'{family} {tier}: mean collection sphere', **paired_interval(old, new)))
     datasets = dict(checkpoint_availability=availability, starter_states=starter_states, starter_pairs=starter_pairs,
                     runs=run_summary, acquisitions=acquisitions, timing=timing, role_timing=role_timing, gates=gates, diversity=diversity,
@@ -263,11 +274,16 @@ def main():
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     colors = ('#7a8699', '#147d92')
-    labels = ('Release 1.1.2', 'Current branch')
+    labels = ('Old logic', 'New logic') if metadata.get('compare_logic') else ('Release 1.1.2', 'Current branch')
     fig, axes = plt.subplots(2, 2, figsize=(14, 10), layout='constrained')
     for column, family in enumerate(('Progressive Starter Card', 'Progressive Starter Relic')):
-        for index, (variant, label) in enumerate(zip(VARIANTS, labels)):
+        for index, (variant, label) in enumerate(zip(variants, labels)):
             ax = axes[index, column]
+            if not enabled[family]:
+                ax.text(.5, .5, 'Not randomized: normal starter retained', ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(f'{family.removeprefix("Progressive ")} · {label}')
+                ax.set_axis_off()
+                continue
             rows = [availability_lookup[(variant, cp, family, 2, 'all', 'all')] for cp in CHECKPOINT_ORDER]
             left = [0.] * len(rows)
             for status, color, description in (
@@ -290,7 +306,7 @@ def main():
     plt.close(fig)
     fig, axes = plt.subplots(2, 3, figsize=(14, 8), layout='constrained')
     for tier in (1, 2, 3):
-        for variant, color, label in zip(VARIANTS, colors, labels):
+        for variant, color, label in zip(variants, colors, labels):
             rows = [r for r in acquisitions if r['family'] == 'Progressive Ancient' and r['tier'] == tier and r['variant'] == variant]
             for ax, metric in ((axes[0, tier-1], 'sphere'), (axes[1, tier-1], 'check_fraction_before')):
                 values = sorted(r[metric] for r in rows)
@@ -313,9 +329,10 @@ def main():
                   ('Progressive Starter Relic', 1), ('Progressive Starter Relic', 2),
                   ('Progressive Smith', 1), ('Progressive Smith', 2), ('Progressive Smith', 3),
                   ('Progressive Rest', 1), ('Progressive Rest', 2), ('Progressive Rest', 3)]
+    selections = [(family, tier) for family, tier in selections if enabled[family]]
     for ax, metric, title in zip(axes, ('sphere', 'relative_to_unlock'),
                                ('Absolute collection sphere', 'Available relative to character unlock')):
-        for i, (variant, color, label) in enumerate(zip(VARIANTS, colors, labels)):
+        for i, (variant, color, label) in enumerate(zip(variants, colors, labels)):
             values = [[r[metric] for r in acquisitions if (r['family'], r['tier'], r['variant']) == (f, t, variant)] for f, t in selections]
             positions = [j + (i-.5)*.3 for j in range(len(selections))]
             ax.boxplot(values, positions=positions, widths=.25, orientation='horizontal', patch_artist=True,
@@ -345,6 +362,10 @@ def main():
     sphere; character selection, client release-on-victory and in-game reward choices are not simulated.</p>
     <details><summary>Sphere depth, runtime and Ancient timing (supporting data)</summary><h2>Depth and runtime</h2>'''
     old_run, new_run = run_summary
+    if metadata.get('compare_logic'):
+        body = body.replace('One AP slot, all five characters, original TeraSpire2.yaml. The baseline is the exact asset from release 1.1.2;\n    its embedded manifest reports 1.1.1. The current APWorld is frozen at the commit in manifest.json.',
+                            'One AP slot, all five characters, the recorded TeraSpire2 option configuration. Both old and new logic use the same committed APWorld; use_new_logic selects the mode.')
+    body = body.replace('<details><summary>Sphere depth', option_note(options)+'<details><summary>Sphere depth',1)
     body += f'<p>Current snapshot: <code>{html.escape(metadata["current_commit"][:12])}</code>.</p>'
     body += (f'<p>The current branch averages <strong>{new_run["mean_spheres"]:.2f} spheres</strong>, versus '
              f'<strong>{old_run["mean_spheres"]:.2f}</strong> in the release. '
@@ -363,19 +384,19 @@ def main():
     Multiple checkpoints may open together. Initially locked characters can receive items before they unlock;
     expand the starting/locked views to separate that effect.</p>'''
     sample_sizes = []
-    for variant in VARIANTS:
+    for variant in variants:
         sample = [r for r in checkpoints if r['variant']==variant and r['checkpoint']=='Early Act 1']
         sample_sizes.append(dict(variant=variant,seeds=len({r['seed'] for r in sample}),
             all_characters=len(sample),starting=sum(r['role']=='starting' for r in sample),
             initially_locked=sum(r['role']=='locked' for r in sample)))
     body += table(sample_sizes)
-    for family, _, _ in TIER_FIELDS:
+    for family, _, _ in tier_fields:
         body += f'<h3>{html.escape(family.removeprefix("Progressive "))}</h3>'
         if family in ('Progressive Starter Card','Progressive Starter Relic'):
             body += '<p>Tier 1 restores the normal starter; tier 2 upgrades it. Tier 1 percentages include characters who already have both copies.</p>'
-        body += checkpoint_matrix(availability, family)
-        body += '<details><summary>Starting character only</summary>' + checkpoint_matrix(availability, family, 'starting') + '</details>'
-        body += '<details><summary>Initially locked characters</summary>' + checkpoint_matrix(availability, family, 'locked') + '</details>'
+        body += checkpoint_matrix(availability, family, variants=variants)
+        body += '<details><summary>Starting character only</summary>' + checkpoint_matrix(availability, family, 'starting', variants) + '</details>'
+        body += '<details><summary>Initially locked characters</summary>' + checkpoint_matrix(availability, family, 'locked', variants) + '</details>'
     body += '<h2>Second starter cards and relics</h2>'
     body += '''<p>This separates an upgrade already held at first access (teal), an upgrade found among the
     checks in that same sphere (gold), and an upgrade that arrives later (gray). Gold can be on any character's
@@ -385,11 +406,11 @@ def main():
     for family in ('Progressive Starter Card','Progressive Starter Relic'):
         body += f'<h3>{html.escape(family.removeprefix("Progressive "))}: none, restored, or upgraded?</h3>'
         rows = [r for r in starter_states if r['family']==family and r['character']=='all' and r['role']=='all']
-        rows.sort(key=lambda r: (CHECKPOINT_ORDER.index(r['checkpoint']), VARIANTS.index(r['variant'])))
+        rows.sort(key=lambda r: (CHECKPOINT_ORDER.index(r['checkpoint']), variants.index(r['variant'])))
         body += table(rows, ['checkpoint','variant','no_starter_percent','base_only_percent','upgraded_percent'])
     body += '<details><summary>Second starter card and relic together: neither, one, or both</summary>'
     rows = [r for r in starter_pairs if r['character']=='all' and r['role']=='all']
-    rows.sort(key=lambda r: (CHECKPOINT_ORDER.index(r['checkpoint']), VARIANTS.index(r['variant'])))
+    rows.sort(key=lambda r: (CHECKPOINT_ORDER.index(r['checkpoint']), variants.index(r['variant'])))
     body += table(rows, ['checkpoint','variant','neither_percent','card_only_percent','relic_only_percent','both_percent']) + '</details>'
     body += '<details><summary>Original former-gate summary (percent missing)</summary>'
     body += table(pooled_gates, ['variant','checkpoint','missing_item','observations','missing_count','missing_percent']) + '</details>'
@@ -433,12 +454,11 @@ def main():
     Collection spheres start at zero; items from sphere S enter inventory before sphere S+1. Simultaneous progressive
     copies share a sphere; their location ordering is only a stable display tie-break. Final empty inventory snapshots
     are excluded from total sphere counts. Check fraction uses all sendable locations, not event nodes.</p>
-    <p>The original YAML is preserved byte-for-byte. Its logic_difficulty: normal entry is unsupported and ignored by
-    both tested APWorlds; the generator warning and each version's resolved options are retained.</p>
+    <p>The input YAML, per-mode YAMLs where applicable, and resolved options are retained with this dataset.</p>
     <p>These results describe this fixed YAML. They are not an estimate of failure rates under randomized options.</p><ul>'''
-    body += ''.join(f'<li><a href="{name}.csv">{name}.csv</a></li>' for name in datasets)
+    body += ''.join(f'<li><a href="{name}.csv">{name}.csv</a></li>' for name, rows in datasets.items() if rows)
     body += '<li><a href="summary.json">summary.json</a></li></ul></html>'
-    (output / 'report.html').write_text(body)
+    (output / 'report.html').write_text(mode_wording(body, metadata))
     (output / 'report-provenance.json').write_text(json.dumps(dict(database=str(args.database.resolve()),
         metadata=metadata,analysis_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()),indent=2))
     print(json.dumps(run_summary, indent=2))
