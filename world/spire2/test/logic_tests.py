@@ -201,7 +201,20 @@ class LogicTests(unittest.TestCase):
                     with_smith.collect(world.create_item("Silent Progressive Smith"), prevent_sweep=True)
                     self.assertEqual(act > 1, rule.strength(with_smith)[2] < rule.strength(state)[2])
 
-    def test_vanilla_starters_add_power_immediately_without_hard_gates(self):
+    def test_early_acts_ignore_rest_and_smith_support(self):
+        world = self.make_world(ancient_relic_location="anytime")
+        for act in (2, 3):
+            with self.subTest(act=act):
+                rule = world.get_entrance(f"Silent Early Act {act}").access_rule
+                assert isinstance(rule, SpireHasPower.Resolved)
+                state = CollectionState(world.multiworld)
+                before = rule.strength(state)
+                for kind in ("Rest", "Smith"):
+                    for _ in range(3):
+                        state.collect(world.create_item(f"Silent Progressive {kind}"), prevent_sweep=True)
+                        self.assertEqual(before, rule.strength(state))
+
+    def test_starters_restore_baseline_then_add_upgrade_power_without_hard_gates(self):
         world = self.make_world(characters=["Ironclad", "Silent", "Defect", "Necrobinder", "Regent"],
                                 progressive_starter_card=True, progressive_starter_relic=True)
         for config in world.characters:
@@ -214,7 +227,10 @@ class LogicTests(unittest.TestCase):
                         state.collect(world.create_item(f"{config.name} Progressive Starter {kind}"),
                                       prevent_sweep=True)
                         after = rule.strength(state)
-                        if tier <= 2:
+                        if tier == 1:
+                            self.assertEqual(after[:2], before[:2])
+                            self.assertLess(after[2], before[2])
+                        elif tier == 2:
                             self.assertGreater(after[1], before[1])
                             self.assertEqual(after[2], before[2])
                             if kind == "Card":
@@ -264,30 +280,35 @@ class LogicTests(unittest.TestCase):
                     state.collect(world.create_item(f"Silent Progressive Starter {kind}"), prevent_sweep=True)
                 self.assertEqual(before, rule.strength(state))
 
-    def test_necrobinder_card_bonus_requires_card_and_available_relic(self):
-        for card_enabled in (False, True):
-            for relic_shuffled in (False, True):
-                world = self.make_world(characters=["Necrobinder"],
-                                        progressive_starter_card=card_enabled,
-                                        progressive_starter_relic=relic_shuffled)
-                rule = self.power_rule(world)
-                for card_count in (0, 1, 2):
-                    with self.subTest(card_enabled=card_enabled, relic_shuffled=relic_shuffled,
-                                      card_count=card_count):
-                        state = CollectionState(world.multiworld)
-                        for _ in range(card_count):
-                            state.collect(world.create_item("Necrobinder Progressive Starter Card"),
+    def test_restored_starters_match_unshuffled_loadout(self):
+        for character in ("Ironclad", "Silent", "Defect", "Necrobinder", "Regent"):
+            baseline = self.make_world(characters=[character],
+                                       progressive_starter_card=False, progressive_starter_relic=False)
+            expected = self.power_rule(baseline).strength(CollectionState(baseline.multiworld))
+            for card_enabled, relic_enabled in ((True, False), (False, True), (True, True)):
+                with self.subTest(character=character, card=card_enabled, relic=relic_enabled):
+                    world = self.make_world(characters=[character],
+                                            progressive_starter_card=card_enabled,
+                                            progressive_starter_relic=relic_enabled)
+                    state = CollectionState(world.multiworld)
+                    rule = self.power_rule(world)
+                    self.assertGreater(rule.strength(state)[2], expected[2])
+                    for kind, enabled in (("Card", card_enabled), ("Relic", relic_enabled)):
+                        if enabled:
+                            state.collect(world.create_item(f"{character} Progressive Starter {kind}"),
                                           prevent_sweep=True)
-                        before = rule.strength(state)[0]
-                        state.collect(world.create_item("Necrobinder Progressive Starter Relic"),
-                                      prevent_sweep=True)
-                        after = rule.strength(state)[0]
-                        bonus = 0.5 if card_enabled and card_count and relic_shuffled else 0
-                        self.assertEqual(bonus, after - before)
-                        if not card_enabled or not card_count:
-                            self.assertEqual(0, after)
-                        elif card_count == 1:
-                            self.assertEqual(1.5, after)
-                        state.collect(world.create_item("Necrobinder Progressive Starter Relic"),
-                                      prevent_sweep=True)
-                        self.assertEqual(after, rule.strength(state)[0])
+                    self.assertEqual(expected, rule.strength(state))
+
+    def test_necrobinder_missing_synergy_is_charged_once_until_both_starters_return(self):
+        world = self.make_world(characters=["Necrobinder"],
+                                progressive_starter_card=True, progressive_starter_relic=True)
+        rule = self.power_rule(world)
+        for first in ("Card", "Relic"):
+            with self.subTest(first=first):
+                state = CollectionState(world.multiworld)
+                self.assertEqual(0.5, rule.power_adjustments(state)["Missing starter card/relic synergy"])
+                state.collect(world.create_item(f"Necrobinder Progressive Starter {first}"), prevent_sweep=True)
+                self.assertEqual(0.5, rule.power_adjustments(state)["Missing starter card/relic synergy"])
+                second = "Relic" if first == "Card" else "Card"
+                state.collect(world.create_item(f"Necrobinder Progressive Starter {second}"), prevent_sweep=True)
+                self.assertNotIn("Missing starter card/relic synergy", rule.power_adjustments(state))
