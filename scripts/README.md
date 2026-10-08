@@ -29,6 +29,20 @@ pushed commit. Pick `--remote upstream` for the public release repository and
 on Linux. `fuzz_world.ps1` remains a historical Windows/Archipelago 0.6.7 Index/UT
 fuzz harness with explicit branch/environment assumptions. It is not a required
 release command and has not been ported or validated for native Linux/0.6.8.
+
+# GitHub Actions check ownership
+
+- `pr-checks.yml` runs script tests and builds the APWorld for PRs.
+- `build-sts2-compat.yml` owns public/beta client compilation, loader compilation,
+  and manifest checks after compile-only and incremental builds.
+- `test-domain.yml` runs domain and client regression tests on Linux and Windows.
+- The latter two use `ci-event.yml` to skip their push-side work when an open,
+  mergeable PR in the same repository covers that exact commit. Conflicting PRs,
+  unknown mergeability and branches without PRs retain push checks, subject to
+  the existing branch/path filters. Manual runs always run. The selector fails
+  if the GitHub query fails rather than silently skipping.
+- Release packaging continues to use `build-client.yml` and `build-apworld.yml`.
+
 # Local multiplayer test on Linux, Windows or WSL
 
 This harness opens two isolated StS2 beta accounts with Steam disabled, then
