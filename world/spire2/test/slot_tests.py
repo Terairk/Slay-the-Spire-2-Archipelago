@@ -17,7 +17,6 @@ class TestSlotGeneration(unittest.TestCase):
 
     def test_obsolete_player_count_cannot_change_generation(self):
         self.assertNotIn("player_count", SlayTheSpire2World.options_dataclass.type_hints)
-        self.assertNotIn("stage_fill_hook", SlayTheSpire2World.__dict__)
         baseline = self.generate()
         for count in (1, 2, 4, 100):
             with self.subTest(count=count):
@@ -60,17 +59,33 @@ class TestSlotGeneration(unittest.TestCase):
         mw = self.generate(modded_characters=["ModA", "ModB"], pick_num_characters=0)
         data = mw.worlds[1].fill_slot_data()
         regenerated = setup_solo_multiworld(SlayTheSpire2World, steps=())
+        # Universal Tracker attaches this extension to MultiWorld dynamically.
+        # noinspection PyUnresolvedReferences
         regenerated.re_gen_passthrough = {SlayTheSpire2World.game: data}
         for step in ("generate_early", "create_regions", "create_items", "set_rules"):
             call_all(regenerated, step)
         world = regenerated.worlds[1]
+        assert isinstance(world, SlayTheSpire2World)
         self.assertEqual(data["characters"], world.fill_slot_data()["characters"])
         self.assertEqual({(loc.name, loc.address) for loc in mw.get_locations()},
                          {(loc.name, loc.address) for loc in regenerated.get_locations()})
         for config in world.modded_chars:
             location = world.get_location(f"{config.name} Reached Floor 1")
+            assert location.address is not None
             self.assertEqual(f"{config.official_name} Reached Floor 1",
                              world.location_id_to_alias[location.address])
+
+        # Sort the same labels UT builds, including its appended modded-character aliases.
+        labels = []
+        for config in world.characters:
+            for suffix in ("Reached Floor 1", "Reached Floor 7", "Reached Floor 9",
+                           "Reached Floor 10", "Reached Floor 12", "Act 1 Boss", "Reached Floor 18"):
+                location = world.get_location(f"{config.name} {suffix}")
+                label = location.name
+                if location.address in world.location_id_to_alias:
+                    label += f" ({world.location_id_to_alias[location.address]})"
+                labels.append((location.parent_region.name, label))
+        self.assertEqual(labels, sorted(reversed(labels), key=lambda pair: world.custom_ut_sort(*pair)))
 
     def test_separate_ap_slots_keep_independent_progress_and_fill(self):
         options = {"characters": ["Ironclad", "Silent"], "num_chars_goal": 1,
@@ -80,8 +95,8 @@ class TestSlotGeneration(unittest.TestCase):
         mw = setup_multiworld([SlayTheSpire2World] * 2, seed=42, options=options)
         state = CollectionState(mw)
         state.collect(mw.worlds[1].create_item("Ironclad Relic"), prevent_sweep=True)
-        self.assertEqual(1.5, state.power_level[1][1])
-        self.assertEqual(0, state.power_level[2][1])
+        self.assertEqual(1, state.count("Ironclad Relic", 1))
+        self.assertEqual(0, state.count("Ironclad Relic", 2))
         state.collect(mw.worlds[1].create_item("Ironclad Victory"), prevent_sweep=True)
         self.assertTrue(mw.completion_condition[1](state))
         self.assertFalse(mw.completion_condition[2](state))
@@ -90,3 +105,7 @@ class TestSlotGeneration(unittest.TestCase):
         distribute_items_restrictive(mw, panic_method="raise")
         self.assertFalse(mw.get_unfilled_locations())
         self.assertTrue(mw.can_beat_game())
+
+    def test_floor_checks_do_not_request_opening_items(self):
+        mw = self.generate(include_floor_checks=True, campfire_sanity=True, neow_sanity=True)
+        self.assertFalse(mw.early_items[1])

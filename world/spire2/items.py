@@ -54,9 +54,9 @@ class BonusItemData(typing.NamedTuple):
 # Items in this table get unique variations for each character. For example, "Five Gold" becomes "Ironclad Five Gold", "Silent Five Gold", etc.
 base_item_table: Dict[str, ItemData] = {
     'Card Reward': ItemData(1, ItemType.CARD_REWARD, ItemClassification.progression_deprioritized),
-    'Rare Card Reward': ItemData(2, ItemType.RARE_CARD_REWARD, ItemClassification.progression_deprioritized),
+    'Rare Card Reward': ItemData(2, ItemType.RARE_CARD_REWARD, ItemClassification.progression),
     'Relic': ItemData(3, ItemType.RELIC, ItemClassification.progression),
-    'Progressive Ancient': ItemData(4, ItemType.PROGRESSIVE_ANCIENT, ItemClassification.progression),
+    'Progressive Ancient': ItemData(4, ItemType.PROGRESSIVE_ANCIENT, ItemClassification.progression | ItemClassification.useful),
     'One Gold': ItemData(5, ItemType.GOLD, ItemClassification.filler),
     'Five Gold': ItemData(6, ItemType.GOLD, ItemClassification.filler),
     'Combat Gold': ItemData(15, ItemType.GOLD, ItemClassification.useful),
@@ -71,8 +71,8 @@ base_item_table: Dict[str, ItemData] = {
     'Progressive Shop Remove': ItemData(13, ItemType.SHOP_REMOVE, ItemClassification.progression_deprioritized),
     'Unlock': ItemData(14, ItemType.CHAR_UNLOCK, ItemClassification.progression),
     'Potion': ItemData(18, ItemType.POTION, ItemClassification.useful),
-    'Progressive Starter Card': ItemData(29, ItemType.PROGRESSIVE_STARTER_CARD, ItemClassification.progression),
-    'Progressive Starter Relic': ItemData(30, ItemType.PROGRESSIVE_STARTER_RELIC, ItemClassification.progression),
+    'Progressive Starter Card': ItemData(29, ItemType.PROGRESSIVE_STARTER_CARD, ItemClassification.progression | ItemClassification.useful),
+    'Progressive Starter Relic': ItemData(30, ItemType.PROGRESSIVE_STARTER_RELIC, ItemClassification.progression | ItemClassification.useful),
 
     # Event Items
     'Victory': ItemData(None, ItemType.EVENT, ItemClassification.progression, True, True),
@@ -129,7 +129,7 @@ def create_item_tables(vanilla_chars: typing.List[str], extras: int) -> typing.T
     item_name_to_data = universal_items | universal_bonus_items
 
     characters_to_items: dict[typing.Union[str, int],dict[str, ItemData]] = defaultdict(dict)
-    event_item_pairs: dict[str, str] = dict()
+    character_event_pairs: dict[str, str] = dict()
     char_num = 1
 
     for char in vanilla_chars:
@@ -139,7 +139,7 @@ def create_item_tables(vanilla_chars: typing.List[str], extras: int) -> typing.T
             item_name_to_data[newkey] = newval
             characters_to_items[char][newkey] = newval
         for key, val in base_event_item_pairs.items():
-            event_item_pairs[f"{char} {key}"] = f"{char} {val}"
+            character_event_pairs[f"{char} {key}"] = f"{char} {val}"
         char_num += 1
 
     for i in range(extras):
@@ -149,11 +149,11 @@ def create_item_tables(vanilla_chars: typing.List[str], extras: int) -> typing.T
             item_name_to_data[newkey] = newval
             characters_to_items[i+1][newkey] = newval
         for key, val in base_event_item_pairs.items():
-            event_item_pairs[f"Custom Character {i+1} {key}"] = f"Custom Character {i+1} {val}"
+            character_event_pairs[f"Custom Character {i+1} {key}"] = f"Custom Character {i+1} {val}"
         char_num += 1
 
 
-    return item_name_to_data, characters_to_items, event_item_pairs
+    return item_name_to_data, characters_to_items, character_event_pairs
 
 item_table, chars_to_items, event_item_pairs = create_item_tables(character_list, NUM_CUSTOM)
 

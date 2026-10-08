@@ -1,13 +1,25 @@
 import typing
 from dataclasses import dataclass
 
-from Options import OptionSet, OptionList, Range, Toggle, Visibility, Choice, TextChoice, OptionDict, \
+from Options import OptionSet, OptionList, Range, Toggle, DefaultOnToggle, Visibility, Choice, TextChoice, OptionDict, \
     PerGameCommonOptions, OptionGroup, DeathLink as ArchipelagoDeathLink
 
 from schema import Schema, Optional, And
 
 from .characters import character_list
 from .constants import NUM_CUSTOM, ASCENSIONS
+
+
+class UseNewLogic(DefaultOnToggle):
+    """Use the new logic. Disable to use the previous 1.1.X and below logic.
+    New logic allows more random item order—for example, Extra relics and cards can help supplement missing ancients or rests.
+    One example is that old logic required your progressive starter card+relic to beat your 1st elite but new logic
+    no longer requires this as 'Power' can be made up with extra cards/relics. Similar cases for ancients/smiths/rests.
+
+    Old logic is used automatically (regardless of this option) when floor, gold, and potion checks
+     are all disabled to reduce failed generations.
+    """
+    display_name = "Use New Logic"
 
 
 class Characters(OptionSet):
@@ -117,7 +129,8 @@ class Ascension(OptionSet):
 class NeowSanity(Toggle):
     """Adds Neow's starting Ancient Relic as a Progressive Ancient reward.
 
-    With Anytime mode, Neow's relic choices appear in the Archipelago reward menu."""
+    With Anytime mode, Neow's relic choices appear in the Archipelago reward menu.
+    """
     display_name = "Neow Sanity"
     default = 0
 
@@ -126,7 +139,8 @@ class AncientRelicLocation(Choice):
     """Controls when Progressive Ancient relic choices are offered.
 
     Start Of Act presents them through the normal Ancient encounter. Anytime presents
-    them as linked choices in the Archipelago reward menu as soon as they are received."""
+    them as linked choices in the Archipelago reward menu as soon as they are received.
+    """
     display_name = "Ancient Relic Location"
     option_start_of_act = 0
     option_anytime = 1
@@ -171,13 +185,12 @@ class ProgressiveStarterCard(Toggle):
     Requires Include Floor Checks. Each character gets two Progressive Starter Card items, which
     replace two floor-check filler items. With none received, the character
     starts without the special starter card that Archaic Tooth would transform (Bash, Neutralize, a compatible modded equivalent etc).
-    The first item restores the normal card.
+    The first item restores the normal card; the second applies its Archaic Tooth transformation.
 
     Characters without an Archaic Tooth transformation are left unchanged, although their two
     Progressive Starter Card items are still present in the multiworld.
 
-    WARNING: This can make the early game significantly harder for some characters. Logic expects you to reach
-    Late Act 1 (may need to beat 1 Elite) without your starters."""
+    WARNING: This can make the early game significantly harder for some characters."""
     display_name = "Progressive Starter Card"
     default = 0
 
@@ -190,12 +203,13 @@ class ProgressiveStarterRelic(Toggle):
     starts without the starter relic that Touch of Orobas would refine (such as Burning Blood, or a
     compatible modded equivalent).
 
+    The first item restores the normal relic; the second applies its Touch of Orobas refinement.
+
     Characters without a Touch of Orobas refinement are left unchanged, although their two
     Progressive Starter Relic items are still present in the multiworld.
 
     WARNING: This can make the early game significantly harder for characters whose starting relic
-    is central to their early power. Logic expects you to reach Late Act 1 (may require beating 1 Elite) without
-    your starters."""
+    is central to their early power."""
     display_name = "Progressive Starter Relic"
     default = 0
 
@@ -378,12 +392,12 @@ class BonusItems(OptionList):
 
     schema = Schema([
         And(
-            {
+            Schema({
                 str: {
                     Optional("Pools"): [And(str, len)],
                     Optional("Value"): And(str, len),
                 }
-            },
+            }),
             _has_exactly_one_selector,
         )
     ])
@@ -638,6 +652,7 @@ class Spire2Options(PerGameCommonOptions):
     ascension_down: AscensionDown
 
     # Main game flow
+    use_new_logic: UseNewLogic
     ancient_relic_location: AncientRelicLocation
     ancient_relic_pool: AncientRelicPool
     relic_rewards_available_anytime: RelicRewardsAvailableAnytime

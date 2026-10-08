@@ -100,7 +100,7 @@ def create_location_data() -> typing.List[LocationData]:
 def create_location_tables(vanilla_chars: typing.List[str], extras: int) -> typing.Tuple[dict[str, int], dict[
     typing.Union[str, int],dict[str,LocationData]],dict[int,LocationData]]:
     loc_name_to_id = dict()
-    characters_to_locs: dict[typing.Union[str, int],dict[str, LocationData]] = defaultdict(dict)
+    character_locations: dict[typing.Union[str, int],dict[str, LocationData]] = defaultdict(dict)
     ids_to_data: dict[int, LocationData] = dict()
     char_num = 0
 
@@ -113,7 +113,7 @@ def create_location_tables(vanilla_chars: typing.List[str], extras: int) -> typi
             newkey = f"{char} {data.name}"
             newval = data.id + char_num*CHAR_OFFSET if data.type != LocationType.Event else data.id
             loc_name_to_id[newkey] = newval
-            characters_to_locs[char][newkey] = data
+            character_locations[char][newkey] = data
             if newval is not None:
                 ids_to_data[newval] = data
         char_num += 1
@@ -123,12 +123,12 @@ def create_location_tables(vanilla_chars: typing.List[str], extras: int) -> typi
             newkey = f"Custom Character {i+1} {data.name}"
             newval = data.id + char_num * CHAR_OFFSET if data.type != LocationType.Event else data.id
             loc_name_to_id[newkey] = newval
-            characters_to_locs[i+1][newkey] = data
+            character_locations[i+1][newkey] = data
             if newval is not None:
                 ids_to_data[newval] = data
         char_num += 1
 
-    return loc_name_to_id, characters_to_locs, ids_to_data
+    return loc_name_to_id, character_locations, ids_to_data
 
 location_table, characters_to_locs, loc_ids_to_data = create_location_tables(character_list, NUM_CUSTOM)
 

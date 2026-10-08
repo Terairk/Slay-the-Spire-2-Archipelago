@@ -1,14 +1,17 @@
+import logging
 import re
 import string
 import typing
 from copy import deepcopy
+from math import ceil
 from typing import List, Optional, Any
 
-from BaseClasses import Item, Location, Region, MultiWorld, ItemClassification, CollectionState
+from BaseClasses import CollectionState, Item, Location, Region, MultiWorld, ItemClassification
 from Options import OptionError
 from worlds.AutoWorld import World
 from .regions import create_regions
-from .rules import set_rules, spire_logic
+from .rules import FALLBACK_REASON, MID_ACT_1_POWER, select_logic, set_rules
+from . import rules_old
 from .web_world import SlayTheSpire2Web
 from .characters import CharacterConfig, character_list, character_offset_map
 from .constants import NUM_CUSTOM, ASCENSION_LIST, CHAR_OFFSET
@@ -68,6 +71,8 @@ class SlayTheSpire2World(World):
         self.modded_chars: List[CharacterConfig] = []
         self.total_shop_locations: int = 0
         self.total_shop_items: int = 0
+        self.effective_logic = "new"
+        self.logic_fallback_reason = None
 
     def generate_early(self) -> None:
         if hasattr(self.multiworld, 're_gen_passthrough'):
@@ -100,9 +105,34 @@ class SlayTheSpire2World(World):
         self.total_shop_locations = self.total_shop_items + (3 if self.options.shop_remove_slots else 0)
         if self.total_shop_locations <= 0:
             self.options.shop_sanity.value = 0
+        select_logic(self)
+        if self.logic_fallback_reason:
+            logging.info("Slay the Spire II player %s: %s", self.player, self.logic_fallback_reason)
         num_chars_goal = self.options.num_chars_goal.value
         if num_chars_goal > len(self.characters):
             self.options.num_chars_goal.value = 0
+        if not self.options.include_floor_checks:
+            # Give sparse starts enough support to open Mid Act 1.
+            # Mixing cards and relics meets the power/card floor within the available checks;
+            # ordinary cards alone can fill every opening slot and still fall short.
+            early_items = self.multiworld.early_items[self.player]
+            cards = 1 if self.options.shuffle_all_cards else 0
+            vanilla_cards = 0 if self.options.shuffle_all_cards else 1.5
+            relics = ceil((MID_ACT_1_POWER - cards - vanilla_cards) / 1.5)
+            if self.effective_logic == "old" and not self.options.shuffle_all_cards:
+                # Old logic values a half-shuffled Card Reward at 2 power. Pair it with
+                # one Relic for 3.5 power using the same two early slots as two Relics.
+                cards, relics = 1, 1
+            for config in self.characters:
+                if config.locked:
+                    continue
+                if cards:
+                    early_items[f"{config.name} Card Reward"] = cards
+                early_items[f"{config.name} Relic"] = relics
+                if self.options.campfire_sanity:
+                    early_items[f"{config.name} Progressive Rest"] = 1
+                if self.options.neow_sanity:
+                    early_items[f"{config.name} Progressive Ancient"] = 1
         # for weight in self.options.trap_weights.values():
         #     if weight > 0:
         #         break
@@ -156,7 +186,7 @@ class SlayTheSpire2World(World):
             if char.lower() in character_offset_map and char not in selected_chars
         )
         replace_num = len(modded_chars) - NUM_CUSTOM
-        if unlocked_char in modded_chars:
+        if unlocked_char is not None and unlocked_char in modded_chars:
             modded_chars.remove(unlocked_char)
         for char in self.random.sample(modded_chars, k=replace_num):
             selected_chars.remove(char)
@@ -304,6 +334,17 @@ class SlayTheSpire2World(World):
 
     def create_regions(self) -> None:
         create_regions(self, self.player)
+        # Region creation already follows character/act/stage order, including shop branches.
+        self._ut_region_order = {region.name: index for index, region in enumerate(self.get_regions())}
+
+    def custom_ut_sort(self, region_label: str, location_label: str) -> str:
+        region_order = self._ut_region_order.get(region_label, len(self._ut_region_order))
+        def pad_number(match: re.Match[str]) -> str:
+            return match.group().zfill(10)
+
+        # UT may append a modded-character alias; retain it while sorting check numbers naturally.
+        location_key = re.sub(r"\d+", pad_number, location_label.casefold())
+        return f"{region_order:04d}:{location_key}"
 
     def create_region(
             self,
@@ -333,7 +374,12 @@ class SlayTheSpire2World(World):
     def create_item(self, name: str) -> SlayTheSpire2Item:
         data = item_table[name]
         item_id = data.code
-        return SlayTheSpire2Item(data, name, data.classification, item_id, self.player)
+        classification = data.classification
+        if (self.effective_logic == 'new' and not self.options.shop_sanity
+                and name.endswith((' Elite Gold', ' Boss Gold'))):
+            # Only shops require gold in new logic; legacy boss gates still need it.
+            classification = ItemClassification.useful
+        return SlayTheSpire2Item(data, name, classification, item_id, self.player)
 
     def build_filler_pools(self) -> None:
         """Pre-compute filler item tier buckets for efficient repeated use.
@@ -477,9 +523,12 @@ class SlayTheSpire2World(World):
 
         # Merge the universal pools with the character-specific gold pools.
         # List concatenation is cheap here since the pools are pre-built.
-        high_items = self.filler_universal_high + self.filler_char_high.get(character, [])
-        medium_items = self.filler_universal_medium + self.filler_char_medium.get(character, [])
-        low_items = self.filler_universal_low + self.filler_char_low.get(character, [])
+        high_items = self.filler_universal_high + (
+            self.filler_char_high.get(character, []) if character is not None else [])
+        medium_items = self.filler_universal_medium + (
+            self.filler_char_medium.get(character, []) if character is not None else [])
+        low_items = self.filler_universal_low + (
+            self.filler_char_low.get(character, []) if character is not None else [])
 
         # If the player has disabled every filler item (all weights set to 0),
         # return the pre-computed safe fallback.
@@ -634,7 +683,7 @@ class SlayTheSpire2World(World):
 
         self.multiworld.itempool += pool
 
-    def _should_include_location(self, data: LocationData, config: CharacterConfig) -> bool:
+    def _should_include_location(self, data: Optional[LocationData], config: CharacterConfig) -> bool:
         if data is None:
             return True
         if data.type == LocationType.Floor and self.options.include_floor_checks == 0:
@@ -658,31 +707,27 @@ class SlayTheSpire2World(World):
             return False
         return True
 
+    def collect(self, state: CollectionState, item: Item) -> bool:
+        if self.effective_logic == "old":
+            return rules_old.collect(self, state, item)
+        return super().collect(state, item)
+
+    def remove(self, state: CollectionState, item: Item) -> bool:
+        if self.effective_logic == "old":
+            return rules_old.remove(self, state, item)
+        return super().remove(state, item)
+
+    def write_spoiler_header(self, spoiler_handle) -> None:
+        spoiler_handle.write(f"Effective logic: {self.effective_logic}\n")
+        if self.logic_fallback_reason:
+            spoiler_handle.write(f"Logic fallback: {self.logic_fallback_reason}\n")
+
     def set_rules(self) -> None:
         set_rules(self)
 
-    def collect(self, state: CollectionState, item: Item) -> bool:
-        change = super().collect(state, item)
-        item_data = typing.cast(SlayTheSpire2Item, item).item_data
-        spire_state = spire_logic(state)
-        if change and item_data.type in spire_state.item_levels[self.player]:
-            level = spire_state.item_levels[self.player].get(item_data.type, 0.0)
-            char_level = spire_state.power_level[item.player]
-            char_level[item_data.char_offset] = char_level[item_data.char_offset] + level
-        return change
-
-    def remove(self, state: CollectionState, item: Item) -> bool:
-        change = super().remove(state, item)
-        item_data = typing.cast(SlayTheSpire2Item, item).item_data
-        spire_state = spire_logic(state)
-        if change and item_data.type in spire_state.item_levels[self.player]:
-            level = spire_state.item_levels[self.player].get(item_data.type, 0.0)
-            char_level = spire_state.power_level[item.player]
-            char_level[item_data.char_offset] = char_level[item_data.char_offset] - level
-        return change
-
     def fill_slot_data(self) -> dict:
         slot_data = {
+            "effective_logic": self.effective_logic,
             'characters': [
                 c.to_dict() for c in self.characters
             ],
@@ -698,6 +743,7 @@ class SlayTheSpire2World(World):
             "CompatFlag": self.compat_flag,
         }
         slot_data.update(self.options.as_dict(
+            "use_new_logic",
             "lock_characters",
             "seeded",
             "ascension",
@@ -727,12 +773,19 @@ class SlayTheSpire2World(World):
         return slot_data
 
     def _setup_ut(self, slot_data: dict[str, Any]) -> None:
+        self.options.use_new_logic.value = self.options.use_new_logic.from_any(slot_data.get("use_new_logic", True)).value
+        # Reconstruct the generated mode; do not rerun fallback selection on tracker input.
+        self.effective_logic = slot_data.get("effective_logic", "new")
+        self.logic_fallback_reason = (
+            FALLBACK_REASON if self.options.use_new_logic and self.effective_logic == "old" else None
+        )
         self.options.lock_characters.value = slot_data['lock_characters']
         self.options.shop_card_slots.value = slot_data["shop_sanity_options"]["card_slots"]
         self.options.shop_remove_slots.value = slot_data["shop_sanity_options"]["card_remove"]
         self.options.shop_neutral_card_slots.value = slot_data["shop_sanity_options"]["neutral_slots"]
         self.options.shop_relic_slots.value = slot_data["shop_sanity_options"]["relic_slots"]
         self.options.shop_potion_slots.value = slot_data["shop_sanity_options"]["potion_slots"]
+        self.options.shop_sanity_costs.value = slot_data["shop_sanity_options"]["costs"]
         for char_dict in slot_data['characters']:
             config = CharacterConfig(
                 char_dict['name'],
@@ -770,6 +823,8 @@ class SlayTheSpire2World(World):
         self.options.gold_sanity.value = slot_data['gold_sanity']
         self.options.potion_sanity.value = slot_data['potion_sanity']
         self.options.num_chars_goal.value = slot_data['num_chars_goal']
+        if self.effective_logic == 'old':
+            rules_old.restore_tracker_scoring(self)
         self.location_id_to_alias: dict[int, str] = dict()
         pattern = re.compile("Custom Character [0-9]+ (?P<location_name>.*?)$")
         for key, value in SlayTheSpire2World.location_id_to_name.items():
