@@ -672,7 +672,7 @@ namespace StS2AP
                 foreach (var kvp in SlotData)
                 {
                     LogUtility.Info($"KEY: {kvp.Key}");
-                    LogUtility.Info($"VAL: {kvp.Value.ToString()}");
+                    LogUtility.Info($"VAL: {kvp.Value ?? "<null>"}");
                 }
 
                 if (!TryReadApWorldCompatibility(
