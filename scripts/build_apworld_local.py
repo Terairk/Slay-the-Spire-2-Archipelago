@@ -17,7 +17,7 @@ def main() -> None:
     installed_world = archipelago / "worlds" / "spire2"
 
     if not (archipelago / "Launcher.py").is_file():
-        raise SystemExit(f"Archipelago 0.6.7 checkout not found at {archipelago}")
+        raise SystemExit(f"Archipelago checkout not found at {archipelago}")
     if not installed_world.exists():
         installed_world.symlink_to(world_source, target_is_directory=True)
     if installed_world.resolve() != world_source:
@@ -45,10 +45,8 @@ def main() -> None:
 
     build_code = (
         f"import Utils; Utils.user_path.cached_path = {str(user_data)!r}; "
-        "import Launcher; "
         "from worlds.LauncherComponents import _build_apworlds; "
-        "Launcher.open_folder = lambda *_: None; "
-        '_build_apworlds("Slay the Spire II")'
+        '_build_apworlds("Slay the Spire II", "--skip_open_folder")'
     )
     subprocess.run([sys.executable, "-c", build_code], cwd=build_root, env=environment, check=True)
 

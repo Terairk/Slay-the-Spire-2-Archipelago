@@ -38,7 +38,7 @@
     <!-- Build/deploy paths for the active game installation. -->
     <ModsOutputDir Condition="'$(ModsOutputDir)' == ''"
       >$(STS2GamePath)/mods/$(ModName)</ModsOutputDir>
-    <GameDataDir>$(STS2GamePath)/data_sts2_windows_x86_64</GameDataDir>
+    <GameDataDir Condition="'$(GameDataDir)' == ''">$(STS2GamePath)/data_sts2_windows_x86_64</GameDataDir>
     <STS2ReferenceDataDir Condition="'$(STS2ReferenceDataDir)' == ''"
       >$(GameDataDir)</STS2ReferenceDataDir>
     <GodotProject>$(MSBuildProjectDirectory)/godot</GodotProject>
