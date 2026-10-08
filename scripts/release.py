@@ -3,13 +3,12 @@
 
 The source manifests are authoritative. This tool never edits source files,
 creates commits, or pushes a branch. ``build`` creates complete release assets;
-``publish`` tags the already-reviewed main commit and uploads those assets.
+``publish`` creates a GitHub draft for an explicitly selected, pushed branch.
 """
 
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
 import json
 import os
@@ -22,11 +21,13 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
+from xml.etree import ElementTree
 
 if __package__:
-    from . import client_archive
+    from . import client_archive, build_apworld_local
 else:
     import client_archive
+    import build_apworld_local
 
 APWORLD_ARCHIVE_NAME = client_archive.APWORLD_ARCHIVE_NAME
 CLIENT_ARCHIVE_NAME = client_archive.CLIENT_ARCHIVE_NAME
@@ -43,7 +44,6 @@ verify_client_archive = client_archive.verify_client_archive
 BUILD_MANIFEST_NAME = "release-build.json"
 CLIENT_MANIFEST_PATH = Path("client/StS2AP/Archipelago.json")
 WORLD_MANIFEST_PATH = Path("world/spire2/archipelago.json")
-WORLD_SOURCE_PATH = Path("world/spire2/world.py")
 CLIENT_PROJECT_PATH = Path("client/StS2AP/StS2AP.csproj")
 CLIENT_LOADER_PROJECT_PATH = Path("client/StS2AP.Loader/StS2AP.Loader.csproj")
 RELEASE_NOTES_PATH = Path("scripts/release-notes-template.md")
@@ -72,6 +72,14 @@ class BuildPaths:
     @property
     def apworld_archive(self) -> Path:
         return self.dist / APWORLD_ARCHIVE_NAME
+
+    @property
+    def yaml_template(self) -> Path:
+        return self.dist / "Spire2-template.yaml"
+
+    @property
+    def assets(self) -> tuple[Path, ...]:
+        return self.client_archive, self.apworld_archive, self.yaml_template
 
     @property
     def build_manifest(self) -> Path:
@@ -123,29 +131,6 @@ def load_json(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
-def read_world_source_version(path: Path) -> str:
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except (OSError, SyntaxError) as exc:
-        raise ReleaseError(f"Could not parse {path}: {exc}") from exc
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != "SlayTheSpire2World":
-            continue
-        for statement in node.body:
-            if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
-                continue
-            targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
-            if not any(isinstance(target, ast.Name) and target.id == "mod_compat_version" for target in targets):
-                continue
-            value = statement.value
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                return value.value
-            raise ReleaseError(
-                f"SlayTheSpire2World.mod_compat_version in {path} must be a string literal"
-            )
-    raise ReleaseError(f"Could not find SlayTheSpire2World.mod_compat_version in {path}")
-
-
 def read_versions(repo: Path) -> Versions:
     client_manifest = load_json(repo / CLIENT_MANIFEST_PATH, "client mod manifest")
     if client_manifest.get("id") != EXPECTED_MOD_ID:
@@ -160,15 +145,12 @@ def read_versions(repo: Path) -> Versions:
             f"{WORLD_MANIFEST_PATH} game must be {EXPECTED_WORLD_GAME!r}; got {world_manifest.get('game')!r}"
         )
     apworld = SemVer.parse(world_manifest.get("world_version"), "APWorld version")
-    source_version = SemVer.parse(
-        read_world_source_version(repo / WORLD_SOURCE_PATH),
-        "APWorld slot-data version",
-    )
-    if str(source_version) != str(apworld):
-        raise ReleaseError(
-            f"APWorld version mismatch: {WORLD_MANIFEST_PATH} declares {apworld}, "
-            f"but {WORLD_SOURCE_PATH} declares {source_version}"
-        )
+    try:
+        project_version = ElementTree.parse(repo / CLIENT_PROJECT_PATH).findtext(".//Version")
+    except (OSError, ElementTree.ParseError) as exc:
+        raise ReleaseError(f"Could not read client project version: {exc}") from exc
+    if project_version != str(mod):
+        raise ReleaseError(f"Client version mismatch: csproj declares {project_version}, manifest declares {mod}")
     return Versions(mod=mod, apworld=apworld)
 
 
@@ -251,15 +233,19 @@ def version_at_tag(repo: Path, tag: str, path: Path, field: str, label: str) -> 
     return SemVer.parse(value.get(field), label)
 
 
-def assert_versions_advance_for_publish(repo: Path, versions: Versions) -> None:
+def assert_versions_advance_for_publish(repo: Path, versions: Versions, repository: str | None = None) -> None:
     tags = strict_semver_tags(repo)
+    if repository:
+        remote_names = set(run(("gh", "api", f"repos/{repository}/tags", "--paginate", "--jq", ".[].name"),
+                               cwd=repo, capture=True).splitlines())
+        tags = [(version, tag) for version, tag in tags if tag in remote_names]
     if not tags:
         return
     previous_mod, previous_tag = tags[-1]
     if versions.mod.compare_precedence(previous_mod) <= 0:
         raise ReleaseError(
             f"Mod version {versions.mod} must be greater than the latest semantic-version tag "
-            f"reachable from main ({previous_tag})"
+            f"reachable from the selected source ({previous_tag})"
         )
     previous_apworld = version_at_tag(
         repo,
@@ -288,145 +274,30 @@ def assert_versions_advance_for_publish(repo: Path, versions: Versions) -> None:
 
 
 def build_apworld(paths: BuildPaths) -> None:
-    launcher = paths.archipelago / "Launcher.py"
-    worlds_dir = paths.archipelago / "worlds"
-    destination = worlds_dir / "spire2"
-    source = paths.repo / "world/spire2"
-    if not launcher.is_file() or not worlds_dir.is_dir():
-        raise ReleaseError(
-            f"Archipelago checkout not found at {paths.archipelago}. "
-            "Pass --archipelago-root with a checkout containing Launcher.py and worlds/."
-        )
-
-    if destination.is_symlink():
-        if destination.resolve() != source.resolve():
-            raise ReleaseError(f"{destination} links to another world source")
-        log(f"Using linked world source at {destination}")
-    else:
-        log(f"Syncing {source} to {destination} (existing contents will be deleted)")
-        if destination.exists():
-            shutil.rmtree(destination)
-        shutil.copytree(source, destination)
-
-    run(
-        (sys.executable, launcher, "Build APWorlds", EXPECTED_WORLD_GAME),
-        cwd=paths.archipelago,
-    )
-    built = paths.archipelago / "build/apworlds" / APWORLD_ARCHIVE_NAME
-    if not built.is_file():
-        raise ReleaseError(f"Archipelago build succeeded but did not create {built}")
-    shutil.copy2(built, paths.apworld_archive)
+    build_apworld_local.build(paths.repo, paths.archipelago, paths.apworld_archive)
 
 
-def parse_msbuild_properties(output: str) -> dict[str, Any]:
-    try:
-        value = json.loads(output)
-    except json.JSONDecodeError as exc:
-        raise ReleaseError(f"dotnet msbuild returned invalid property JSON: {exc}") from exc
-    properties = value.get("Properties") if isinstance(value, dict) else None
-    if not isinstance(properties, dict):
-        raise ReleaseError("dotnet msbuild output did not contain a Properties object")
-    return properties
-
-
-def build_client(paths: BuildPaths, versions: Versions, signature_root: Path) -> None:
-    project = paths.repo / CLIENT_PROJECT_PATH
-    loader_project = paths.repo / CLIENT_LOADER_PROJECT_PATH
-    common_properties = (
-        f"-p:Version={versions.mod}",
-        f"-p:ModName={EXPECTED_MOD_ID}",
-        f"-p:Sts2ApiSignatureRoot={signature_root}",
-    )
-    for compat in SUPPORTED_STS2_API_COMPATS:
-        run(
-            (
-                "dotnet",
-                "build",
-                project,
-                "-c",
-                "Release",
-                *common_properties,
-                f"-p:Sts2ApiCompat={compat}",
-                f"-p:DllOnlyBuild={'false' if compat == SUPPORTED_STS2_API_COMPATS[-1] else 'true'}",
-            ),
-            cwd=paths.repo,
-        )
-    run(
-        ("dotnet", "build", loader_project, "-c", "Release", *common_properties),
-        cwd=paths.repo,
-    )
-
-    latest_compat = SUPPORTED_STS2_API_COMPATS[-1]
-    property_output = run(
-        (
-            "dotnet",
-            "msbuild",
-            project,
-            "-getProperty:ModsOutputDir",
-            "-getProperty:ModName",
-            *common_properties,
-            f"-p:Sts2ApiCompat={latest_compat}",
-        ),
-        cwd=paths.repo,
-        capture=True,
-    )
-    properties = parse_msbuild_properties(property_output)
-    mods_output = Path(str(properties.get("ModsOutputDir", "")))
-    mod_name = str(properties.get("ModName", ""))
-    if not mods_output.is_dir() or not mod_name:
-        raise ReleaseError(
-            f"Could not resolve a valid ModsOutputDir and ModName from MSBuild: {properties}"
-        )
-    pck = mods_output / f"{mod_name}.pck"
-    if not pck.is_file():
-        raise ReleaseError(
-            f"Godot export did not produce {pck}. Check GodotExePath in client/StS2AP/local.props."
-        )
-
-    latest_output = paths.repo / f"client/StS2AP/bin/{latest_compat}/Release/net9.0"
-    loader_output = paths.repo / "client/StS2AP.Loader/bin/Release/net9.0"
-    loader_dll = loader_output / "Archipelago.Loader.dll"
-    if not latest_output.is_dir() or not loader_dll.is_file():
-        raise ReleaseError(
-            f"Client or loader build output is missing: {latest_output}, {loader_dll}"
-        )
-
-    entries: dict[str, Path | bytes] = {
-        "Archipelago.dll": loader_dll,
-        "Archipelago.pck": pck,
-        APWORLD_ARCHIVE_NAME: paths.apworld_archive,
-    }
-    for path in latest_output.iterdir():
-        if include_client_file(path) and path.name != "Archipelago.dll":
-            entries[path.name] = path
-
-    for catalog in ("relic_custom_pools.data", "bonus_relic_blacklist.data"):
-        source = latest_output / "data" / catalog
-        if not source.is_file():
-            raise ReleaseError(f"Bonus relic catalog output is missing: {source}")
-        entries[f"data/{catalog}"] = source
-
-    variants: dict[str, dict[str, str]] = {}
-    for compat in SUPPORTED_STS2_API_COMPATS:
-        variant_dll = paths.repo / f"client/StS2AP/bin/{compat}/Release/net9.0/Archipelago.dll"
-        if not variant_dll.is_file():
-            raise ReleaseError(f"Client variant output is missing: {variant_dll}")
-        assembly_name = f"lib/{compat}/Archipelago.dll"
-        entries[assembly_name] = variant_dll
-        entries[f"lib/{compat}/compat-target.txt"] = f"{compat}\n".encode()
-        variants[compat] = {
-            "assembly": assembly_name,
-            "sha256": sha256(variant_dll),
-        }
-    entries[VARIANT_MANIFEST_NAME] = (
-        json.dumps(
-            {"schema": 1, "modVersion": str(versions.mod), "variants": variants},
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n"
-    ).encode()
-    create_client_archive(entries, paths.client_archive, str(versions.mod))
+def build_client(paths: BuildPaths, versions: Versions, signature_root: Path | None) -> None:
+    # A fresh staging directory prevents stale files and never deploys to the installed game.
+    with tempfile.TemporaryDirectory(prefix="client-release-", dir=paths.dist) as temporary:
+        staging = Path(temporary)
+        references = ["-p:UseSts2RefLib=true"] if signature_root is None else [
+            "-p:UseSts2RefLib=false", f"-p:Sts2ApiSignatureRoot={signature_root}",
+        ]
+        run((
+            "dotnet", "build", paths.repo / CLIENT_PROJECT_PATH, "-c", "Release",
+            "-p:BuildMode=Package", f"-p:ModsOutputDir={staging}",
+            f"-p:ApWorldSource={paths.apworld_archive}", f"-p:PythonExe={sys.executable}",
+            *references,
+        ), cwd=paths.repo)
+        loader = paths.repo / "client/StS2AP.Loader/bin/Release/net9.0/Archipelago.Loader.dll"
+        if not loader.is_file() or not (staging / "Archipelago.dll").is_file():
+            raise ReleaseError("Package build did not produce the loader")
+        if sha256(staging / "Archipelago.dll") != sha256(loader):
+            raise ReleaseError("Root Archipelago.dll must be the compatibility loader")
+        entries = {p.relative_to(staging).as_posix(): p
+                   for p in staging.rglob("*") if include_client_file(p)}
+        create_client_archive(entries, paths.client_archive, str(versions.mod))
 
 
 def verify_apworld_archive(path: Path, versions: Versions) -> None:
@@ -487,10 +358,7 @@ def write_build_manifest(
         "source_dirty": source_dirty,
         "mod_version": str(versions.mod),
         "apworld_version": str(versions.apworld),
-        "assets": {
-            CLIENT_ARCHIVE_NAME: sha256(paths.client_archive),
-            APWORLD_ARCHIVE_NAME: sha256(paths.apworld_archive),
-        },
+        "assets": {path.name: sha256(path) for path in paths.assets},
     }
     paths.build_manifest.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
@@ -515,12 +383,12 @@ def validate_built_assets(paths: BuildPaths, versions: Versions) -> dict[str, An
             )
     if manifest.get("source_dirty") is not False:
         raise ReleaseError(
-            f"{BUILD_MANIFEST_NAME} was produced from dirty or unknown source state; rebuild from clean main"
+            f"{BUILD_MANIFEST_NAME} was produced from dirty or unknown source state; rebuild from clean source"
         )
     assets = manifest.get("assets")
     if not isinstance(assets, dict):
         raise ReleaseError(f"{BUILD_MANIFEST_NAME} is missing its assets object")
-    for path in (paths.client_archive, paths.apworld_archive):
+    for path in paths.assets:
         expected_hash = assets.get(path.name)
         actual_hash = sha256(path)
         if expected_hash != actual_hash:
@@ -543,35 +411,38 @@ def command_build(args: argparse.Namespace, paths: BuildPaths) -> None:
     versions = read_versions(paths.repo)
     assert_expected_versions(args, versions)
     assert_reproducible_source(paths.repo, args.allow_dirty)
+    source_commit = current_commit(paths.repo)
+    source_dirty = bool(release_input_changes(paths.repo))
     paths.dist.mkdir(parents=True, exist_ok=True)
-    for path in (paths.client_archive, paths.apworld_archive, paths.build_manifest):
+    for path in (*paths.assets, paths.build_manifest):
         path.unlink(missing_ok=True)
     log(f"Building mod {versions.mod} with APWorld {versions.apworld}")
     build_apworld(paths)
     verify_apworld_archive(paths.apworld_archive, versions)
-    build_client(paths, versions, args.sts2_api_signature_root.resolve())
+    build_client(paths, versions, args.sts2_api_signature_root.resolve() if args.sts2_api_signature_root else None)
     verify_bundled_apworld(paths.client_archive, paths.apworld_archive)
+    shutil.copy2(paths.repo / "world/spire2/docs/Spire2-template.yaml", paths.yaml_template)
+    if current_commit(paths.repo) != source_commit:
+        raise ReleaseError("Source commit changed during the build; rebuild before publishing")
     write_build_manifest(
         paths,
         versions,
-        source_dirty=bool(release_input_changes(paths.repo)),
+        source_dirty=source_dirty or bool(release_input_changes(paths.repo)),
     )
     log("\nRelease assets ready:")
-    for path in (paths.client_archive, paths.apworld_archive):
+    for path in paths.assets:
         log(f"  {path} ({path.stat().st_size} bytes, sha256 {sha256(path)})")
 
 
-def assert_publishable_main(repo: Path, remote: str) -> None:
-    branch = git(repo, "branch", "--show-current")
-    if branch != "main":
-        raise ReleaseError(f"Publishing requires branch 'main'; current branch is {branch!r}")
+def assert_publishable_branch(repo: Path, repository: str, branch: str) -> None:
+    current_branch = git(repo, "branch", "--show-current")
+    if current_branch != branch:
+        raise ReleaseError(f"Publishing requires branch {branch!r}; current branch is {current_branch!r}")
     local_head = current_commit(repo)
-    remote_line = git(repo, "ls-remote", "--heads", remote, "refs/heads/main")
-    remote_head = remote_line.split(maxsplit=1)[0] if remote_line else ""
+    remote_head = run(("gh", "api", f"repos/{repository}/git/ref/heads/{branch}",
+                       "--jq", ".object.sha"), cwd=repo, capture=True)
     if local_head != remote_head:
-        raise ReleaseError(
-            f"Local main ({local_head}) is not the reviewed {remote}/main commit ({remote_head or 'missing'})"
-        )
+        raise ReleaseError(f"Local {branch} ({local_head}) is not {repository}/{branch} ({remote_head})")
 
 
 def repository_from_remote(repo: Path, remote: str) -> str:
@@ -598,6 +469,7 @@ def render_release_notes(repo: Path, versions: Versions, destination: Path) -> N
         .replace("{{STS2_PUBLIC_VERSION}}", SUPPORTED_STS2_API_COMPATS[0])
         .replace("{{STS2_BETA_VERSION}}", SUPPORTED_STS2_API_COMPATS[1])
     )
+    content = content.replace(f"spire2-{versions.apworld}.apworld", APWORLD_ARCHIVE_NAME)
     destination.write_text(content, encoding="utf-8")
 
 
@@ -605,49 +477,33 @@ def command_publish(args: argparse.Namespace, paths: BuildPaths) -> None:
     versions = read_versions(paths.repo)
     assert_expected_versions(args, versions)
     assert_reproducible_source(paths.repo, allow_dirty=False)
-    assert_publishable_main(paths.repo, args.remote)
-    assert_versions_advance_for_publish(paths.repo, versions)
+    repository = repository_from_remote(paths.repo, args.remote)
+    if args.repo and args.repo.casefold() != repository.casefold():
+        raise ReleaseError("--repo must match --remote so the reviewed source and release destination agree")
+    assert_publishable_branch(paths.repo, repository, args.branch)
+    assert_versions_advance_for_publish(paths.repo, versions, repository)
     validate_built_assets(paths, versions)
 
     tag = str(versions.mod)
-    try:
-        git(paths.repo, "rev-parse", "--verify", f"refs/tags/{tag}")
-    except ReleaseError:
-        pass
-    else:
-        raise ReleaseError(f"Tag {tag!r} already exists; refusing to move or reuse a release tag")
-
-    repository = args.repo or repository_from_remote(paths.repo, args.remote)
+    # Check the chosen repository; fork beta tags do not reserve upstream release names.
+    remote_tags = json.loads(run(("gh", "api", f"repos/{repository}/git/matching-refs/tags/{tag}"),
+                                 cwd=paths.repo, capture=True))
+    if any(ref["ref"] == f"refs/tags/{tag}" for ref in remote_tags):
+        raise ReleaseError(f"Tag {tag!r} already exists in {repository}; refusing to reuse it")
     with tempfile.TemporaryDirectory(prefix="sts2-release-") as temporary:
-        notes = Path(temporary) / "release-notes.md"
-        render_release_notes(paths.repo, versions, notes)
-        git(paths.repo, "tag", tag, "HEAD", capture=False)
-        try:
-            git(paths.repo, "push", args.remote, f"refs/tags/{tag}", capture=False)
-            run(
-                (
-                    "gh",
-                    "release",
-                    "create",
-                    tag,
-                    paths.client_archive,
-                    paths.apworld_archive,
-                    "--repo",
-                    repository,
-                    "--title",
-                    f"Client {versions.mod} / APWorld {versions.apworld}",
-                    "--notes-file",
-                    notes,
-                    "--latest",
-                ),
-                cwd=paths.repo,
-            )
-        except ReleaseError:
-            log(
-                f"Tag {tag} may already have been pushed. The branch was not modified; inspect the remote before retrying."
-            )
-            raise
-    log(f"Published {repository} tag {tag}: client {versions.mod}, APWorld {versions.apworld}")
+        notes = args.notes_file.resolve() if args.notes_file else Path(temporary) / "release-notes.md"
+        if args.notes_file:
+            if not notes.is_file():
+                raise ReleaseError(f"Release notes do not exist: {notes}")
+        else:
+            render_release_notes(paths.repo, versions, notes)
+        command = ["gh", "release", "create", tag, *paths.assets, "--repo", repository,
+                   "--target", current_commit(paths.repo), "--draft", "--title",
+                   f"Client {versions.mod} / APWorld {versions.apworld}", "--notes-file", notes]
+        if args.prerelease:
+            command.append("--prerelease")
+        run(command, cwd=paths.repo)
+    log(f"Created draft in {repository}: client {versions.mod}, APWorld {versions.apworld}. Review before publishing.")
 
 
 def add_common_arguments(parser: argparse.ArgumentParser, *, allow_dirty: bool) -> None:
@@ -678,16 +534,18 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument(
         "--sts2-api-signature-root",
         type=Path,
-        required=True,
-        help="directory containing a subdirectory for each supported game API's compile-time assemblies",
+        help="optional local compile-time assemblies; defaults to NuGet reference assemblies",
     )
 
     publish = subparsers.add_parser(
         "publish",
-        help="tag the reviewed main commit and upload previously built artifacts",
+        help="create a draft release from a reviewed, pushed commit and verified artifacts",
     )
     add_common_arguments(publish, allow_dirty=False)
     publish.add_argument("--remote", default="origin")
+    publish.add_argument("--branch", required=True, help="reviewed branch, for example main or v2")
+    publish.add_argument("--notes-file", type=Path, help="reviewed Markdown release notes")
+    publish.add_argument("--prerelease", action="store_true", help="mark the draft as a prerelease")
     publish.add_argument("--repo", help="GitHub OWNER/REPO (inferred from --remote by default)")
     return parser
 

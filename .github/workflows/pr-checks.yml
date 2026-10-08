@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - multiplayer-squashed
+      - v2
 
 permissions:
   contents: read

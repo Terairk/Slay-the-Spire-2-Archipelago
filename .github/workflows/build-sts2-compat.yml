@@ -7,6 +7,7 @@ on:
       - main
       - experimental-branch
       - multiplayer-squashed
+      - v2
   workflow_dispatch:
 
 permissions:

@@ -14,9 +14,9 @@
 
 ## Pre-Requisites
 
-Supported on Windows (primary), Linux (confirmed), and macOS (expected to work, untested).
+Windows and Linux builds are supported. Record the actual in-game platforms tested for this release; macOS remains unverified.
 
-- **Your host MUST use Archipelago Client v0.6.7+**.
+- **Use Archipelago 0.6.8 for generation (the version validated by this release workflow)**.
 - This mod contains exact client variants for Slay the Spire II **public v{{STS2_PUBLIC_VERSION}}**
   and **public-beta v{{STS2_BETA_VERSION}}**.
   - Later patch releases on either version line use the newest compatible build
@@ -45,6 +45,8 @@ Supported on Windows (primary), Linux (confirmed), and macOS (expected to work, 
 7. Check that the files are in `/<slay-the-spire-2-local-files>/mods/Archipelago/`, with the `.dll`, `.pck`, and other packaged files directly inside that folder. If you use a different archive tool, extract into a folder named `Archipelago` inside `mods`.
 8. Start the game.
 
+Download `Spire2-template.yaml` for an example player configuration; change its slot name and review the options.
+
 ### Additional Steps for **Hosts**
 
 These steps apply whether you installed the mod through Steam Workshop or manually.
@@ -60,7 +62,7 @@ On Windows, if Archipelago Launcher is installed, you can also install the downl
 - If you want to use `archipelago.gg` to host the game, generate it locally first following the steps above, then upload the `.zip` file from the `output` folder in your Archipelago installation
 
 > [!IMPORTANT]
-> You need to use Archipelago Version 0.6.7+ and CANNOT use earlier versions of Archipelago with this mod!
+> Use Archipelago 0.6.8 for the tested generation setup. The APWorld manifest declares the minimum accepted core version.
 
 ## Known Issues/Limitations
 
@@ -74,7 +76,7 @@ No.
 
 ### I installed the AP World but it's not working
 
-Is your Archipelago Launcher v0.6.7 or later? If not it **won't work**.
+Use Archipelago 0.6.8, install the APWorld from this release, and generate a new world.
 
 ### (Your-Feature-Here) looks really ugly or isn't polished
 

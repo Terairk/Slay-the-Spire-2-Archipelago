@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -10,9 +11,7 @@ import sys
 from pathlib import Path
 
 
-def main() -> None:
-    repo = Path(__file__).resolve().parents[1]
-    archipelago = repo.parent / "Archipelago"
+def build(repo: Path, archipelago: Path, destination: Path) -> None:
     world_source = repo / "world" / "spire2"
     installed_world = archipelago / "worlds" / "spire2"
 
@@ -48,13 +47,23 @@ def main() -> None:
         "from worlds.LauncherComponents import _build_apworlds; "
         '_build_apworlds("Slay the Spire II", "--skip_open_folder")'
     )
+    source = build_root / "build" / "apworlds" / "spire2.apworld"
+    source.unlink(missing_ok=True)
     subprocess.run([sys.executable, "-c", build_code], cwd=build_root, env=environment, check=True)
 
     source = build_root / "build" / "apworlds" / "spire2.apworld"
-    destination = repo / "dist" / "spire2.apworld"
-    destination.parent.mkdir(exist_ok=True)
+    destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
     print(f"Built {destination}")
+
+
+def main() -> None:
+    repo = Path(__file__).resolve().parents[1]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--archipelago-root", type=Path, default=repo.parent / "Archipelago")
+    parser.add_argument("--output", type=Path, default=repo / "dist/spire2.apworld")
+    args = parser.parse_args()
+    build(repo, args.archipelago_root.resolve(), args.output.resolve())
 
 
 if __name__ == "__main__":

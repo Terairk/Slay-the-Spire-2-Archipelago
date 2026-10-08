@@ -1,6 +1,6 @@
 # Change this to your Archipelago slot name.
 name: Spire2Player
-description: "Example settings for APWorld 1.2.3; customise them before generating."
+description: "Example settings; customise them before generating."
 game: "Slay the Spire II"
 Slay the Spire II:
   characters:

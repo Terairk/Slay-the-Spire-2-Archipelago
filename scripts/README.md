@@ -3,7 +3,7 @@
 Rider Build and `dotnet build client/StS2AP/StS2AP.csproj` default to `BuildMode=Local`:
 export the PCK, build both supported game API variants and the loader, and copy
 the bundle into `$(STS2GamePath)/mods/Archipelago`. The bundle step uses Python 3
-on both Windows and WSL; set `PythonExe` in `client/StS2AP/local.props` if Python
+on Windows, native Linux, and WSL; set `PythonExe` in `client/StS2AP/local.props` if Python
 is not on PATH. `GodotExePath` must point to an editor executable for the OS
 running the build. WSL builds use Linux paths, including `/mnt/d/...` for a
 Windows game installation; native Windows builds use Windows paths.
@@ -11,8 +11,26 @@ Windows game installation; native Windows builds use Windows paths.
 Remove `BuildMode=CompileOnly` and any staging `ModsOutputDir` override from
 `local.props` to enable normal deployment. For a check without deployment, run
 `dotnet build client/StS2AP/StS2AP.csproj -p:BuildMode=CompileOnly`.
-The APWorld is copied from `dist/spire2.apworld` when present; build it from WSL
+The APWorld is copied from `dist/spire2.apworld` when present; build it on Linux/WSL
 with `.venv/bin/python scripts/build_apworld_local.py`.
+
+# Release preparation
+
+See [the release guide](../docs/releasing.md) for the supported manual workflow.
+`python scripts/release.py validate` checks the source versions;
+`python scripts/release.py build` creates a clean loader/both-variants bundle,
+APWorld, YAML template and build manifest without installing or publishing them.
+`publish` creates a GitHub draft and requires an explicit `--branch` and a clean,
+pushed commit. Pick `--remote upstream` for the public release repository and
+`--remote origin --prerelease` for a beta draft in your fork.
+
+`scripts/build_world.ps1` delegates to the same headless Python APWorld builder.
+`scripts/release.ps1` is a Windows convenience wrapper; use the Python CLI directly
+on Linux. `fuzz_world.ps1` remains a historical Windows/Archipelago 0.6.7 Index/UT
+fuzz harness with explicit branch/environment assumptions. It is not a required
+release command and has not been ported or validated for native Linux/0.6.8.
+The multiplayer launch scripts below also remain Windows/WSL-only; their OS scope
+is intentional, and they do not establish native Linux runtime coverage.
 
 # Local multiplayer test from WSL
 

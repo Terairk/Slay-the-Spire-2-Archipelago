@@ -33,8 +33,8 @@ When fixing a compatibility error, select the failing version in `local.props`, 
 
 ```powershell
 $versions = (dotnet msbuild client/StS2AP/StS2AP.csproj -getProperty:Sts2PublicApiCompat,Sts2BetaApiCompat | ConvertFrom-Json).Properties
-dotnet build client/StS2AP/StS2AP.csproj -p:Sts2ApiCompat=$($versions.Sts2PublicApiCompat) -p:UseSts2RefLib=true -p:DllOnlyBuild=true
-dotnet build client/StS2AP/StS2AP.csproj -p:Sts2ApiCompat=$($versions.Sts2BetaApiCompat) -p:UseSts2RefLib=true -p:DllOnlyBuild=true
+dotnet build client/StS2AP/StS2AP.csproj -p:Sts2ApiCompat=$($versions.Sts2PublicApiCompat) -p:UseSts2RefLib=true -p:BuildMode=CompileOnly
+dotnet build client/StS2AP/StS2AP.csproj -p:Sts2ApiCompat=$($versions.Sts2BetaApiCompat) -p:UseSts2RefLib=true -p:BuildMode=CompileOnly
 ```
 
 Command-line `-p:` properties override `local.props`, so CI and release tooling can build all supported variants without changing a developer's local editor selection. The `Build STS2 API compatibility` GitHub workflow runs both RefLib commands independently for pull requests and pushes to `main` or `experimental-branch`; a change is compatible only when both jobs pass.
