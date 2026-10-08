@@ -135,6 +135,7 @@ public static class ApRunData
             ProgressRevision = existing?.ProgressRevision ?? 0,
             ProgressiveStarters = existing?.ProgressiveStarters
                 ?? new ApProgressiveStarterPlayerState(),
+            LastConsumedBuffIndex = existing?.LastConsumedBuffIndex ?? -1,
         };
         // SyncLobbyOnChange makes this a contribution to the authoritative host staging
         // session. On a client RitsuLib pushes the local PlayerRunSavedData payload with a
@@ -198,6 +199,16 @@ public static class ApRunData
             return;
         state.CombatsSinceLastWaxMelt = count;
         _players.Set(runState, netId, state);
+    }
+
+    /// <summary>Records successful buff actions identically on every replica, including guests.</summary>
+    internal static bool RecordConsumedBuff(RunState runState, ulong netId, int itemIndex)
+    {
+        if (!_initialized || !_players.TryGet(runState, netId, out ApPlayerRunState state))
+            return false;
+        state.LastConsumedBuffIndex = Math.Max(state.LastConsumedBuffIndex, itemIndex);
+        _players.Set(runState, netId, state);
+        return true;
     }
 
     /// <summary>
