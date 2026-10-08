@@ -41,7 +41,6 @@ class SlayTheSpire2World(World):
     web = SlayTheSpire2Web()
     options_dataclass = Spire2Options
     options: Spire2Options
-    mod_compat_version = "2.2.0"
     compat_flag = 1
     origin_region_name = "Neow's Room"
 
@@ -739,7 +738,8 @@ class SlayTheSpire2World(World):
                 "card_remove": self.options.shop_remove_slots != 0,
                 "costs": self.options.shop_sanity_costs.value,
             },
-            "mod_compat_version": self.mod_compat_version,
+            # Keep the wire key for clients; Archipelago loads world_version from archipelago.json.
+            "mod_compat_version": self.world_version.as_simple_string(),
             "CompatFlag": self.compat_flag,
         }
         slot_data.update(self.options.as_dict(

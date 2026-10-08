@@ -3,7 +3,7 @@
 Rider Build and `dotnet build client/StS2AP/StS2AP.csproj` default to `BuildMode=Local`:
 export the PCK, build both supported game API variants and the loader, and copy
 the bundle into `$(STS2GamePath)/mods/Archipelago`. The bundle step uses Python 3
-on both Windows and WSL; set `PythonExe` in `client/StS2AP/local.props` if Python
+on Windows, native Linux, and WSL; set `PythonExe` in `client/StS2AP/local.props` if Python
 is not on PATH. `GodotExePath` must point to an editor executable for the OS
 running the build. WSL builds use Linux paths, including `/mnt/d/...` for a
 Windows game installation; native Windows builds use Windows paths.
@@ -11,19 +11,72 @@ Windows game installation; native Windows builds use Windows paths.
 Remove `BuildMode=CompileOnly` and any staging `ModsOutputDir` override from
 `local.props` to enable normal deployment. For a check without deployment, run
 `dotnet build client/StS2AP/StS2AP.csproj -p:BuildMode=CompileOnly`.
-The APWorld is copied from `dist/spire2.apworld` when present; build it from WSL
+The APWorld is copied from `dist/spire2.apworld` when present; build it on Linux/WSL
 with `.venv/bin/python scripts/build_apworld_local.py`.
 
-# Local multiplayer test from WSL
+# Release preparation
 
-The game runs on Windows. From WSL, use the shell wrapper to launch the existing Windows PowerShell test script:
+See [the release guide](../docs/releasing.md) for the supported manual workflow.
+`python scripts/release.py validate` checks the source versions;
+`python scripts/release.py build` creates a clean loader/both-variants bundle,
+APWorld, YAML template and build manifest without installing or publishing them.
+`publish` creates a GitHub draft and requires an explicit `--branch` and a clean,
+pushed commit. Pick `--remote upstream` for the public release repository and
+`--remote origin --prerelease` for a beta draft in your fork.
+
+`scripts/build_world.ps1` delegates to the same headless Python APWorld builder.
+`scripts/release.ps1` is a Windows convenience wrapper; use the Python CLI directly
+on Linux. `fuzz_world.ps1` remains a historical Windows/Archipelago 0.6.7 Index/UT
+fuzz harness with explicit branch/environment assumptions. It is not a required
+release command and has not been ported or validated for native Linux/0.6.8.
+# Local multiplayer test on Linux, Windows or WSL
+
+This harness opens two isolated StS2 beta accounts with Steam disabled, then
+uses the game's local fast-multiplayer path after each AP slot connects.
+Install the development mod **and RitsuLib locally under the game's `mods/`**;
+Workshop-only subscriptions are not loaded with Steam disabled. Start an AP
+session containing your chosen slot(s) before the multiplayer test.
+
+On native Linux, the shell script uses the Python 3 standard-library launcher:
+
+```bash
+./scripts/test_multiplayer_local.sh --dry-run
+./scripts/test_multiplayer_local.sh --settings-only
+./scripts/test_multiplayer_local.sh --ap-server localhost:38281 --host-slot Alice --client-slot Bob
+```
+
+It reads an absolute `STS2GamePath` from `client/StS2AP/local.props`, then checks
+common Linux Steam locations for the native `SlayTheSpire2` executable. For a
+custom Steam library, use `--exe-path "/path/to/Slay the Spire 2/SlayTheSpire2"`.
+No Proton or PowerShell is required on native Linux. `--dry-run` prints both
+commands without launching or writing files. It also accepts the PowerShell-style
+option names below, plus `-DryRun`.
+
+On Windows use `scripts/test_multiplayer_local.ps1`. On WSL the same shell wrapper
+continues to invoke Windows PowerShell and translates a WSL `-ExePath`:
 
 ```bash
 ./scripts/test_multiplayer_local.sh -SettingsOnly
 ./scripts/test_multiplayer_local.sh -ApServer localhost:38281 -HostSlot Alice -ClientSlot Bob
 ```
 
-Run `-SettingsOnly` once if both isolated game accounts need Experimental Multiplayer enabled. The wrapper forwards the remaining PowerShell options unchanged. The Windows script checks `STS2GamePath` in `local.props` and the standard Windows Steam path. If neither points to the game, pass `-ExePath` with either a WSL absolute path or a Windows path; the wrapper converts WSL paths before calling PowerShell. The launcher writes separate logs under `logs/multiplayer/`.
+WSL forwards the existing PowerShell options; Linux-only `--dry-run` is not
+available in the Windows launcher. Both launchers default to client IDs 1 and
+1000. Change them with `--host-client-id` / `--client-client-id` on Linux or
+`-HostClientId` / `-ClientClientId` on Windows/WSL; they must be distinct. AP slot
+names can be the same for a shared-slot test. The launch delay defaults to two
+seconds (`--launch-delay-seconds` or `-LaunchDelaySeconds`).
+
+Run settings-only once to enable **Experimental Multiplayer** in Archipelago
+Settings in both windows, then close them and rerun normally. Connect the host
+slot first; once its native lobby opens, connect the client slot.
+
+Logs are written to `logs/multiplayer/host_standard-<id>.log` and `join-<id>.log`.
+Linux also captures each process's terminal output in a matching `.console.log`.
+These paths are reused on the next launch, so save relevant logs before rerunning.
+The Linux processes survive the launcher exiting; close their windows to stop them.
+The launcher does not build or install mods, start an AP server, or verify in-game
+synchronization. A dry run validates discovery/arguments, not multiplayer behavior.
 
 # Multiplayer divergence analyzer
 

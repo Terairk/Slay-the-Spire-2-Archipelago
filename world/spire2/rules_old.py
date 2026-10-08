@@ -10,6 +10,7 @@ import dataclasses
 import typing
 from collections import defaultdict
 from typing import TYPE_CHECKING, List
+from typing_extensions import override
 
 from BaseClasses import CollectionState, MultiWorld, Item
 from NetUtils import JSONMessagePart
@@ -70,7 +71,7 @@ class LegacySpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
         self.power_level = power_level
         self.char_offset = char_offset
 
-    @typing.override
+    @override
     def _instantiate(self, world: 'SlayTheSpire2World') -> Rule.Resolved:
         if self.power_level <= 0.0:
             return True_().resolve(world)
@@ -81,12 +82,12 @@ class LegacySpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
         power_level: float
         char_offset: int
 
-        @typing.override
+        @override
         def _evaluate(self, state: CollectionState) -> bool:
             logic = typing.cast(LegacySpireLogic, typing.cast(object, state))
             return logic.power_level[self.player][self.char_offset] >= self.power_level
 
-        @typing.override
+        @override
         def explain_json(self, state: CollectionState | None = None) -> List[JSONMessagePart]:
             return [
                 {
@@ -106,7 +107,7 @@ class LegacySpireHasGold(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
         self.gold = gold
         self.char = char
 
-    @typing.override
+    @override
     def _instantiate(self, world: 'SlayTheSpire2World') -> Rule.Resolved:
         if self.gold <= 0:
             return True_().resolve(world)
@@ -116,7 +117,7 @@ class LegacySpireHasGold(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
         gold: int
         char: str
 
-        @typing.override
+        @override
         def _evaluate(self, state: CollectionState) -> bool:
             # Assume Ascension 3 Poverty reduces gold rewards by 25%.
             return state.count(f"{self.char} Elite Gold", self.player) * 30 + state.count(f"{self.char} Boss Gold", self.player) * 75 >= self.gold
@@ -133,7 +134,7 @@ class LegacySpireHasShop(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
         self.shop = shop
         self.char = char
 
-    @typing.override
+    @override
     def _instantiate(self, world: 'SlayTheSpire2World') -> Rule.Resolved:
         if self.shop <= 0:
             return True_().resolve(world)
@@ -144,7 +145,7 @@ class LegacySpireHasShop(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
         char: str
         max_shop: int
 
-        @typing.override
+        @override
         def _evaluate(self, state: CollectionState) -> bool:
             return (state.count(f"{self.char} Shop Card Slot", self.player) +
                     state.count(f"{self.char} Neutral Shop Card Slot", self.player) +
@@ -154,7 +155,7 @@ class LegacySpireHasShop(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
 @dataclasses.dataclass(frozen=True)
 class LegacyNumberOfProgressiveAncients(FieldResolver, game="Slay the Spire II"):
     default_amount: int
-    @typing.override
+    @override
     def resolve(self, world: 'World') -> int:
         spire_world = typing.cast('SlayTheSpire2World', world)
         return self.default_amount + (0 if spire_world.options.neow_sanity.value == 0 else 1)

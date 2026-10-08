@@ -4,7 +4,7 @@
 
 .EXAMPLE
   .\scripts\release.ps1 build
-  .\scripts\release.ps1 publish --expected-mod-version 1.0.1
+  .\scripts\release.ps1 publish --branch main --expected-mod-version 1.0.1
 #>
 
 $ErrorActionPreference = "Stop"

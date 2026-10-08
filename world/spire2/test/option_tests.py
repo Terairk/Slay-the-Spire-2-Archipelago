@@ -1,3 +1,5 @@
+import json
+from importlib.resources import files
 import unittest
 
 from Utils import restricted_dumps
@@ -9,6 +11,10 @@ from worlds.spire2.test import Spire2TestBase
 
 
 class TestOptionDefaults(Spire2TestBase):
+    def test_slot_version_matches_apworld_manifest(self):
+        manifest = json.loads(files("worlds.spire2").joinpath("archipelago.json").read_text())
+        self.assertEqual(self.world.fill_slot_data()["mod_compat_version"], manifest["world_version"])
+
     def test_compat_flag_is_sent(self):
         self.assertEqual(
             SlayTheSpire2World.compat_flag,
