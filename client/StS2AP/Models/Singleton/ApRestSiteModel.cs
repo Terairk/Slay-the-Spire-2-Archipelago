@@ -1,3 +1,4 @@
+using Archipelago.MultiClient.Net.Enums;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.RestSite;
 using StS2AP.Data;
@@ -62,14 +63,18 @@ public sealed class ApRestSiteModel : HookedSingletonModel
             string characterName = config.ModNum == 0
                 ? config.Name
                 : $"Custom Character {config.ModNum}";
-            foreach (var (act, campfire, locationId) in policy.GetAvailableChecks(
-                         checkedLocations,
-                         (act, campfire) => ArchipelagoIdCodec.ForPlayer(
-                             LocationData.GetCampfireLocationId(config.CharOffset, act, campfire), settings.PlayerNumber)))
+            var availableChecks = policy.GetAvailableChecks(
+                checkedLocations,
+                (act, campfire) => ArchipelagoIdCodec.ForPlayer(
+                    LocationData.GetCampfireLocationId(config.CharOffset, act, campfire), settings.PlayerNumber))
+                .ToArray();
+            foreach (var (act, campfire, locationId) in availableChecks)
             {
                 string locationName = $"{characterName} Act {act} Campfire {campfire}";
                 options.Add(new ApRestSiteOption(player, locationId, locationName));
             }
+
+            HintAvailableChecks(player, availableChecks.Select(check => check.LocationId).ToArray());
         }
 
         LogUtility.Info(
@@ -77,6 +82,26 @@ public sealed class ApRestSiteModel : HookedSingletonModel
                 + $"restLevel={restLevel}, smithLevel={smithLevel}, fallback={needsFallback}"
         );
         return true;
+    }
+
+    private static void HintAvailableChecks(Player player, long[] locationIds)
+    {
+        var session = ArchipelagoClient.Session;
+        // Options are constructed on every replica, but only their owner may hint through this slot.
+        if (locationIds.Length == 0 || session == null || !ArchipelagoClient.IsConnected
+            || !MultiplayerLocationChecks.IsCheckWriter(player))
+            return;
+
+        try
+        {
+            session.Hints.CreateHints(HintStatus.Unspecified, locationIds);
+            LogUtility.Info($"CampfireSanity: automatically hinted {locationIds.Length} available campfire check(s).");
+        }
+        catch (Exception ex)
+        {
+            // Hinting is QoL only; a socket failure must not block campfire entry.
+            LogUtility.Error($"CampfireSanity: failed to automatically hint available campfire checks; continuing without hints. {ex}");
+        }
     }
 
     private static bool TryGetProgress(
