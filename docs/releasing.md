@@ -129,9 +129,14 @@ at that exact SHA. It never pushes a source branch. Inspect any uncertain result
 on GitHub before retrying. No publish command is needed to prepare/test artifacts.
 
 Provide reviewed Markdown notes, or omit --notes-file to create a draft with the
-version-expanded template. Replace its changelist placeholder before publishing.
-Manual assets use `spire2.apworld`; the CI workflow uses a versioned filename and
-renders its own matching notes. Both include the YAML template.
+version-expanded [release notes template](../scripts/release-notes-template.md).
+Replace its changelist/known-issues placeholders before publishing. Keep setup
+instructions in [the player setup guide](../world/spire2/docs/setup_en.md) and
+link there from every release; release notes should focus on that update. The
+player requirement is Archipelago Launcher v0.6.7+ for generation, independent
+of the 0.6.8 environment used to test/build releases here.
+Manual assets use `spire2.apworld`; CI uses a versioned filename. Both include
+the YAML template, and the setup guide covers both APWorld naming conventions.
 
 The release workflow remains limited to labelled merges into **upstream main**.
 Its APWorld build targets 0.6.8; its version bump edits only the authoritative

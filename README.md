@@ -20,6 +20,8 @@ This mod is currently in 1.0 stage and is practically feature-parity with the AP
 
 # Installing the Mod
 
+See the [setup guide](world/spire2/docs/setup_en.md) for installation, YAML configuration, generation and connection instructions.
+
 There are two ways to install the mod, detailed below.
 
 ## Steam Workshop

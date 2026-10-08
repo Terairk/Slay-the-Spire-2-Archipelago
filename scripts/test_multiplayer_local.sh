@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Start the Windows multiplayer test launcher from WSL.
+# Start native Linux clients, or delegate to the Windows launcher from WSL.
 set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${WSL_INTEROP:-}" && "$(uname -r)" != *[Mm]icrosoft* ]]; then
+  exec python3 "$script_dir/test_multiplayer_local.py" "$@"
+fi
 
 if ! command -v powershell.exe >/dev/null 2>&1; then
   echo 'Windows PowerShell is unavailable from this WSL shell.' >&2
@@ -11,7 +16,6 @@ if ! command -v wslpath >/dev/null 2>&1; then
   exit 1
 fi
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 script_path="$(wslpath -w "$script_dir/test_multiplayer_local.ps1")"
 
 args=()
