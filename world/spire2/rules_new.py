@@ -1,6 +1,7 @@
 import dataclasses
 import typing
 from typing import TYPE_CHECKING, List
+from typing_extensions import override
 
 from BaseClasses import CollectionState
 from NetUtils import JSONMessagePart
@@ -59,7 +60,7 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
     remove: bool = False
     shop: bool = False
 
-    @typing.override
+    @override
     def _instantiate(self, world: 'SlayTheSpire2World') -> Rule.Resolved:
         config = next(config for config in world.characters if config.char_offset == self.char_offset)
         options = world.options
@@ -188,12 +189,12 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
                 missing += sum(values[available:])
             return missing
 
-        @typing.override
+        @override
         def _evaluate(self, state: CollectionState) -> bool:
             cards, power, required = self.strength(state)
             return cards >= self.minimum_cards and power >= required
 
-        @typing.override
+        @override
         def explain_json(self, state: CollectionState | None = None) -> List[JSONMessagePart]:
             lines = [f"{self.char} Act {self.act} power check"]
             if state is not None:
@@ -223,7 +224,7 @@ class SpireHasGold(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
     char: str
     gold: int
 
-    @typing.override
+    @override
     def _instantiate(self, world: 'SlayTheSpire2World') -> Rule.Resolved:
         if self.gold <= 0:
             return True_().resolve(world)
@@ -233,7 +234,7 @@ class SpireHasGold(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
         gold: int
         char: str
 
-        @typing.override
+        @override
         def _evaluate(self, state: CollectionState) -> bool:
             # Keep the conservative Poverty allowance. Combat/filler gold is not progression.
             return (state.count(f"{self.char} Elite Gold", self.player) * 30
