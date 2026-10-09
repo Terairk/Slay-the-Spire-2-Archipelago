@@ -45,6 +45,22 @@ and review the options before generation. Each participant supplies one YAML.
 For custom characters, everyone who needs those characters must install the
 corresponding character mods; test their compatibility before a full multiworld.
 
+### Filler items
+
+Filler weights are relative chances for each item: `none` = 0, `low` = 1,
+`medium` = 3 and `high` = 5. Within each character's filler pool, a high-weight
+item is five times as likely as an individual low-weight item. Disabling other items does not change that ratio.
+Gold filler is chosen for the relevant character; disabling every filler type
+falls back to that character's One Gold.
+
+Each player consumes at most one queued combat buff per combat, in receipt order,
+in both singleplayer and multiplayer. Remaining buffs wait for later combats.
+In singleplayer, buffs apply at the start of a player turn; in multiplayer,
+they apply during a safe player action phase. Ordinary gold is not a combat buff.
+Strength and Dexterity grant 1 each, Artifact grants 1 stack, and Plating grants 4.
+Vigor grants 8 and Thorns grants 3. Friendship and post-combat rewards retain their
+effects but share the same one-buff allowance.
+
 ## Generate a multiworld
 
 **You must generate using Archipelago Launcher v0.6.7 or newer.** This requirement

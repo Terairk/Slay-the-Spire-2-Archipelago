@@ -24,11 +24,13 @@ namespace StS2AP.Utils;
 /// into later combats and runs.
 /// Singleplayer applies buffs at player turn start. In multiplayer, the receiving player
 /// requests a native action at DeathLink's safe play-phase boundary, and every peer applies
-/// the effect to that player's creature in its own combat state.
+/// the effect to that player's creature in its own combat state. Each player consumes at
+/// most one buff per combat; the rest remain queued in receipt order.
 /// </summary>
 public static class BuffUtility
 {
-    private sealed record BuffActionMessage(Guid RunId, int ItemIndex, APItem BuffType);
+    private sealed record BuffActionMessage(Guid RunId, int ItemIndex, APItem BuffType,
+        BuffCombatKey? Combat);
 
     private static readonly RitsuLibManagedNetActionDescriptor<BuffActionMessage> ActionDescriptor = new(
         ModuleId: ModEntry.ModId,
@@ -163,20 +165,24 @@ public static class BuffUtility
             if (!_storageReady || !ReferenceEquals(queue, _buffQueue))
                 return;
 
-            while (queue.TryPeek(out var entry))
+            if (player.RunState is not RunState run || GetCombatKey(player) is not { } combat)
+                return;
+            var owner = ApRunData.GetSingleplayerBuffState(run, player.NetId);
+            if (owner.LastConsumedBuffIndex > queue.LastConsumedIndex)
+                ConsumeLocal(owner.LastConsumedBuffIndex);
+            if (!queue.TryPeek(out var entry)
+                || MultiplayerSupport.IsMultiplayerScope
+                || !ReferenceEquals(player, GameUtility.CurrentPlayer)
+                || !await ApplyQueuedBuff(entry.BuffType, entry.ItemIndex, combat, player, run,
+                    owner, new BlockingPlayerChoiceContext()))
             {
-                if (MultiplayerSupport.IsMultiplayerScope
-                    || !ReferenceEquals(player, GameUtility.CurrentPlayer)
-                    || !await ApplyBuff(entry.BuffType, player, new BlockingPlayerChoiceContext()))
-                {
-                    return;
-                }
-                if (!ReferenceEquals(queue, _buffQueue))
-                    return;
-                if (!entry.NotificationShown)
-                    ShowReceived(entry.ItemIndex);
-                ConsumeLocal(entry.ItemIndex);
+                return;
             }
+            if (!ReferenceEquals(queue, _buffQueue))
+                return;
+            if (!entry.NotificationShown)
+                ShowReceived(entry.ItemIndex);
+            ConsumeLocal(entry.ItemIndex);
         }
         catch (Exception ex)
         {
@@ -215,7 +221,10 @@ public static class BuffUtility
             return;
         }
 
-        if (_pendingAction?.RunId != shared.RunId)
+        BuffCombatKey? combat = GetCombatKey(player);
+        // Native actions may be dropped when combat ends before execution. A stale
+        // request must not block later fights; its combat key also prevents late execution.
+        if (_pendingAction?.RunId != shared.RunId || _pendingAction?.Combat != combat)
             _pendingAction = null;
         // Saved run data can be ahead of AP storage after a rejoin. Reconcile before replaying.
         if (owner.LastConsumedBuffIndex > _buffQueue.LastConsumedIndex)
@@ -230,7 +239,9 @@ public static class BuffUtility
                 _buffQueue.Discard(entry.ItemIndex);
                 continue;
             }
-            if (_pendingAction != null || player.Creature.IsDead
+            if (combat == null
+                || !owner.CombatBuffLimit.CanConsume(combat)
+                || _pendingAction != null || player.Creature.IsDead
                 || !player.Creature.CanReceivePowers
                 || !DeathLinkMultiplayer.CanAdmitCombatAction(out _))
             {
@@ -239,7 +250,7 @@ public static class BuffUtility
 
             // Request acceptance only means submission. Keep the receipt until execution
             // completes, with one request in flight to preserve receipt order.
-            var message = new BuffActionMessage(shared.RunId, entry.ItemIndex, entry.BuffType);
+            var message = new BuffActionMessage(shared.RunId, entry.ItemIndex, entry.BuffType, combat);
             _pendingAction = message;
             try
             {
@@ -271,11 +282,11 @@ public static class BuffUtility
         try
         {
             return JsonSerializer.Deserialize<BuffActionMessage>(bytes)
-                ?? new BuffActionMessage(Guid.Empty, 0, default);
+                ?? new BuffActionMessage(Guid.Empty, 0, default, null);
         }
         catch (JsonException)
         {
-            return new BuffActionMessage(Guid.Empty, 0, default);
+            return new BuffActionMessage(Guid.Empty, 0, default, null);
         }
     }
 
@@ -292,6 +303,7 @@ public static class BuffUtility
             // Revalidate against synchronized run data at execution time. A peer's local AP
             // connection must not decide whether it executes another player's buff.
             if (message.RunId == Guid.Empty || message.ItemIndex <= 0
+                || message.Combat == null || GetCombatKey(player) != message.Combat
                 || !IsUniversalCombatBuff((long)message.BuffType)
                 || IsMultiplayerBuffGoldFallback((long)message.BuffType)
                 || player.RunState is not RunState run
@@ -307,10 +319,9 @@ public static class BuffUtility
                 return;
             }
 
-            if (!await ApplyBuff(message.BuffType, player, context.PlayerChoiceContext))
+            if (!await ApplyQueuedBuff(message.BuffType, message.ItemIndex, message.Combat,
+                    player, run, owner, context.PlayerChoiceContext))
                 return;
-            if (!ApRunData.RecordConsumedBuff(run, player.NetId, message.ItemIndex))
-                throw new InvalidOperationException("Applied buff could not be recorded in run data.");
 
             if (LocalContext.IsMe(player) && IsCurrentOwner(owner))
             {
@@ -333,6 +344,39 @@ public static class BuffUtility
         {
             if (LocalContext.IsMe(player) && _pendingAction == message)
                 _pendingAction = null;
+        }
+    }
+
+    private static BuffCombatKey? GetCombatKey(Player player)
+    {
+        if (player.RunState is not RunState run
+            || run.CurrentRoom is not CombatRoom { Id: int roomId } room
+            || !ReferenceEquals(player.Creature.CombatState, room.CombatState))
+        {
+            return null;
+        }
+        return new BuffCombatKey(run.CurrentActIndex, run.TotalFloor, roomId);
+    }
+
+    private static async Task<bool> ApplyQueuedBuff(APItem buffType, int itemIndex,
+        BuffCombatKey combat, Player player, RunState run, ApPlayerRunState owner,
+        PlayerChoiceContext context)
+    {
+        // Check at execution as well as admission: duplicate/delayed network requests and
+        // reconnects must not spend a second receipt on the same player's combat.
+        if (!owner.CombatBuffLimit.TryBegin(combat))
+            return false;
+        try
+        {
+            if (!await ApplyBuff(buffType, player, context))
+                return false;
+            if (!ApRunData.RecordConsumedBuff(run, player.NetId, itemIndex, combat))
+                throw new InvalidOperationException("Applied buff could not be recorded in run data.");
+            return true;
+        }
+        finally
+        {
+            owner.CombatBuffLimit.Cancel();
         }
     }
 
@@ -365,10 +409,10 @@ public static class BuffUtility
             APItem.FreeAttack => PowerCmd.Apply<FreeAttackPower>(context, player.Creature, 1, player.Creature, null),
             APItem.FreePower => PowerCmd.Apply<FreePowerPower>(context, player.Creature, 1, player.Creature, null),
             APItem.FreeSkill => PowerCmd.Apply<FreeSkillPower>(context, player.Creature, 1, player.Creature, null),
-            APItem.Artifact => PowerCmd.Apply<ArtifactPower>(context, player.Creature, 2, player.Creature, null),
-            APItem.Dexterity => PowerCmd.Apply<DexterityPower>(context, player.Creature, 2, player.Creature, null),
-            APItem.Strength => PowerCmd.Apply<StrengthPower>(context, player.Creature, 2, player.Creature, null),
-            APItem.Plating => PowerCmd.Apply<PlatingPower>(context, player.Creature, 5, player.Creature, null),
+            APItem.Artifact => PowerCmd.Apply<ArtifactPower>(context, player.Creature, 1, player.Creature, null),
+            APItem.Dexterity => PowerCmd.Apply<DexterityPower>(context, player.Creature, 1, player.Creature, null),
+            APItem.Strength => PowerCmd.Apply<StrengthPower>(context, player.Creature, 1, player.Creature, null),
+            APItem.Plating => PowerCmd.Apply<PlatingPower>(context, player.Creature, 4, player.Creature, null),
             APItem.Thorns => PowerCmd.Apply<ThornsPower>(context, player.Creature, 3, player.Creature, null),
             APItem.Vigor => PowerCmd.Apply<VigorPower>(context, player.Creature, 8, player.Creature, null),
             APItem.Buffer => PowerCmd.Apply<BufferPower>(context, player.Creature, 1, player.Creature, null),
