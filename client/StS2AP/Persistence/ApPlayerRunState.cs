@@ -24,4 +24,5 @@ public sealed class ApPlayerRunState
     public ApProgressiveStarterPlayerState ProgressiveStarters { get; set; } = new();
     // Advanced by buff actions on every replica; retained in the host's save for rejoin.
     public int LastConsumedBuffIndex { get; set; } = -1;
+    public CombatBuffLimit CombatBuffLimit { get; set; } = new();
 }
