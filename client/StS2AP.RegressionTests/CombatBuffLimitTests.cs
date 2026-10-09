@@ -14,7 +14,7 @@ public sealed class CombatBuffLimitTests
     public void BacklogConsumesOneReceiptPerCombatAndKeepsItsOrder()
     {
         var limit = new CombatBuffLimit();
-        var queue = new BuffReceiptQueue();
+        var queue = new CombatEffectReceiptQueue();
         queue.Enqueue(APItem.Strength, 1, false);
         queue.Enqueue(APItem.Buffer, 2, false);
         queue.Enqueue(APItem.Dexterity, 3, false);
