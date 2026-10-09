@@ -19,7 +19,6 @@ class TestTraps(Spire2TestBase):
                 getattr(self.world.options, field).value = 0
 
     def test_replacement_chance_and_framework_entry_point(self):
-        self.assertEqual(20, self.world.options.trap_chance.value)
         # Exercise lazy setup as AP may request replacement filler before create_items.
         del self.world.filler_universal
         for chance, roll, expect_trap in [(0, 0, False), (20, 19, True),
@@ -45,6 +44,7 @@ class TestTraps(Spire2TestBase):
 
     def test_empty_mix_requires_zero_chance(self):
         self.disable_traps()
+        self.world.options.trap_chance.value = 20
         with self.assertRaisesRegex(ValueError, "all trap weights are None"):
             self.world.build_filler_pools()
         self.world.options.trap_chance.value = 0

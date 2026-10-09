@@ -24,7 +24,7 @@ namespace StS2AP.Utils;
 /// Singleplayer applies combat effects at player turn start. In multiplayer, the receiving player
 /// requests a native action at DeathLink's safe play-phase boundary, and every peer applies
 /// the effect to that player's creature in its own combat state. Each player consumes at
-/// most one effect from this queue per combat; the rest remain queued in receipt order.
+/// most one buff per combat and one trap per turn; the rest remain queued in receipt order.
 /// </summary>
 internal sealed class CombatEffectDelivery
 {
@@ -46,7 +46,7 @@ internal sealed class CombatEffectDelivery
 
     private int ConsumedIndex(ApPlayerRunState owner) => _trap
         ? owner.LastConsumedTrapIndex : owner.LastConsumedBuffIndex;
-    private CombatBuffLimit Limit(ApPlayerRunState owner) => _trap
+    private CombatEffectLimit Limit(ApPlayerRunState owner) => _trap
         ? owner.CombatTrapLimit : owner.CombatBuffLimit;
 
     /// <summary>
@@ -161,7 +161,7 @@ internal sealed class CombatEffectDelivery
             if (!_storageReady || !ReferenceEquals(queue, _queue))
                 return;
 
-            if (player.RunState is not RunState run || GetCombatKey(player) is not { } combat)
+            if (player.RunState is not RunState run || GetEffectKey(player) is not { } combat)
                 return;
             var owner = ApRunData.GetSingleplayerBuffState(run, player.NetId);
             if (ConsumedIndex(owner) > queue.LastConsumedIndex)
@@ -217,9 +217,8 @@ internal sealed class CombatEffectDelivery
             return;
         }
 
-        BuffCombatKey? combat = GetCombatKey(player);
-        // Native actions may be dropped when combat ends before execution. A stale
-        // request must not block later fights; its combat key also prevents late execution.
+        CombatEffectKey? combat = GetEffectKey(player);
+        // Dropped requests must not block later combats/turns; the key also rejects late execution.
         if (_pendingAction?.RunId != shared.RunId || _pendingAction?.Combat != combat)
             _pendingAction = null;
         // Saved run data can be ahead of AP storage after a rejoin. Reconcile before replaying.
@@ -305,7 +304,7 @@ internal sealed class CombatEffectDelivery
                 || !ApRunData.TryGetPlayerState(run, player.NetId, out ApPlayerRunState owner)
                 || owner.Participation != ApParticipationKind.OwnApSlot
                 || owner.SlotSettings == null
-                || !message.Matches(shared.RunId, GetCombatKey(player), ConsumedIndex(owner), _trap))
+                || !message.Matches(shared.RunId, GetEffectKey(player), ConsumedIndex(owner), _trap))
             {
                 return;
             }
@@ -338,7 +337,7 @@ internal sealed class CombatEffectDelivery
         }
     }
 
-    private BuffCombatKey? GetCombatKey(Player player)
+    private CombatEffectKey? GetEffectKey(Player player)
     {
         if (player.RunState is not RunState run
             || run.CurrentRoom is not CombatRoom { Id: int roomId } room
@@ -346,15 +345,18 @@ internal sealed class CombatEffectDelivery
         {
             return null;
         }
-        return new BuffCombatKey(run.CurrentActIndex, run.TotalFloor, roomId);
+        int turn = _trap ? player.PlayerCombatState?.TurnNumber ?? 0 : 0;
+        if (_trap && turn < 1)
+            return null;
+        return new CombatEffectKey(run.CurrentActIndex, run.TotalFloor, roomId, turn);
     }
 
     private async Task<bool> ApplyQueuedEffect(APItem effectType, int itemIndex,
-        BuffCombatKey combat, Player player, RunState run, ApPlayerRunState owner,
+        CombatEffectKey combat, Player player, RunState run, ApPlayerRunState owner,
         PlayerChoiceContext context)
     {
         // Check at execution as well as admission: duplicate/delayed network requests and
-        // reconnects must not spend a second receipt on the same player's combat.
+        // reconnects must not spend a second receipt on the same player's combat/turn.
         if (!Limit(owner).TryBegin(combat))
             return false;
         try

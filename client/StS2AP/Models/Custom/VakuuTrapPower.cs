@@ -23,7 +23,7 @@ public sealed class VakuuTrapPower : ModPowerTemplate
 {
     private int _activationTurn;
     public override PowerType Type => PowerType.Debuff;
-    public override PowerStackType StackType => PowerStackType.Single;
+    public override PowerStackType StackType => PowerStackType.Counter;
     public override PowerAssetProfile AssetProfile { get; } = new(
         IconPath: "res://images/cards/trap.png",
         BigIconPath: "res://images/cards/trap.png");
@@ -44,7 +44,9 @@ public sealed class VakuuTrapPower : ModPowerTemplate
         if (combatState == null)
             return;
         Flash();
-        await PowerCmd.Remove(this);
+        // Spend one stack even if the hand is unplayable; remaining stacks run on later turns.
+        _activationTurn = playerCombat.TurnNumber + 1;
+        await PowerCmd.Decrement(this);
         using (CardSelectCmd.PushSelector(new VakuuCardSelector()))
         {
             int startTurn = playerCombat.TurnNumber;

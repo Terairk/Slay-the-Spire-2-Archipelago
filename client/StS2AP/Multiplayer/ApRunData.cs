@@ -136,9 +136,9 @@ public static class ApRunData
             ProgressiveStarters = existing?.ProgressiveStarters
                 ?? new ApProgressiveStarterPlayerState(),
             LastConsumedBuffIndex = existing?.LastConsumedBuffIndex ?? -1,
-            CombatBuffLimit = existing?.CombatBuffLimit ?? new CombatBuffLimit(),
+            CombatBuffLimit = existing?.CombatBuffLimit ?? new CombatEffectLimit(),
             LastConsumedTrapIndex = existing?.LastConsumedTrapIndex ?? -1,
-            CombatTrapLimit = existing?.CombatTrapLimit ?? new CombatBuffLimit(),
+            CombatTrapLimit = existing?.CombatTrapLimit ?? new CombatEffectLimit(),
         };
         // SyncLobbyOnChange makes this a contribution to the authoritative host staging
         // session. On a client RitsuLib pushes the local PlayerRunSavedData payload with a
@@ -210,7 +210,7 @@ public static class ApRunData
 
     /// <summary>Records successful combat effects identically on every replica, including guests.</summary>
     internal static bool RecordConsumedCombatEffect(RunState runState, ulong netId, int itemIndex,
-        BuffCombatKey combat, bool trap)
+        CombatEffectKey combat, bool trap)
     {
         if (!_initialized || !_players.TryGet(runState, netId, out ApPlayerRunState state))
             return false;
