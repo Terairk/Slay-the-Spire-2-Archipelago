@@ -180,7 +180,8 @@ class ReleaseOnVictory(Toggle):
 
 
 class ProgressiveStarterCard(Toggle):
-    """Globally enables progressive special starter cards for every configured character.
+    """Enables progressive special starter cards by default for every configured character.
+    Advanced Characters can override this per character with progressive_starter_card.
 
     Requires Include Floor Checks. Each character gets two Progressive Starter Card items, which
     replace two floor-check filler items. With none received, the character
@@ -196,7 +197,8 @@ class ProgressiveStarterCard(Toggle):
 
 
 class ProgressiveStarterRelic(Toggle):
-    """Globally enables progressive starter relics for every configured character.
+    """Enables progressive starter relics by default for every configured character.
+    Advanced Characters can override this per character with progressive_starter_relic.
 
     Requires Include Floor Checks. Each character gets two Progressive Starter Relic items, which
     replace two floor-check filler items. With none received, the character
@@ -309,6 +311,7 @@ class SeededRun(Toggle):
 
 class AdvancedChar(Toggle):
     """Whether to use the advanced characters feature. The normal options for character, ascension, etc. are ignored.
+    Global progressive starter options remain defaults unless overridden for a character.
     See the "advanced_characters" option.
     """
     visibility = Visibility.template
@@ -326,6 +329,11 @@ class CharacterOptions(OptionDict):
                 - <string or number>
             ascension_down:
                 - <string or number>
+            progressive_starter_card: <true or false>
+            progressive_starter_relic: <true or false>
+
+    Omitted progressive starter options inherit their global settings. Explicit true/false
+    values override them for that character. Both still require Include Floor Checks.
 
     If using a modded character:
     Enter the internal ID of the character to use.
@@ -351,6 +359,8 @@ class CharacterOptions(OptionDict):
             Optional("ascension", default=[1]): [And(int,lambda n: 1 <= n <= 10), str],
             # Optional("final_act", default=0): And(int, lambda n: 0 <= n <= 1),
             Optional("ascension_down", default=[]): [And(int,lambda n: 1 <= n <= 10), str],
+            Optional("progressive_starter_card"): bool,
+            Optional("progressive_starter_relic"): bool,
         }
     })
 

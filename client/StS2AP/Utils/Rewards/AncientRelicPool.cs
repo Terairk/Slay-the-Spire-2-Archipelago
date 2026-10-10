@@ -27,12 +27,12 @@ namespace StS2AP.Utils
         private static bool IsBlacklisted(RelicModel relic) =>
             BlacklistedRelicTypes.Any(type => type.IsInstanceOfType(relic));
 
-        private static bool IsExcluded(RelicModel relic, ArchipelagoSettings? settings, int? startOfActIndex) =>
+        private static bool IsExcluded(RelicModel relic, Player player, ArchipelagoSettings? settings, int? startOfActIndex) =>
             IsBlacklisted(relic)
             // Golden Compass regenerates the current map on pickup. Only offer it at the
             // Act 2 Ancient, never in an Anytime reward or at the start of another act.
             || (relic is GoldenCompass && startOfActIndex != 1)
-            || ProgressiveStarterUtility.ShouldExcludeAncientRelic(relic, settings);
+            || ProgressiveStarterUtility.ShouldExcludeAncientRelic(relic, player, settings);
 
         /// <summary>
         /// Selects a stable set of three relics for a reward key without consuming the game's RNG.
@@ -313,7 +313,7 @@ namespace StS2AP.Utils
                         // AllPossibleOptions includes relics restricted to particular run modes.
                         if (relic.Id == ModelId.none ||
                             ownedOrReservedRelicIds.Contains(relic.Id) ||
-                            IsExcluded(relic, settings, startOfActIndex) ||
+                            IsExcluded(relic, player, settings, startOfActIndex) ||
                             !relic.IsAllowed(player.RunState))
                         {
                             continue;

@@ -631,7 +631,7 @@ namespace StS2AP.UI
                     AddItemRow(ShopRemoves);
                 }
             }
-            if (ArchipelagoClient.Settings.ProgressiveStarterCard)
+            if (settings.Characters.Keys.Any(settings.IsProgressiveStarterCardEnabled))
             {
                 ProgressiveStarterCardLabel = new ItemCountLabel(
                     ModelDb.Relic<ArchaicTooth>().IconPath,
@@ -641,7 +641,7 @@ namespace StS2AP.UI
                 AddItemRow(ProgressiveStarterCardLabel);
             }
 
-            if (ArchipelagoClient.Settings.ProgressiveStarterRelic)
+            if (settings.Characters.Keys.Any(settings.IsProgressiveStarterRelicEnabled))
             {
                 ProgressiveStarterRelicLabel = new ItemCountLabel(
                     ModelDb.Relic<TouchOfOrobas>().IconPath,

@@ -82,9 +82,12 @@ class SlayTheSpire2World(World):
             raise OptionError("At least one character must be configured")
         if self.options.include_floor_checks.value == 0:
             # Progressive starter items replace floor-check filler. Without those locations there
-            # is no filler budget for them, so normalize both global toggles to disabled.
+            # is no filler budget for them, so disable global and per-character settings.
             self.options.progressive_starter_card.value = 0
             self.options.progressive_starter_relic.value = 0
+            for config in self.characters:
+                config.progressive_starter_card = False
+                config.progressive_starter_relic = False
         names = {config.official_name for config in self.characters}
         if len(names) != len(self.characters):
             raise OptionError(f"Found duplicate characters: {[c.official_name for c in self.characters]}")
@@ -229,6 +232,8 @@ class SlayTheSpire2World(World):
                 locked,
                 ascension=ascension,
                 ascension_down=ascension_down,
+                progressive_starter_card=self.options.progressive_starter_card.value,
+                progressive_starter_relic=self.options.progressive_starter_relic.value,
             ))
         self.characters = configs
         self.modded_chars = [config for config in self.characters if config.mod_num > 0]
@@ -322,6 +327,10 @@ class SlayTheSpire2World(World):
                 locked,
                 ascension=ascension,
                 ascension_down=ascension_down,
+                progressive_starter_card=options.get(
+                    'progressive_starter_card', self.options.progressive_starter_card.value),
+                progressive_starter_relic=options.get(
+                    'progressive_starter_relic', self.options.progressive_starter_relic.value),
             ))
         self.characters = configs
         self.modded_chars = [config for config in self.characters if config.mod_num > 0]
@@ -485,9 +494,9 @@ class SlayTheSpire2World(World):
                 elif ItemType.RELIC == data.type:
                     amount = 10
                 elif ItemType.PROGRESSIVE_STARTER_CARD == data.type:
-                    amount = 2 if self.options.progressive_starter_card.value else 0
+                    amount = 2 if config.progressive_starter_card else 0
                 elif ItemType.PROGRESSIVE_STARTER_RELIC == data.type:
-                    amount = 2 if self.options.progressive_starter_relic.value else 0
+                    amount = 2 if config.progressive_starter_relic else 0
                 elif ItemType.CAMPFIRE == data.type:
                     if self.options.campfire_sanity.value != 0:
                         amount = 3
@@ -537,8 +546,8 @@ class SlayTheSpire2World(World):
 
                 # Generate filler items for floor checks using the weighted filler system
                 progressive_starter_items = (
-                    (2 if self.options.progressive_starter_card.value else 0) +
-                    (2 if self.options.progressive_starter_relic.value else 0)
+                    (2 if config.progressive_starter_card else 0) +
+                    (2 if config.progressive_starter_relic else 0)
                 )
                 filler_num = remaining_checks - progressive_starter_items
                 filler_counts.append((config, filler_num))
@@ -692,6 +701,10 @@ class SlayTheSpire2World(World):
                 char_dict['locked'],
                 ascension=char_dict['ascension'],
                 ascension_down=char_dict['ascension_down'],
+                progressive_starter_card=bool(slot_data['include_floor_checks']) and char_dict.get(
+                    'progressive_starter_card', slot_data['progressive_starter_card']),
+                progressive_starter_relic=bool(slot_data['include_floor_checks']) and char_dict.get(
+                    'progressive_starter_relic', slot_data['progressive_starter_relic']),
             )
             self.characters.append(config)
             if char_dict['mod_num'] > 0:

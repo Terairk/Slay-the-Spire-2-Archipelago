@@ -102,7 +102,7 @@ namespace StS2AP.Patches
                     __instance.Owner,
                     out ArchipelagoSettings settings
                 )
-                || !ShouldFilterProgressiveStarters(settings))
+                || !ShouldFilterProgressiveStarters(settings, __instance.Owner))
                 return true;
 
             try
@@ -133,7 +133,7 @@ namespace StS2AP.Patches
                 }
 
                 pool1.Add(dynamicPool1Option);
-                pool1.RemoveAll(option => IsBlocked(option, settings));
+                pool1.RemoveAll(option => IsBlocked(option, settings, __instance.Owner));
                 var firstOption = PickRequired(
                     __instance,
                     pool1,
@@ -141,7 +141,7 @@ namespace StS2AP.Patches
                 );
 
                 var pool2 = __instance.OptionPool2.ToList();
-                pool2.RemoveAll(option => IsBlocked(option, settings));
+                pool2.RemoveAll(option => IsBlocked(option, settings, __instance.Owner));
                 var secondOption = PickRequired(
                     __instance,
                     pool2,
@@ -149,7 +149,7 @@ namespace StS2AP.Patches
                 );
 
                 var pool3 = __instance.OptionPool3.ToList();
-                pool3.RemoveAll(option => IsBlocked(option, settings) || option.Relic is null);
+                pool3.RemoveAll(option => IsBlocked(option, settings, __instance.Owner) || option.Relic is null);
                 var thirdOptionPool = pool3.Count > 0
                     ? pool3
                     : BuildFallbackThirdPool(pool1, pool2, firstOption, secondOption);
@@ -172,15 +172,17 @@ namespace StS2AP.Patches
             }
         }
 
-        private static bool IsBlocked(EventOption option, ArchipelagoSettings settings) =>
-            ProgressiveStarterUtility.ShouldExcludeAncientRelic(option.Relic, settings);
+        private static bool IsBlocked(EventOption option, ArchipelagoSettings settings, Player player) =>
+            ProgressiveStarterUtility.ShouldExcludeAncientRelic(option.Relic, player, settings);
 
-        private static bool ShouldFilterProgressiveStarters(ArchipelagoSettings settings) =>
+        private static bool ShouldFilterProgressiveStarters(ArchipelagoSettings settings, Player player) =>
             ProgressiveStarterUtility.ShouldExcludeAncientRelic(
                 ModelDb.Relic<ArchaicTooth>(),
+                player,
                 settings
             ) || ProgressiveStarterUtility.ShouldExcludeAncientRelic(
                 ModelDb.Relic<TouchOfOrobas>(),
+                player,
                 settings
             );
 

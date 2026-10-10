@@ -942,6 +942,8 @@ public static class MultiplayerSupport
         Seed = source.Seed,
         Locked = source.Locked,
         ModNum = source.ModNum,
+        ProgressiveStarterCard = source.ProgressiveStarterCard,
+        ProgressiveStarterRelic = source.ProgressiveStarterRelic,
         Ascension = new HashSet<string>(source.Ascension, StringComparer.Ordinal),
     };
 

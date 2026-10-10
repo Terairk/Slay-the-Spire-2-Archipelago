@@ -28,13 +28,14 @@ namespace StS2AP.Utils
         /// </summary>
         internal static bool ShouldExcludeAncientRelic(
             RelicModel? relic,
+            Player player,
             ArchipelagoSettings? settings = null)
         {
             settings ??= ArchipelagoClient.Settings;
             return relic switch
             {
-                ArchaicTooth => settings?.ProgressiveStarterCard == true,
-                TouchOfOrobas => settings?.ProgressiveStarterRelic == true,
+                ArchaicTooth => settings?.IsProgressiveStarterCardEnabled(player.Character.Id.Entry) == true,
+                TouchOfOrobas => settings?.IsProgressiveStarterRelicEnabled(player.Character.Id.Entry) == true,
                 _ => false,
             };
         }
@@ -45,10 +46,10 @@ namespace StS2AP.Utils
         /// </summary>
         public static async Task InitializeForRun(Player player)
         {
-            if (ArchipelagoClient.Settings?.ProgressiveStarterCard == true)
+            if (ArchipelagoClient.Settings?.IsProgressiveStarterCardEnabled(player.Character.Id.Entry) == true)
                 CaptureStarterCard(player);
 
-            if (ArchipelagoClient.Settings?.ProgressiveStarterRelic == true)
+            if (ArchipelagoClient.Settings?.IsProgressiveStarterRelicEnabled(player.Character.Id.Entry) == true)
                 CaptureStarterRelic(player);
 
             await ReconcileAsync(player, StarterContext.Initialization);
@@ -150,7 +151,7 @@ namespace StS2AP.Utils
                 if (!ReferenceEquals(GameUtility.CurrentPlayer, player))
                     return;
 
-                if (ArchipelagoClient.Settings?.ProgressiveStarterCard == true)
+                if (ArchipelagoClient.Settings?.IsProgressiveStarterCardEnabled(player.Character.Id.Entry) == true)
                 {
                     try
                     {
@@ -164,7 +165,7 @@ namespace StS2AP.Utils
                     }
                 }
 
-                if (ArchipelagoClient.Settings?.ProgressiveStarterRelic == true)
+                if (ArchipelagoClient.Settings?.IsProgressiveStarterRelicEnabled(player.Character.Id.Entry) == true)
                 {
                     try
                     {

@@ -62,6 +62,9 @@ namespace StS2AP.Models
                 config.ModNum = (int) modNum;
             }
 
+            config.ProgressiveStarterCard = charObj.Value<bool?>("progressive_starter_card");
+            config.ProgressiveStarterRelic = charObj.Value<bool?>("progressive_starter_relic");
+
             if(charObj.TryGetValue("ascension", out var ascension))
             {
                 if(apworldVersion > Constants.VERSION_0_5_3)
@@ -111,6 +114,16 @@ namespace StS2AP.Models
         /// If this is a modded character, the index of the character in the options in the yaml
         /// </summary>
         public int ModNum { get; set; }
+        /// <summary>
+        /// Per-character override for progressive starter cards. True enables and false disables
+        /// them for this character; null inherits the global ArchipelagoSettings.ProgressiveStarterCard setting.
+        /// </summary>
+        public bool? ProgressiveStarterCard { get; set; }
+        /// <summary>
+        /// Per-character override for progressive starter relics. True enables and false disables
+        /// them for this character; null inherits the global ArchipelagoSettings.ProgressiveStarterRelic setting.
+        /// </summary>
+        public bool? ProgressiveStarterRelic { get; set; }
         /// <summary>
         /// The starting ascension configuration for the character.
         /// </summary>

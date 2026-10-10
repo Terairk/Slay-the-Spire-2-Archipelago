@@ -185,9 +185,13 @@ namespace StS2AP.Patches
 
                 ArchipelagoClient.Progress.ProgressiveStarterCards.TryGetValue(offset, out int starterCardTier);
                 ArchipelagoCharTrackerUI.ProgressiveStarterCardLabel?.SetText($"({starterCardTier} / 2)");
+                if (ArchipelagoCharTrackerUI.ProgressiveStarterCardLabel is { } cardLabel)
+                    cardLabel.Root.Visible = settings.IsProgressiveStarterCardEnabled(characterModel.Id.Entry);
 
                 ArchipelagoClient.Progress.ProgressiveStarterRelics.TryGetValue(offset, out int starterRelicTier);
                 ArchipelagoCharTrackerUI.ProgressiveStarterRelicLabel?.SetText($"({starterRelicTier} / 2)");
+                if (ArchipelagoCharTrackerUI.ProgressiveStarterRelicLabel is { } relicLabel)
+                    relicLabel.Root.Visible = settings.IsProgressiveStarterRelicEnabled(characterModel.Id.Entry);
 
                 // Count Card/Relic/Potion/Progressive Rewards
                 var itemCounts = ArchipelagoClient.Progress.AllReceivedItems

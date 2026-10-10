@@ -104,6 +104,16 @@ namespace StS2AP.Models
         public bool ProgressiveStarterCard { get; set; }
         public bool ProgressiveStarterRelic { get; set; }
 
+        public bool IsProgressiveStarterCardEnabled(string characterId) =>
+            Floorsanity && (Characters.TryGetValue(characterId, out var config)
+                ? config.ProgressiveStarterCard ?? ProgressiveStarterCard
+                : ProgressiveStarterCard);
+
+        public bool IsProgressiveStarterRelicEnabled(string characterId) =>
+            Floorsanity && (Characters.TryGetValue(characterId, out var config)
+                ? config.ProgressiveStarterRelic ?? ProgressiveStarterRelic
+                : ProgressiveStarterRelic);
+
         #region Shop Sanity Settings
 
         public bool ShopSanity { get; set; }
