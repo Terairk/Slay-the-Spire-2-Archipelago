@@ -5,8 +5,8 @@
 
 - **Archipelago Client:** {{CLIENT_VERSION}}
 - **APWorld:** {{WORLD_VERSION}}
-- **Slay the Spire II Public:** v{{STS2_PUBLIC_VERSION}}
-- **Slay the Spire II Beta:** v{{STS2_BETA_VERSION}}
+- **Slay the Spire II main branch:** v{{STS2_PUBLIC_VERSION}}
+- **Slay the Spire II beta branch:** v{{STS2_BETA_VERSION}}
 
 # Changelist
 

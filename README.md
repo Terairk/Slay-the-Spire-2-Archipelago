@@ -5,7 +5,12 @@ Archipelago Client & APWorld for STS2
 # Download the Latest Playable Release [Here](https://github.com/dlueben1/Slay-the-Spire-2-Archipelago/releases/latest)
 
 > [!IMPORTANT]
-> The client contains exact builds for the public **v0.107.1** and public-beta
+> We recommend the **beta branch**, where Terairk mainly develops and tests the mod.
+> The main branch remains supported, but receives little, if any, gameplay testing;
+> compatibility is assessed primarily through compile-time checks and player bug reports.
+> Beta branch updates can temporarily break compatibility until the mod is updated.
+>
+> The client contains exact builds for the main branch **v0.107.1** and beta branch
 > **v0.111.0** game versions. Later patch releases on those same version lines
 > can use the newest earlier build (for example, v0.107.2 uses v0.107.1).
 > The loader refuses unreadable versions, earlier patches, and new major/minor
