@@ -146,17 +146,28 @@ internal static class Patches_CrossCharacterCardPools
             $"COLORFUL_PHILOSOPHERS.pages.INITIAL.options.{pool.EnergyColorName.ToUpperInvariant()}";
         Func<Task> offerRewards = () => philosophers.OfferRewards(pool);
 
-        // Use native (or character-mod-provided) copy whenever that pool supplies it.
-        if (philosophers.GetOptionTitle(nativeKey) is not null &&
+        // Alternate characters may reuse a vanilla energy colour without sharing its
+        // card pool. In that case the vanilla option text would identify the wrong pool.
+        var borrowsVanillaColor = ColorfulPhilosophers.CardPoolColorOrder.Any(nativePool =>
+            nativePool.Id != pool.Id &&
+            string.Equals(nativePool.EnergyColorName, pool.EnergyColorName,
+                StringComparison.OrdinalIgnoreCase));
+        if (!borrowsVanillaColor &&
+            philosophers.GetOptionTitle(nativeKey) is not null &&
             philosophers.GetOptionDescription(nativeKey) is not null)
         {
             return new EventOption(philosophers, offerRewards, nativeKey);
         }
 
+        var character = ModelDb.AllCharacters.FirstOrDefault(candidate =>
+            candidate.CardPool.Id == pool.Id);
+        var poolName = character is not null && character.Title.Exists()
+            ? character.Title.GetFormattedText()
+            : pool.Title;
         var title = new LocString("events", $"{GenericOptionKey}.title");
-        title.Add("CardPool", pool.Title);
+        title.Add("CardPool", poolName);
         var description = new LocString("events", $"{GenericOptionKey}.description");
-        description.Add("CardPool", pool.Title);
+        description.Add("CardPool", poolName);
 
         return new EventOption(
             philosophers,
