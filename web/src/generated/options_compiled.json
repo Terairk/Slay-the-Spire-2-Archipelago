@@ -4,7 +4,7 @@
   "sources": {
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "279990018b7bcdfe6fdcffe4adc670998061b856434dea96d0dec79eda4fe60a"
+      "sha256": "250423167c1e90bff1fd3815b730e003006dc872983d432cb364a1063ca0d3e9"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
@@ -988,7 +988,7 @@
       "module": "worlds.spire2.options",
       "kind": "toggle",
       "display_name": "Progressive Starter Card",
-      "description": "Globally enables progressive special starter cards for every configured character.\n\nRequires Include Floor Checks. Each character gets two Progressive Starter Card items, which\nreplace two floor-check filler items. With none received, the character\nstarts without the special starter card that Archaic Tooth would transform (Bash, Neutralize, a compatible modded equivalent etc).\nThe first item restores the normal card; the second applies its Archaic Tooth transformation.\n\nCharacters without an Archaic Tooth transformation are left unchanged, although their two\nProgressive Starter Card items are still present in the multiworld.\n\nWARNING: This can make the early game significantly harder for some characters.",
+      "description": "Enables progressive special starter cards by default for every configured character.\nAdvanced Characters can override this per character with progressive_starter_card.\n\nRequires Include Floor Checks. Each character gets two Progressive Starter Card items, which\nreplace two floor-check filler items. With none received, the character\nstarts without the special starter card that Archaic Tooth would transform (Bash, Neutralize, a compatible modded equivalent etc).\nThe first item restores the normal card; the second applies its Archaic Tooth transformation.\n\nCharacters without an Archaic Tooth transformation are left unchanged, although their two\nProgressive Starter Card items are still present in the multiworld.\n\nWARNING: This can make the early game significantly harder for some characters.",
       "default": false,
       "raw_default": 0,
       "visibility": {
@@ -1024,7 +1024,7 @@
       "module": "worlds.spire2.options",
       "kind": "toggle",
       "display_name": "Progressive Starter Relic",
-      "description": "Globally enables progressive starter relics for every configured character.\n\nRequires Include Floor Checks. Each character gets two Progressive Starter Relic items, which\nreplace two floor-check filler items. With none received, the character\nstarts without the starter relic that Touch of Orobas would refine (such as Burning Blood, or a\ncompatible modded equivalent).\n\nThe first item restores the normal relic; the second applies its Touch of Orobas refinement.\n\nCharacters without a Touch of Orobas refinement are left unchanged, although their two\nProgressive Starter Relic items are still present in the multiworld.\n\nWARNING: This can make the early game significantly harder for characters whose starting relic\nis central to their early power.",
+      "description": "Enables progressive starter relics by default for every configured character.\nAdvanced Characters can override this per character with progressive_starter_relic.\n\nRequires Include Floor Checks. Each character gets two Progressive Starter Relic items, which\nreplace two floor-check filler items. With none received, the character\nstarts without the starter relic that Touch of Orobas would refine (such as Burning Blood, or a\ncompatible modded equivalent).\n\nThe first item restores the normal relic; the second applies its Touch of Orobas refinement.\n\nCharacters without a Touch of Orobas refinement are left unchanged, although their two\nProgressive Starter Relic items are still present in the multiworld.\n\nWARNING: This can make the early game significantly harder for characters whose starting relic\nis central to their early power.",
       "default": false,
       "raw_default": 0,
       "visibility": {
@@ -1690,7 +1690,7 @@
       "module": "worlds.spire2.options",
       "kind": "toggle",
       "display_name": "Advanced Characters",
-      "description": "Whether to use the advanced characters feature. The normal options for character, ascension, etc. are ignored.\nSee the \"advanced_characters\" option.",
+      "description": "Whether to use the advanced characters feature. The normal options for character, ascension, etc. are ignored.\nGlobal progressive starter options remain defaults unless overridden for a character.\nSee the \"advanced_characters\" option.",
       "default": false,
       "raw_default": 0,
       "visibility": {
@@ -1722,7 +1722,7 @@
       "module": "worlds.spire2.options",
       "kind": "dictionary",
       "display_name": "Advanced Characters",
-      "description": "The configuration for advanced characters.  Each character's options can be configured\nindependently of each other.  No validation is done on the character name, so use carefully.\nFormat is:\n    <char name>:\n        ascension:\n            - <string or number>\n        ascension_down:\n            - <string or number>\n\nIf using a modded character:\nEnter the internal ID of the character to use.\n\nIf you don't know the exact ID to enter with the mod installed go to\n`Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.\n\nEvery configured character must be installed with the matching internal ID. The client\nrejects the AP connection if a configured character cannot be loaded.",
+      "description": "The configuration for advanced characters.  Each character's options can be configured\nindependently of each other.  No validation is done on the character name, so use carefully.\nFormat is:\n    <char name>:\n        ascension:\n            - <string or number>\n        ascension_down:\n            - <string or number>\n        progressive_starter_card: <true or false>\n        progressive_starter_relic: <true or false>\n\nOmitted progressive starter options inherit their global settings. Explicit true/false\nvalues override them for that character. Both still require Include Floor Checks.\n\nIf using a modded character:\nEnter the internal ID of the character to use.\n\nIf you don't know the exact ID to enter with the mod installed go to\n`Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.\n\nEvery configured character must be installed with the matching internal ID. The client\nrejects the AP connection if a configured character cannot be loaded.",
       "default": {
         "ironclad": {
           "ascension": [

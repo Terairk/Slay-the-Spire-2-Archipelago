@@ -12,6 +12,7 @@ import type {
   AncientAnswers,
   BonusItemAnswer,
   CharacterAnswers,
+  CharacterStarterOverrides,
   CheckAnswers,
   ChecksAndRewardsAnswers,
   DeathLinkAnswers,
@@ -163,7 +164,10 @@ function summarizeCharacterAscensions(answers: CharacterAnswers): string {
  * @remarks Compile and validate before displaying this summary so impossible answer
  * combinations cannot be presented as if they were valid.
  */
-export function summarizeCharacterAnswers(answers: CharacterAnswers): string {
+export function summarizeCharacterAnswers(
+  answers: CharacterAnswers,
+  includeFloorChecks = true,
+): string {
   // Merge built-in portraits and complete modded IDs for all shared roster behavior.
   const roster = getConfiguredCharacterNames(answers);
 
@@ -200,7 +204,40 @@ export function summarizeCharacterAnswers(answers: CharacterAnswers): string {
   const ascensions = summarizeCharacterAscensions(answers);
 
   // Join the independently derived clauses into the final review paragraph.
-  return `${selection} ${availability} ${goal} ${ascensions}`;
+  const starters: string[] = [];
+  const configurations: Array<[string, CharacterStarterOverrides | undefined]> =
+    [
+      ...answers.selectedCharacters.map(
+        (character) =>
+          [character, answers.individualStarterOverrides?.[character]] as [
+            string,
+            CharacterStarterOverrides | undefined,
+          ],
+      ),
+      ...answers.moddedCharacters.map(
+        (character) =>
+          [character.name.trim(), character.starterOverrides] as [
+            string,
+            CharacterStarterOverrides | undefined,
+          ],
+      ),
+    ];
+  for (const [name, overrides] of configurations) {
+    for (const [key, label] of [
+      ["progressiveStarterCard", "starter card"],
+      ["progressiveStarterRelic", "starter relic"],
+    ] as const) {
+      const value = overrides?.[key];
+      if (value === "enabled" || value === "disabled")
+        starters.push(`${name}: progressive ${label} ${value}`);
+    }
+  }
+  const overrideSummary = starters.length
+    ? includeFloorChecks
+      ? ` Per-character overrides: ${starters.join("; ")}. Other starter settings inherit the global defaults.`
+      : " Saved per-character starter overrides are inactive because Floor Checks are off."
+    : "";
+  return `${selection} ${availability} ${goal} ${ascensions}${overrideSummary}`;
 }
 
 /**
@@ -291,11 +328,11 @@ export function summarizeStartingEquipmentAnswers(
 
   // Keep the all-disabled state explicit in the final review.
   if (!enabled.length) {
-    return "Progressive Starting Equipment is disabled.";
+    return "Progressive Starting Equipment is disabled by default.";
   }
 
   // Describe the selected progressive item families without exposing YAML keys.
-  return `Progressive ${joinNames(enabled)} are enabled.`;
+  return `Progressive ${joinNames(enabled)} are enabled by default.`;
 }
 
 /** Summarizes the Ancient choices displayed above additional checks. */
@@ -521,7 +558,10 @@ export function buildWizardReviewSections(
   const sections: WizardReviewSection[] = [
     {
       title: "Character Setup",
-      summary: summarizeCharacterAnswers(answers.characters),
+      summary: summarizeCharacterAnswers(
+        answers.characters,
+        answers.checksAndRewards.checks.includeFloorChecks,
+      ),
     },
     { title: "Gameplay Modifiers", summary: summarizeRunAnswers(answers.run) },
     {

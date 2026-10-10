@@ -86,19 +86,8 @@ function hasModdedCharacters(answers: WizardAnswers): boolean {
  * @returns Whether the shared Ascension checklist should be shown.
  */
 function usesSharedAscensions(answers: WizardAnswers): boolean {
-  // Shared mode compiles through the standard `ascension` option arrays.
+  // Starter overrides can require advanced YAML even with shared Ascensions.
   return answers.characters.ascensionMode === "shared";
-}
-
-/**
- * Checks whether each configured character needs independent Ascension settings.
- *
- * @param answers - Current player-facing wizard answers.
- * @returns Whether the per-character advanced editor should be shown.
- */
-function usesIndividualAscensions(answers: WizardAnswers): boolean {
-  // Individual mode compiles through the `advanced_characters` dictionary.
-  return answers.characters.ascensionMode === "individual";
 }
 
 /**
@@ -211,8 +200,9 @@ export const characterSetupStep: WizardStep = {
     },
     {
       id: "individual-ascensions",
-      title: "Configure each character's Ascensions",
-      isVisible: usesIndividualAscensions,
+      title: "Per-character settings",
+      description:
+        "Configure progressive starter overrides for each character here, alongside individual Ascensions when selected. Global starter settings are under Checks & Rewards.",
     },
     {
       id: "selection",
@@ -341,7 +331,7 @@ export const checkSetupStep: WizardStep = {
       id: "starting-equipment",
       title: "Which starting equipment should be progressive?",
       description:
-        "These options require Floor Checks and add two progressive items per configured character.",
+        "These global defaults require Floor Checks and add two progressive items per enabled character. Override them for individual characters in Character Setup.",
       help: startingEquipmentHelp,
       isEnabled: usesFloorChecks,
       control: {

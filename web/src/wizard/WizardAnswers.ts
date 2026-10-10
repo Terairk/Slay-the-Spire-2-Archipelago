@@ -83,10 +83,20 @@ export interface AscensionConfigurationAnswers {
   downs: AscensionLevel[];
 }
 
+/** UI choices map to omitted YAML fields or explicit boolean overrides. */
+export type StarterOverride = "inherit" | "enabled" | "disabled";
+
+/** Missing fields preserve global inheritance, including older wizard answers. */
+export interface CharacterStarterOverrides {
+  progressiveStarterCard?: StarterOverride;
+  progressiveStarterRelic?: StarterOverride;
+}
+
 /** Editable Steam Workshop character ID and its preserved individual settings. */
 export interface ModdedCharacterAnswers {
   name: string;
   ascensions: AscensionConfigurationAnswers;
+  starterOverrides?: CharacterStarterOverrides;
 }
 
 /** Unified Character Setup intent independent of Archipelago's two YAML systems. */
@@ -96,6 +106,7 @@ export interface CharacterAnswers {
   ascensionMode: CharacterAscensionMode;
   sharedAscensions: AscensionConfigurationAnswers;
   individualAscensions: Record<string, AscensionConfigurationAnswers>;
+  individualStarterOverrides?: Record<string, CharacterStarterOverrides>;
   selectionMode: CharacterSelectionMode;
   randomCharacterCount: number;
   availability: CharacterAvailability;
@@ -322,6 +333,7 @@ export function createDefaultWizardAnswers(
       ascensionMode: "shared",
       sharedAscensions,
       individualAscensions,
+      individualStarterOverrides: {},
       selectionMode: "all",
       randomCharacterCount: 1,
       availability: "random",
