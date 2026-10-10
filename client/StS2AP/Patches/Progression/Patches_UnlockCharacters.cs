@@ -5,6 +5,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Unlocks;
+using StS2AP.Utils;
 
 namespace StS2AP.Patches
 {
@@ -70,6 +71,8 @@ namespace StS2AP.Patches
                                      .GetChildren()
                                      .OfType<NCharacterSelectButton>())
                         {
+                            if (IntoTheSpireverseSelection.RefreshButton(button, __instance))
+                                continue;
                             button.Visible = true;
                             button.UnlockIfPossible();
                         }
@@ -97,6 +100,8 @@ namespace StS2AP.Patches
                 var buttons = container.GetChildren().OfType<NCharacterSelectButton>().ToArray();
                 foreach (NCharacterSelectButton button in buttons)
                 {
+                    if (IntoTheSpireverseSelection.RefreshButton(button, __instance))
+                        continue;
                     var charModel = button.Character;
                     LogUtility.Info($"Character Model id: {charModel.Id.Entry}");
                     var name = charModel.Id.Entry;
@@ -238,6 +243,15 @@ namespace StS2AP.Patches
                     LogUtility.Debug("HandleCharacterUnlocked: Could not find _charButtonContainer on screen");
                     return;
                 }
+
+                // An alternate's unlock may arrive while its shared button displays
+                // the other member. Reconcile families and the selected lobby member.
+                bool handledSharedButton = false;
+                foreach (var sharedButton in container.GetChildren().OfType<NCharacterSelectButton>())
+                    handledSharedButton |= IntoTheSpireverseSelection.RefreshButton(
+                        sharedButton, screen, config.OfficialName);
+                if (handledSharedButton)
+                    return;
 
                 var button = container.GetChildren()
                     .OfType<NCharacterSelectButton>()

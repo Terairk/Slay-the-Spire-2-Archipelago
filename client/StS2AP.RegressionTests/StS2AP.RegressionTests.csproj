@@ -14,6 +14,7 @@
     <Compile Include="..\StS2AP\Data\ArchipelagoIdCodec.cs" Link="Data\ArchipelagoIdCodec.cs" />
     <Compile Include="..\StS2AP\Utils\CoopGoalPolicy.cs" Link="Utils\CoopGoalPolicy.cs" />
     <Compile Include="..\StS2AP\Utils\CoopPlayerSelection.cs" Link="Utils\CoopPlayerSelection.cs" />
+    <Compile Include="../StS2AP/Utils/SharedCharacterSelectionPolicy.cs" Link="Utils/SharedCharacterSelectionPolicy.cs" />
     <Compile Include="..\StS2AP\Utils\Progression\AscensionBanner.cs" Link="Utils\AscensionBanner.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
