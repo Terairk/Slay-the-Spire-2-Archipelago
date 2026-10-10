@@ -32,6 +32,9 @@ internal static class Patches_CrossCharacterCardPools
         }
 
         [HarmonyPostfix]
+        // Downfall filters this result using the owner's Prismatic setting. Supply AP's
+        // candidate pools first so we do not reintroduce pools that it deliberately removed.
+        [HarmonyBefore("Downfall")]
         private static void ReplaceCharacterPools(
             PrismaticGem __instance,
             Player player,
