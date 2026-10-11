@@ -8,7 +8,7 @@ from NetUtils import JSONMessagePart
 from rule_builder.options import OptionFilter
 from rule_builder.rules import Rule, True_, Has, HasFromListUnique
 from .characters import CharacterConfig
-from .options import AncientRelicLocation, CampfireSanity, GoldSanity, ProgressiveStarterCard, ProgressiveStarterRelic
+from .options import AncientRelicLocation, CampfireSanity, GoldSanity
 
 if TYPE_CHECKING:
     from .world import SlayTheSpire2World
@@ -84,9 +84,9 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
             # The APWorld cannot verify a modded character's Orobas mappings. Do not assume
             # those receipts grant upgrades when the client may leave its starters unchanged.
             starter_card_power=STARTER_CARD_POWER[config.name]
-                               if config.mod_num == 0 and options.progressive_starter_card else (0, 0),
+                               if config.mod_num == 0 and config.progressive_starter_card else (0, 0),
             starter_relic_power=STARTER_RELIC_POWER[config.name]
-                                if config.mod_num == 0 and options.progressive_starter_relic else (0, 0),
+                                if config.mod_num == 0 and config.progressive_starter_relic else (0, 0),
             player=world.player,
         )
 
@@ -266,8 +266,10 @@ def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
     late_act_1 = SpireHasPower(offset, 10, card_rewards=5, minimum_cards=1.0, rest=True, shop=True)
     if config.mod_num:
         # Unknown starter effects keep the conservative 'gates' for modded characters.
-        late_act_1 &= Has(f"{prefix} Progressive Starter Relic", options=[OptionFilter(ProgressiveStarterRelic, 1)], filtered_resolution=True)
-        late_act_1 &= Has(f"{prefix} Progressive Starter Card", options=[OptionFilter(ProgressiveStarterCard, 1)], filtered_resolution=True)
+        if config.progressive_starter_relic:
+            late_act_1 &= Has(f"{prefix} Progressive Starter Relic")
+        if config.progressive_starter_card:
+            late_act_1 &= Has(f"{prefix} Progressive Starter Card")
     world.set_rule(world.get_entrance(f"{prefix} Late Act 1"), late_act_1)
     world.set_rule(world.get_entrance(f"{prefix} Act 1 Boss Arena"),
                    SpireHasPower(offset, 11.5, card_rewards=7, minimum_cards=3.0,

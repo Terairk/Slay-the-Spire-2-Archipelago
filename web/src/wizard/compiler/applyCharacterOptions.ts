@@ -22,6 +22,7 @@ import {
 import type {
   AscensionConfigurationAnswers,
   CharacterAnswers,
+  CharacterStarterOverrides,
 } from "../WizardAnswers";
 import { CHARACTER_OPTION_KEYS } from "../WizardOptionKey";
 
@@ -30,6 +31,36 @@ export type CompiledOptions = Record<string, OptionValue>;
 interface CompiledAscensionConfiguration {
   ascension: Array<string | number>;
   ascension_down: Array<string | number>;
+  progressive_starter_card?: boolean;
+  progressive_starter_relic?: boolean;
+}
+
+function compileStarterOverrides(
+  overrides: CharacterStarterOverrides | undefined,
+  includeFloorChecks: boolean,
+): Pick<
+  CompiledAscensionConfiguration,
+  "progressive_starter_card" | "progressive_starter_relic"
+> {
+  const result: Pick<
+    CompiledAscensionConfiguration,
+    "progressive_starter_card" | "progressive_starter_relic"
+  > = {};
+  for (const [field, key] of [
+    ["progressiveStarterCard", "progressive_starter_card"],
+    ["progressiveStarterRelic", "progressive_starter_relic"],
+  ] as const) {
+    const value = overrides?.[field];
+    if (value === undefined || value === "inherit") continue;
+    if (value !== "enabled" && value !== "disabled") {
+      throw new Error(
+        `Unknown per-character starter setting '${String(value)}'.`,
+      );
+    }
+    // Omission inherits the globals, which are also disabled without floor checks.
+    if (includeFloorChecks) result[key] = value === "enabled";
+  }
+  return result;
 }
 
 /**
@@ -279,6 +310,7 @@ export function applyCharacterOptions(
   target: CompiledOptions,
   answers: CharacterAnswers,
   catalog: OptionCatalog,
+  includeFloorChecks: boolean,
 ): void {
   // Fail immediately if schema drift removed an option owned by this compiler.
   for (const key of Object.values(CHARACTER_OPTION_KEYS)) {
@@ -361,8 +393,27 @@ export function applyCharacterOptions(
       ? (fixedChoiceName ?? answers.startingCharacter ?? "")
       : "";
 
-  // Standard mode uses separate built-in, modded, and shared Ascension options.
-  if (answers.ascensionMode === "shared") {
+  const starterOverrides = new Map(
+    answers.selectedCharacters.map((character) => [
+      character,
+      compileStarterOverrides(
+        answers.individualStarterOverrides?.[character],
+        includeFloorChecks,
+      ),
+    ]),
+  );
+  for (const character of answers.moddedCharacters) {
+    starterOverrides.set(
+      character.name.trim(),
+      compileStarterOverrides(character.starterOverrides, includeFloorChecks),
+    );
+  }
+  const hasStarterOverrides = [...starterOverrides.values()].some(
+    (value) => Object.keys(value).length > 0,
+  );
+
+  // Shared Ascensions can still require advanced YAML for starter overrides.
+  if (answers.ascensionMode === "shared" && !hasStarterOverrides) {
     const sharedAscensions = compileAscensionConfiguration(
       answers.sharedAscensions,
       catalog,
@@ -381,7 +432,10 @@ export function applyCharacterOptions(
   const advancedCharacters: Record<string, CompiledAscensionConfiguration> = {};
 
   for (const character of answers.selectedCharacters) {
-    const configuration = answers.individualAscensions[character];
+    const configuration =
+      answers.ascensionMode === "shared"
+        ? answers.sharedAscensions
+        : answers.individualAscensions[character];
 
     if (!configuration) {
       throw new Error(
@@ -389,18 +443,23 @@ export function applyCharacterOptions(
       );
     }
 
-    advancedCharacters[character] = compileAscensionConfiguration(
-      configuration,
-      catalog,
-    );
+    advancedCharacters[character] = {
+      ...compileAscensionConfiguration(configuration, catalog),
+      ...starterOverrides.get(character),
+    };
   }
 
   for (const moddedCharacter of answers.moddedCharacters) {
     const characterName = moddedCharacter.name.trim();
-    advancedCharacters[characterName] = compileAscensionConfiguration(
-      moddedCharacter.ascensions,
-      catalog,
-    );
+    advancedCharacters[characterName] = {
+      ...compileAscensionConfiguration(
+        answers.ascensionMode === "shared"
+          ? answers.sharedAscensions
+          : moddedCharacter.ascensions,
+        catalog,
+      ),
+      ...starterOverrides.get(characterName),
+    };
   }
 
   // Clear the four ignored basic fields so complete output reflects one active system.

@@ -4,6 +4,11 @@ This guide covers installing the mod, preparing a player YAML, generating a
 multiworld and connecting to it. Check the release notes for the game versions
 supported by the release you are installing.
 
+We recommend the **beta branch**, where Terairk mainly develops and tests the mod.
+The main branch remains supported, but receives little, if any, gameplay testing;
+compatibility is assessed primarily through compile-time checks and player bug reports.
+Beta branch updates can temporarily break compatibility until the mod is updated.
+
 ## Install the mod
 
 You need Slay the Spire II and [RitsuLib](https://steamcommunity.com/sharedfiles/filedetails/?id=3747602295)
@@ -83,7 +88,7 @@ in-game multiplayer lobby should use the same Archipelago mod version.
 
 - **The game loads the wrong mod copy:** check both Workshop subscriptions and
   `mods/Archipelago`; keep only the installation you intend to use.
-- **The loader rejects the game version:** check the supported public/beta versions
+- **The loader rejects the game version:** check the supported main branch and beta branch versions
   in your mod release's notes and select the corresponding game branch.
 - **Generation does not recognize Slay the Spire II:** install the release's
   APWorld in the Launcher you are actually using, verify it is v0.6.7+, and retry.

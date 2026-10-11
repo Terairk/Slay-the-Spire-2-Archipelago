@@ -38,6 +38,8 @@ class CharacterConfig:
             self.official_name = option_name
         self.seed: str = seed
         self.locked: bool = locked
+        self.progressive_starter_card: bool = bool(kwargs.get('progressive_starter_card', False))
+        self.progressive_starter_relic: bool = bool(kwargs.get('progressive_starter_relic', False))
         self.ascension: List[str] = kwargs['ascension']
         # Doesn't need to make it to the mod
         if 'ascension_down' in kwargs:
@@ -56,6 +58,8 @@ class CharacterConfig:
             'mod_num': self.mod_num,
             'ascension': self.ascension,
             'ascension_down': self.ascension_down,
+            'progressive_starter_card': self.progressive_starter_card,
+            'progressive_starter_relic': self.progressive_starter_relic,
         }
 
     def __repr__(self):

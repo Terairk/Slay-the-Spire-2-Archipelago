@@ -19,8 +19,7 @@ from rule_builder.options import OptionFilter
 from rule_builder.rules import Rule, True_, Has, HasFromListUnique
 from .characters import CharacterConfig, character_offset_map
 from .items import ItemType
-from .options import CampfireSanity, ShopSanity, GoldSanity, ShopRemoveSlots, ProgressiveStarterCard, \
-    ProgressiveStarterRelic
+from .options import CampfireSanity, ShopSanity, GoldSanity, ShopRemoveSlots
 from worlds.AutoWorld import LogicMixin
 
 if TYPE_CHECKING:
@@ -184,11 +183,13 @@ def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
         # Blocking Progressive Ancients on Neow, because that would just be annoying.  The others
         # should be blocked by the regular logic gates
         neow_loc.item_rule = lambda item: item.game != "Slay the Spire II" or item.item_data.type != ItemType.PROGRESSIVE_ANCIENT
-    world.set_rule(world.get_entrance(f"{prefix} Late Act 1"),LegacySpireHasPower(offset,6) &
-                   LegacySpireHasShop(prefix, 2, options=[OptionFilter(ShopSanity,1)], filtered_resolution=True) &
-                   Has(f"{prefix} Progressive Starter Relic", options=[OptionFilter(ProgressiveStarterRelic, 1)], filtered_resolution=True) &
-                   Has(f"{prefix} Progressive Starter Card", options=[OptionFilter(ProgressiveStarterCard, 1)], filtered_resolution=True),
-                   )
+    late_act_1 = LegacySpireHasPower(offset, 6) & LegacySpireHasShop(
+        prefix, 2, options=[OptionFilter(ShopSanity, 1)], filtered_resolution=True)
+    if config.progressive_starter_relic:
+        late_act_1 &= Has(f"{prefix} Progressive Starter Relic")
+    if config.progressive_starter_card:
+        late_act_1 &= Has(f"{prefix} Progressive Starter Card")
+    world.set_rule(world.get_entrance(f"{prefix} Late Act 1"), late_act_1)
     world.set_rule(world.get_entrance(f"{prefix} Act 1 Boss Arena"), LegacySpireHasPower(offset,9) &
                     Has(f"{prefix} Progressive Smith", options=[OptionFilter(CampfireSanity, 1)], filtered_resolution=True) &
                     LegacySpireHasShop(prefix, 3, options=[OptionFilter(ShopSanity, 1)], filtered_resolution=True) &

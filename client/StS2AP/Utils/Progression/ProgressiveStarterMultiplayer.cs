@@ -224,9 +224,9 @@ public static class ProgressiveStarterMultiplayer
         && kind switch
         {
             ApProgressiveStarterActionMessage.StarterKind.Card =>
-                settings.ProgressiveStarterCard,
+                settings.IsProgressiveStarterCardEnabled(player.Character.Id.Entry),
             ApProgressiveStarterActionMessage.StarterKind.Relic =>
-                settings.ProgressiveStarterRelic,
+                settings.IsProgressiveStarterRelicEnabled(player.Character.Id.Entry),
             _ => false,
         };
 
