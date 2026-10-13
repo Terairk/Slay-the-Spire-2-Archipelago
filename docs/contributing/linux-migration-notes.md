@@ -247,10 +247,14 @@ dependencies that need installing for a client build.
 
 ## 5. Agent settings, excludes, and Linux caveats
 
-`AGENTS.md` is preserved as it existed on the old machine. On the new machine,
-update its **Local shell execution** section for the real checkout path and
-available Linux shell. Its WSL2/Codex sandbox-launcher workaround is historical,
-not a native Linux prerequisite. Rider/PyCharm MCP integrations mentioned there
+`AGENTS.md` was preserved as it existed on the old machine; its **Local shell
+execution** section now describes the native Linux machine restored on
+2026-10-13. The old section said the checkout ran in WSL2 at
+`/home/terai/project/Slay-the-Spire-2-Archipelago` and recorded a Codex
+workaround: when commands failed with `CreateProcess ... No such file or directory`
+because a generated `codex-linux-sandbox` launcher was missing, rerunning with
+escalated sandbox permissions worked until a restart regenerated it. That is not
+a native Linux prerequisite. Rider/PyCharm MCP integrations mentioned there
 also need configuring again; normal CLI work does not depend on them.
 
 The old `.git/info/exclude` added:

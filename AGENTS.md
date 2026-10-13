@@ -29,9 +29,9 @@
 
 ## Local shell execution
 
-- This checkout runs inside WSL2. Use Linux paths and `exec_command` with `shell="/usr/bin/zsh"`, `login=false`, and `workdir="/home/terai/project/Slay-the-Spire-2-Archipelago"`; do not launch `wsl.exe` or PowerShell from this Linux executor.
-- If commands fail before starting with `CreateProcess ... No such file or directory`, retry a harmless command with `tty=true` to reveal the missing executable. On 2026-09-30, this identified a missing Codex-generated `.../.codex/tmp/arg0/.../codex-linux-sandbox` path; the shell and checkout were present.
-- For that missing sandbox-launcher failure, `sandbox_permissions="require_escalated"` successfully ran commands using the WSL shell above, subject to normal approval review. This is a temporary workaround for an executor failure, not a reason to bypass ordinary sandbox restrictions. A Codex restart may regenerate the helper path; verify a normal sandboxed command afterward before considering the launcher repaired.
+- This checkout runs natively on Arch Linux at `/home/terp/RealProjects/Slay-the-Spire-2-Archipelago` with zsh; the sibling Archipelago 0.6.8 checkout is `/home/terp/RealProjects/Archipelago`. Use the repository's `.venv/bin/python` for APWorld work.
+- Slay the Spire 2 is a native Linux Steam install at `/home/terp/.local/share/Steam/steamapps/common/Slay the Spire 2`; its assemblies are in `data_sts2_linuxbsd_x86_64/`, and `release_info.json` records the installed game version. Keep `.local-tools/sts2-references/` as the versioned build references rather than reading DLLs from the install.
+- The previous WSL2/Codex sandbox-launcher workaround is historical; see `docs/contributing/linux-migration-notes.md` if it matters again.
 
 ## Code and working style
 
