@@ -6,6 +6,11 @@ Linux installation recipe. Start here for the otherwise invisible local files;
 the [existing WSL setup](wsl-setup.md), [API compatibility guide](sts2-api-compat.md),
 and [contributing guide](../../CONTRIBUTING.md) contain the fuller build details.
 
+Restored on native Arch Linux on 2026-10-13 against upstream `v2` (`f3871cf`):
+every check in [section 6](#6-quick-checks-after-restoring) passed, including the
+Godot PCK export in `BuildMode=Package`. The corrections from that run are folded
+in below; live gameplay on Linux was not part of it.
+
 ## Before leaving the old machine
 
 A clone only restores committed files on the branches you fetch. This branch
@@ -61,7 +66,7 @@ The layout expected by `scripts/build_apworld_local.py` is:
 
 ```text
 ~/project/
-├── Archipelago/                       # upstream tag 0.6.7
+├── Archipelago/                       # upstream tag 0.6.8
 │   └── worlds/
 │       ├── apquest/                   # ordinary APWorld example/reference
 │       └── spire2 -> <repo>/world/spire2
@@ -78,7 +83,7 @@ Linux distribution or their installers. From this repository's root, for a
 **new** sibling checkout and environment:
 
 ```bash
-git clone --depth 1 --branch 0.6.7 https://github.com/ArchipelagoMW/Archipelago.git ../Archipelago
+git clone --depth 1 --branch 0.6.8 https://github.com/ArchipelagoMW/Archipelago.git ../Archipelago
 uv python install 3.13
 uv venv --python 3.13 --seed .venv
 .venv/bin/python ../Archipelago/ModuleUpdate.py -y
@@ -88,10 +93,16 @@ realpath ../Archipelago > "$site_packages/archipelago.pth"
 ```
 
 Skip clone/link steps if they already exist; inspect an existing `worlds/spire2`
-before replacing anything. The original sibling was upstream
-`ArchipelagoMW/Archipelago` at `debe4cf035c7c15efe6fb95f72343af0d420c68c`
-(tag `0.6.7`). `worlds/apquest/` is included there; no separate APQuest clone is
-needed. For custom rule builders or `LogicMixin`, read the framework itself.
+before replacing anything. Use upstream `ArchipelagoMW/Archipelago` at
+`54803be064fc7e80c4628777ed0b46a9390f255f` (tag `0.6.8`), the commit CI builds
+with. The old machine used `0.6.7` (`debe4cf`), which no longer works here:
+`scripts/build_apworld_local.py` passes `--skip_open_folder`, which the 0.6.7
+APWorld builder rejects, and 0.6.7's `ModuleUpdate.py` upgrades world requirements
+past core pins (Zillion bumps `typing_extensions` beyond `==4.15.0`, so imports
+then stop at an install prompt). Move an existing shallow checkout with
+`git -C ../Archipelago fetch --depth 1 origin tag 0.6.8 && git -C ../Archipelago checkout 0.6.8`
+and rerun `ModuleUpdate.py -y`. `worlds/apquest/` is included there; no separate
+APQuest clone is needed. For custom rule builders or `LogicMixin`, read the framework itself.
 
 The old Python was CPython 3.13.15 installed by uv under `.local-tools/python/`.
 That exact storage location is optional. To retain it, set
@@ -116,11 +127,16 @@ Keep this layout:
     └── Spire2-Beta-Decompiled/
 ```
 
-Prefer copying the existing versioned DLL directories. Otherwise take the three
-DLLs from your own matching game installation. On the old Windows install they
-were in `data_sts2_windows_x86_64/`; locate the equivalent managed assemblies in
-your actual Linux/Proton installation instead of assuming the Windows path.
-Do not label newer DLLs with an older version directory name.
+Prefer copying the existing versioned DLL directories; on 2026-10-13 they were
+restored from the private backup archives `v01071.zip` and `v01110.zip`, each
+holding only the three DLLs. Otherwise take the three DLLs from your own
+matching game installation. On the old Windows install they were in
+`data_sts2_windows_x86_64/`; a native Linux Steam install keeps them in
+`data_sts2_linuxbsd_x86_64/`. The Linux `0Harmony.dll` and `GodotSharp.dll`
+match the Windows copies byte for byte, but the Linux `sts2.dll` does not, so
+keep the backed-up Windows build when you have it. Read the installed version
+from the game's `release_info.json`, and do not label newer DLLs with an older
+version directory name.
 
 After installing .NET, recreate ILSpy (the old tool version was `11.1.0.9782`):
 
@@ -169,6 +185,8 @@ Linux starting point, with compilation as the default, is:
   <PropertyGroup>
     <Sts2ApiCompat>$(Sts2BetaApiCompat)</Sts2ApiCompat>
     <UseSts2RefLib>true</UseSts2RefLib>
+    <STS2GamePath>$(HOME)/.local/share/Steam/steamapps/common/Slay the Spire 2</STS2GamePath>
+    <GameDataDir>$(STS2GamePath)/data_sts2_linuxbsd_x86_64</GameDataDir>
     <GodotExePath>$(MSBuildThisFileDirectory)../../.local-tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/Godot_v4.5.1-stable_mono_linux.x86_64</GodotExePath>
     <PythonExe>$(MSBuildThisFileDirectory)../../.venv/bin/python</PythonExe>
     <BuildMode>CompileOnly</BuildMode>
@@ -177,8 +195,13 @@ Linux starting point, with compilation as the default, is:
 </Project>
 ```
 
-For the old local-DLL setup, set `UseSts2RefLib` to `false` and add
+`GameDataDir` matters because the project otherwise assumes
+`data_sts2_windows_x86_64`. For the old local-DLL setup (used on 2026-10-13,
+and needed for Publicizer access to private game members), set `UseSts2RefLib`
+to `false` and add
 `<Sts2ApiSignatureRoot>$(MSBuildThisFileDirectory)../../.local-tools/sts2-references</Sts2ApiSignatureRoot>`.
+That build reports harmless CS0436 warnings where the generated
+`IgnoresAccessChecksToAttribute` overlaps the one in `0Harmony.dll`.
 Set `STS2GamePath` to the actual Steam installation if you want local deployment.
 The old `D:/SteamLibrary/...`, `/mnt/d/...`, Windows Python, and Windows Godot
 paths are machine-specific; do not copy them into the native Linux setup.
