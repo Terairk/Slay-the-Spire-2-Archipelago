@@ -36,13 +36,16 @@ class Characters(OptionSet):
 
 class ModdedCharacters(OptionList):
     """Modded characters to include when Advanced Characters is disabled. Enter each character's
-    internal ID. At most 15 modded characters can be present in the generated character set.
-    Duplicate IDs are removed, keeping the first occurrence. Predefined characters use their
+    internal ID or a predefined display name, such as Watcher, Guardian, or Tectonic.
+    The list of predefined display names will probably be pinned somewhere on Discord.
+    At most 15 modded characters can be present in the generated character set.
+    Duplicate aliases and IDs are removed, keeping the first occurrence. Predefined characters use their
     display names; other selected characters are numbered consecutively in YAML order.
     A larger candidate list is allowed when Pick Number of Characters selects a subset.
 
     If using a modded character:
-    Enter the internal ID of the character to use.
+    Predefined display names and internal IDs are matched case-insensitively.
+    Unrecognised characters still require their full internal ID.
 
     If you don't know the exact ID to enter with the mod installed go to
     `Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.
@@ -92,7 +95,8 @@ class LockCharacters(Choice):
 
 class UnlockedCharacter(TextChoice):
     """Which character Player 1 starts with, if lock_characters is set to locked_fixed.
-    Can also enter a character name for modded characters."""
+    Can also enter a predefined display name or full internal ID for modded characters.
+    The list of predefined display names will probably be pinned somewhere on Discord."""
     default = 0
     # Choice's metaclass reads these attributes; keep UI indices separate from AP ID blocks.
     for _index, _name in enumerate(character_list):
@@ -341,7 +345,9 @@ class CharacterOptions(OptionDict):
     values override them for that character. Both still require Include Floor Checks.
 
     If using a modded character:
-    Enter the internal ID of the character to use.
+    Enter its full internal ID or a predefined display name, such as Watcher.
+    The list of predefined display names will probably be pinned somewhere on Discord.
+    Do not include both an alias and its full ID as separate entries.
 
     If you don't know the exact ID to enter with the mod installed go to
     `Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.

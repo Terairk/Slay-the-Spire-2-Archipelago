@@ -1,6 +1,17 @@
 # Finding a modded character ID
 
-The wizard needs a modded character's **internal ID**, which is **very likely to be different** from the name shown on its Steam Workshop page or in-game.
+Predefined characters accept their display names as YAML aliases: **Tectonic, Captain, Acolyte, Slime Boss, Guardian, Hexaghost, Champ, Automaton, Snecko, Hermit, Awakened One, and Watcher**. Names are case-insensitive; full internal IDs still work. Use these aliases in `modded_characters`, as `advanced_characters` keys, or in `unlocked_character`.
+
+```yaml
+modded_characters:
+  - Watcher
+  - Guardian
+  - Tectonic
+```
+
+Basic mode keeps the first occurrence when an alias and its full ID both appear. Advanced mode rejects duplicate identities so conflicting per-character settings are not silently discarded.
+
+Other characters need their **internal ID**, which is **very likely to be different** from the name shown on their Steam Workshop page or in-game.
 
 1. Start Slay the Spire II with the character mod and the Archipelago mod installed.
 2. Open **Archipelago Settings** in the game.

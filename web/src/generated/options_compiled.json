@@ -4,7 +4,7 @@
   "sources": {
     "characters": {
       "path": "world/spire2/characters.py",
-      "sha256": "0faec5f867b640914f86b132d86c28890b8dc4bde81fdd41484641106e43a92b"
+      "sha256": "fbbad75e5c458518fe37b245bcc9d3279e052b39f9f9885cc1af50b5ce8d10ea"
     },
     "constants": {
       "path": "world/spire2/constants.py",
@@ -12,7 +12,7 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "6e8351bf24cddd467d635d93ede53e8b76298ab1ff9f996cdce244979f66d284"
+      "sha256": "a85d5c67f95a8814dc0195e211469cc6173200d0202d49511f36b06ed554697f"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
@@ -586,7 +586,7 @@
       "module": "worlds.spire2.options",
       "kind": "list",
       "display_name": "Modded Characters",
-      "description": "Modded characters to include when Advanced Characters is disabled. Enter each character's\ninternal ID. At most 15 modded characters can be present in the generated character set.\nDuplicate IDs are removed, keeping the first occurrence. Predefined characters use their\ndisplay names; other selected characters are numbered consecutively in YAML order.\nA larger candidate list is allowed when Pick Number of Characters selects a subset.\n\nIf using a modded character:\nEnter the internal ID of the character to use.\n\nIf you don't know the exact ID to enter with the mod installed go to\n`Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.\n\nEvery configured character must be installed with the matching internal ID. The client\nrejects the AP connection if a configured character cannot be loaded.",
+      "description": "Modded characters to include when Advanced Characters is disabled. Enter each character's\ninternal ID or a predefined display name, such as Watcher, Guardian, or Tectonic.\nThe list of predefined display names will probably be pinned somewhere on Discord.\nAt most 15 modded characters can be present in the generated character set.\nDuplicate aliases and IDs are removed, keeping the first occurrence. Predefined characters use their\ndisplay names; other selected characters are numbered consecutively in YAML order.\nA larger candidate list is allowed when Pick Number of Characters selects a subset.\n\nIf using a modded character:\nPredefined display names and internal IDs are matched case-insensitively.\nUnrecognised characters still require their full internal ID.\n\nIf you don't know the exact ID to enter with the mod installed go to\n`Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.\n\nEvery configured character must be installed with the matching internal ID. The client\nrejects the AP connection if a configured character cannot be loaded.",
       "default": [],
       "raw_default": [],
       "visibility": {
@@ -705,7 +705,7 @@
       "module": "worlds.spire2.options",
       "kind": "text_choice",
       "display_name": "Unlocked Character",
-      "description": "Which character Player 1 starts with, if lock_characters is set to locked_fixed.\nCan also enter a character name for modded characters.",
+      "description": "Which character Player 1 starts with, if lock_characters is set to locked_fixed.\nCan also enter a predefined display name or full internal ID for modded characters.\nThe list of predefined display names will probably be pinned somewhere on Discord.",
       "default": "ironclad",
       "raw_default": 0,
       "visibility": {
@@ -1730,7 +1730,7 @@
       "module": "worlds.spire2.options",
       "kind": "dictionary",
       "display_name": "Advanced Characters",
-      "description": "The configuration for advanced characters.  Each character's options can be configured\nindependently of each other.  No validation is done on the character name, so use carefully.\nFormat is:\n    <char name>:\n        ascension:\n            - <string or number>\n        ascension_down:\n            - <string or number>\n        progressive_starter_card: <true or false>\n        progressive_starter_relic: <true or false>\n\nOmitted progressive starter options inherit their global settings. Explicit true/false\nvalues override them for that character. Both still require Include Floor Checks.\n\nIf using a modded character:\nEnter the internal ID of the character to use.\n\nIf you don't know the exact ID to enter with the mod installed go to\n`Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.\n\nEvery configured character must be installed with the matching internal ID. The client\nrejects the AP connection if a configured character cannot be loaded.",
+      "description": "The configuration for advanced characters.  Each character's options can be configured\nindependently of each other.  No validation is done on the character name, so use carefully.\nFormat is:\n    <char name>:\n        ascension:\n            - <string or number>\n        ascension_down:\n            - <string or number>\n        progressive_starter_card: <true or false>\n        progressive_starter_relic: <true or false>\n\nOmitted progressive starter options inherit their global settings. Explicit true/false\nvalues override them for that character. Both still require Include Floor Checks.\n\nIf using a modded character:\nEnter its full internal ID or a predefined display name, such as Watcher.\nThe list of predefined display names will probably be pinned somewhere on Discord.\nDo not include both an alias and its full ID as separate entries.\n\nIf you don't know the exact ID to enter with the mod installed go to\n`Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.\n\nEvery configured character must be installed with the matching internal ID. The client\nrejects the AP connection if a configured character cannot be loaded.",
       "default": {
         "ironclad": {
           "ascension": [

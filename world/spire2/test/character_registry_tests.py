@@ -34,17 +34,17 @@ class TestCharacterRegistry(unittest.TestCase):
 
     def test_named_blocks_and_names_match_the_published_registry(self):
         expected = [
-            ("The Tectonic", "INTOTHESPIREVERSE-SHADOW_IRONCLAD"),
-            ("The Captain", "INTOTHESPIREVERSE-SHADOW_REGENT"),
-            ("The Acolyte", "INTOTHESPIREVERSE-SHADOW_SILENT"),
-            ("The Slime Boss", "SLIMEBOSS-SLIME_BOSS"),
-            ("The Guardian", "GUARDIAN-GUARDIAN"),
-            ("The Hexaghost", "HEXAGHOST-HEXAGHOST"),
-            ("The Champ", "CHAMP-CHAMP"),
-            ("The Automaton", "AUTOMATON-AUTOMATON"),
-            ("The Snecko", "SNECKO-SNECKO"),
-            ("The Hermit", "HERMIT-HERMIT"),
-            ("The Awakened", "AWAKENED-AWAKENED"),
+            ("Tectonic", "INTOTHESPIREVERSE-SHADOW_IRONCLAD"),
+            ("Captain", "INTOTHESPIREVERSE-SHADOW_REGENT"),
+            ("Acolyte", "INTOTHESPIREVERSE-SHADOW_SILENT"),
+            ("Slime Boss", "SLIMEBOSS-SLIME_BOSS"),
+            ("Guardian", "GUARDIAN-GUARDIAN"),
+            ("Hexaghost", "HEXAGHOST-HEXAGHOST"),
+            ("Champ", "CHAMP-CHAMP"),
+            ("Automaton", "AUTOMATON-AUTOMATON"),
+            ("Snecko", "SNECKO-SNECKO"),
+            ("Hermit", "HERMIT-HERMIT"),
+            ("Awakened One", "AWAKENED-AWAKENED"),
             ("Watcher", "WATCHER-WATCHER"),
         ]
         for block, (name, internal_id) in enumerate(expected, start=40):
@@ -62,6 +62,13 @@ class TestCharacterRegistry(unittest.TestCase):
         self.assertEqual(item_table, {name: items[name] for name in item_table})
         self.assertEqual(location_table, {name: locations[name] for name in location_table})
         self.assertEqual(60004, items["Future Vanilla Progressive Ancient"].code)
+
+    def test_aliases_cannot_shadow_another_registered_character(self):
+        with self.assertRaisesRegex(ValueError, "ambiguous alias"):
+            create_character_registry(predefined=(
+                CharacterDefinition("Example", "EXAMPLE-MOD"),
+                CharacterDefinition("example-mod", "ANOTHER-MOD"),
+            ))
 
     def test_ten_vanilla_characters_fit_without_overlapping_generic_blocks(self):
         future = tuple(CharacterDefinition(f"Future {i}", f"FUTURE_{i}", DEFAULT_STARTER_POWER)
@@ -103,12 +110,53 @@ class TestCharacterRosters(unittest.TestCase):
                          ModdedCharacters.from_any([" Z-Mod ", "watcher-watcher", "z-MOD",
                                                     "A-Mod", "WATCHER-WATCHER"]).value)
 
+    def test_aliases_and_internal_ids_share_one_basic_roster_entry(self):
+        world = self.generate(modded_characters=[" watcher ", "WATCHER-WATCHER", "ModA",
+                                                "guardian-guardian", "GUARDIAN"])
+        self.assertEqual(["Watcher", "Custom Character 1", "Guardian"],
+                         [c.name for c in world.characters])
+        self.assertEqual(["WATCHER-WATCHER", "ModA", "GUARDIAN-GUARDIAN"],
+                         [c.official_name for c in world.characters])
+        self.assertEqual([1, 2, 3], [c.mod_num for c in world.characters])
+
+    def test_every_predefined_alias_matches_its_internal_id_in_both_modes(self):
+        for advanced in (False, True):
+            aliases = [definition.name.swapcase() for definition in PREDEFINED_CHARACTERS]
+            ids = [definition.internal_id for definition in PREDEFINED_CHARACTERS]
+            def generate(roster):
+                return self.generate(modded_characters=roster, use_advanced_characters=advanced,
+                                     advanced_characters={name: {"progressive_starter_card": True}
+                                                          for name in roster})
+            by_alias, by_id = generate(aliases), generate(ids)
+            self.assertEqual([(c.name, c.official_name, c.char_offset, c.mod_num) for c in by_id.characters],
+                             [(c.name, c.official_name, c.char_offset, c.mod_num) for c in by_alias.characters])
+            self.assertEqual([(loc.name, loc.address) for loc in by_id.get_locations()],
+                             [(loc.name, loc.address) for loc in by_alias.get_locations()])
+            if advanced:
+                self.assertTrue(all(c.progressive_starter_card for c in by_alias.characters))
+
+    def test_fixed_start_accepts_alias_or_internal_id_with_either_roster_spelling(self):
+        for advanced in (False, True):
+            for roster_name, unlocked in (("Watcher", "WATCHER-WATCHER"),
+                                          ("WATCHER-WATCHER", "watcher")):
+                roster = ["Guardian", roster_name, "ModA"]
+                world = self.generate(modded_characters=roster, use_advanced_characters=advanced,
+                                      advanced_characters={name: {} for name in roster},
+                                      lock_characters=2, unlocked_character=unlocked, pick_num_characters=1)
+                self.assertEqual([("Watcher", "WATCHER-WATCHER", False)],
+                                 [(c.name, c.official_name, c.locked) for c in world.characters])
+
+    def test_advanced_alias_and_internal_id_duplicates_are_rejected(self):
+        with self.assertRaisesRegex(OptionError, "duplicate character IDs or aliases"):
+            self.generate(use_advanced_characters=True,
+                          advanced_characters={"Watcher": {}, "WATCHER-WATCHER": {}})
+
     def test_basic_and_advanced_preserve_order_and_number_only_unknown_characters(self):
         roster = ["WATCHER-WATCHER", "Z-Mod", "GUARDIAN-GUARDIAN", "A-Mod"]
         for advanced in (False, True):
             world = self.generate(modded_characters=roster, use_advanced_characters=advanced,
                                   advanced_characters={name: {} for name in roster})
-            self.assertEqual(["Watcher", "Custom Character 1", "The Guardian", "Custom Character 2"],
+            self.assertEqual(["Watcher", "Custom Character 1", "Guardian", "Custom Character 2"],
                              [config.name for config in world.characters])
             self.assertEqual([51, 11, 44, 12], [config.char_offset for config in world.characters])
             self.assertEqual(roster, [config.official_name for config in world.characters])

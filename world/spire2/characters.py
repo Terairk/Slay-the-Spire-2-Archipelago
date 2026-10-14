@@ -34,17 +34,17 @@ VANILLA_CHARACTERS = (
 )
 
 PREDEFINED_CHARACTERS = (
-    CharacterDefinition("The Tectonic", "INTOTHESPIREVERSE-SHADOW_IRONCLAD"),
-    CharacterDefinition("The Captain", "INTOTHESPIREVERSE-SHADOW_REGENT"),
-    CharacterDefinition("The Acolyte", "INTOTHESPIREVERSE-SHADOW_SILENT"),
-    CharacterDefinition("The Slime Boss", "SLIMEBOSS-SLIME_BOSS"),
-    CharacterDefinition("The Guardian", "GUARDIAN-GUARDIAN"),
-    CharacterDefinition("The Hexaghost", "HEXAGHOST-HEXAGHOST"),
-    CharacterDefinition("The Champ", "CHAMP-CHAMP"),
-    CharacterDefinition("The Automaton", "AUTOMATON-AUTOMATON"),
-    CharacterDefinition("The Snecko", "SNECKO-SNECKO"),
-    CharacterDefinition("The Hermit", "HERMIT-HERMIT"),
-    CharacterDefinition("The Awakened", "AWAKENED-AWAKENED"),
+    CharacterDefinition("Tectonic", "INTOTHESPIREVERSE-SHADOW_IRONCLAD"),
+    CharacterDefinition("Captain", "INTOTHESPIREVERSE-SHADOW_REGENT"),
+    CharacterDefinition("Acolyte", "INTOTHESPIREVERSE-SHADOW_SILENT"),
+    CharacterDefinition("Slime Boss", "SLIMEBOSS-SLIME_BOSS"),
+    CharacterDefinition("Guardian", "GUARDIAN-GUARDIAN"),
+    CharacterDefinition("Hexaghost", "HEXAGHOST-HEXAGHOST"),
+    CharacterDefinition("Champ", "CHAMP-CHAMP"),
+    CharacterDefinition("Automaton", "AUTOMATON-AUTOMATON"),
+    CharacterDefinition("Snecko", "SNECKO-SNECKO"),
+    CharacterDefinition("Hermit", "HERMIT-HERMIT"),
+    CharacterDefinition("Awakened One", "AWAKENED-AWAKENED"),
     CharacterDefinition("Watcher", "WATCHER-WATCHER"),
 )
 
@@ -72,6 +72,13 @@ def create_character_registry(
                     if definition.internal_id is not None]
     if len(set(names)) != len(names) or len(set(internal_ids)) != len(internal_ids):
         raise ValueError("Character registry contains duplicate names or internal IDs")
+    aliases = {}
+    for block, definition in registry.items():
+        if definition.internal_id is None:
+            continue
+        for alias in (definition.name, definition.internal_id):
+            if aliases.setdefault(alias.casefold(), block) != block:
+                raise ValueError(f"Character registry contains an ambiguous alias: {alias}")
     return registry
 
 
@@ -85,27 +92,33 @@ vanilla_character_ids = {
     if name is not None
 }
 registered_character_blocks = {
-    definition.internal_id.casefold(): block
+    alias.casefold(): block
     for block, definition in character_registry.items() if definition.internal_id is not None
+    for alias in (definition.name, definition.internal_id)
 }
-# Vanilla options also accept display names when they differ from the game's IDs.
-registered_character_blocks.update({
-    definition.name.casefold(): block
-    for block, definition in character_registry.items() if definition.name in vanilla_by_name
-})
+
+
+def character_identity(value: str) -> str:
+    """Compare aliases and full IDs as the same character without rewriting YAML keys."""
+    key = value.strip().casefold()
+    block = registered_character_blocks.get(key)
+    if block is not None:
+        return character_registry[block].internal_id.casefold()
+    return key
 
 
 def unique_character_ids(values: Sequence[str]) -> list[str]:
-    """Keep the first occurrence, using the client's case-insensitive identity rules."""
+    """Keep the first occurrence of each character, resolving aliases before deduplication."""
     result = []
     seen = set()
     for value in values:
         if not isinstance(value, str) or not value.strip():
             raise ValueError("Character IDs must be non-empty strings")
         value = value.strip()
-        if value.casefold() not in seen:
+        identity = character_identity(value)
+        if identity not in seen:
             result.append(value)
-            seen.add(value.casefold())
+            seen.add(identity)
     return result
 
 

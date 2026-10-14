@@ -14,7 +14,7 @@ from .rules import FALLBACK_REASON, MID_ACT_1_POWER, select_logic, set_rules
 from . import rules_old
 from .web_world import SlayTheSpire2Web
 from .characters import (CharacterConfig, character_list, vanilla_character_ids, character_registry,
-                         registered_character_blocks, unique_character_ids)
+                         registered_character_blocks, unique_character_ids, character_identity)
 from .constants import NUM_CUSTOM, ASCENSION_LIST, CHAR_OFFSET, GENERIC_CHARACTER_BLOCKS
 from .items import item_table, chars_to_items, bonus_item_table, ItemType, base_event_item_pairs, ItemData, item_groups
 from .locations import location_table, MAX_CARD_REWARDS, loc_ids_to_data, LocationData, LocationType, location_groups
@@ -158,7 +158,7 @@ class SlayTheSpire2World(World):
             else:
                 # Validate that the selected character is in the configured characters list
                 for char in characters:
-                    if char.lower() == unlocked_char_value.lower():
+                    if character_identity(char) == character_identity(unlocked_char_value):
                         return char
                 # We really shouldn't be able to get here anymore...but if we do, let us know, because it means this logic needs more work...
                 raise OptionError(
@@ -302,7 +302,7 @@ class SlayTheSpire2World(World):
         advanced_chars = list(self.options.advanced_characters.keys())
         char_options = unique_character_ids(advanced_chars)
         if len(char_options) != len(advanced_chars):
-            raise OptionError("Advanced Characters contains duplicate character IDs (case-insensitive)")
+            raise OptionError("Advanced Characters contains duplicate character IDs or aliases (case-insensitive)")
         if char_options != advanced_chars:
             raise OptionError("Advanced character IDs must not have leading or trailing whitespace")
         include_ascension_down = self.options.include_floor_checks.value != 0
