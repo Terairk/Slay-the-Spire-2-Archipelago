@@ -60,9 +60,7 @@ public sealed class ApRestSiteModel : HookedSingletonModel
 
         if (ApPlayerContextResolver.HasCharacterChecks(player))
         {
-            string characterName = config.ModNum == 0
-                ? config.Name
-                : $"Custom Character {config.ModNum}";
+            string characterName = config.Name;
             var availableChecks = policy.GetAvailableChecks(
                 checkedLocations,
                 (act, campfire) => ArchipelagoIdCodec.ForPlayer(

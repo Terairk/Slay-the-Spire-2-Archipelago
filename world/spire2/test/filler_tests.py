@@ -75,9 +75,9 @@ class TestFillerWeights(Spire2TestBase):
 class TestModdedFillerWeights(Spire2TestBase):
     options = {"trap_chance": 0, "characters": ["silent"], "modded_characters": ["WATCHER-WATCHER"]}
 
-    def test_custom_character_gold_and_fallback_use_its_numbered_item_table(self):
+    def test_named_modded_character_gold_and_fallback_use_its_item_table(self):
         character = next(config for config in self.world.characters if config.mod_num)
-        items = chars_to_items[character.mod_num]
+        items = chars_to_items[character.name]
         five_gold = next(name for name in items if "Five Gold" in name)
         one_gold = next(name for name in items if "One Gold" in name)
         self.world.build_filler_pools()

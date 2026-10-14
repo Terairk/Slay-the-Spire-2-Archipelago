@@ -237,8 +237,7 @@ function compileAscensionConfiguration(
  * @param answers - Player-facing Character Setup answers to inspect.
  * @param catalog - Generated schema containing valid built-in character names.
  * @returns The complete ordered roster after trimming modded character IDs.
- * @throws When the roster is empty, incomplete, duplicated, unknown, or exceeds the
- * world's five-modded-character limit.
+ * @throws When the roster is empty, incomplete, duplicated, or contains unknown built-in names.
  */
 function validateCharacterRoster(
   answers: CharacterAnswers,
@@ -247,13 +246,6 @@ function validateCharacterRoster(
   // Character Setup cannot represent an empty world.
   if (!answers.selectedCharacters.length && !answers.moddedCharacters.length) {
     throw new Error("Select at least one character.");
-  }
-
-  // Modded rows have a hard world limit and must all contain complete internal IDs.
-  if (answers.moddedCharacters.length > MAX_MODDED_CHARACTERS) {
-    throw new Error(
-      `Configure no more than ${MAX_MODDED_CHARACTERS} modded characters.`,
-    );
   }
 
   for (const moddedCharacter of answers.moddedCharacters) {
@@ -343,6 +335,13 @@ export function applyCharacterOptions(
   if (count < 1 || count > roster.length) {
     throw new Error(
       "The random character count must be between 1 and the number selected.",
+    );
+  }
+
+  // Larger candidate lists are valid when random selection can stay within the modded cap.
+  if (count > answers.selectedCharacters.length + MAX_MODDED_CHARACTERS) {
+    throw new Error(
+      `Select no more than ${MAX_MODDED_CHARACTERS} modded characters per generated roster; reduce the random character count.`,
     );
   }
 

@@ -75,9 +75,7 @@ public static class ApPlayerContextResolver
         if (!TryGetCharacterConfig(player, out CharacterConfig config))
             return false;
 
-        characterName = config.ModNum == 0
-            ? config.Name
-            : $"Custom Character {config.ModNum}";
+        characterName = config.Name;
         return true;
     }
 

@@ -2,9 +2,17 @@
   "schema_version": 1,
   "game": "Slay the Spire 2",
   "sources": {
+    "characters": {
+      "path": "world/spire2/characters.py",
+      "sha256": "75354c147d9498ed844fde2501d070299a53213ebe7fdcf8b6c7b23b69c8558f"
+    },
+    "constants": {
+      "path": "world/spire2/constants.py",
+      "sha256": "24618d1ae94c7ac431d4c1bf0ba7ec96a0f8e726d808bac54dc5f1c1d4803d7f"
+    },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "250423167c1e90bff1fd3815b730e003006dc872983d432cb364a1063ca0d3e9"
+      "sha256": "6e8351bf24cddd467d635d93ede53e8b76298ab1ff9f996cdce244979f66d284"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
@@ -576,9 +584,9 @@
       "key": "modded_characters",
       "class_name": "ModdedCharacters",
       "module": "worlds.spire2.options",
-      "kind": "set",
+      "kind": "list",
       "display_name": "Modded Characters",
-      "description": "Modded characters to include when Advanced Characters is disabled. Enter each character's\ninternal ID. At most 5 modded characters can be present in the generated character set.\n\nIf using a modded character:\nEnter the internal ID of the character to use.\n\nIf you don't know the exact ID to enter with the mod installed go to\n`Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.\n\nEvery configured character must be installed with the matching internal ID. The client\nrejects the AP connection if a configured character cannot be loaded.",
+      "description": "Modded characters to include when Advanced Characters is disabled. Enter each character's\ninternal ID. At most 15 modded characters can be present in the generated character set.\nDuplicate IDs are removed, keeping the first occurrence. Predefined characters use their\ndisplay names; other selected characters are numbered consecutively in YAML order.\nA larger candidate list is allowed when Pick Number of Characters selects a subset.\n\nIf using a modded character:\nEnter the internal ID of the character to use.\n\nIf you don't know the exact ID to enter with the mod installed go to\n`Archipelago Settings -> Archipelago` to view a list of installed modded character IDs.\n\nEvery configured character must be installed with the matching internal ID. The client\nrejects the AP connection if a configured character cannot be loaded.",
       "default": [],
       "raw_default": [],
       "visibility": {
@@ -620,7 +628,7 @@
       },
       "source": "game",
       "minimum": 0,
-      "maximum": 10,
+      "maximum": 20,
       "supports_weighting": true,
       "group": "Character Options"
     },
@@ -646,7 +654,7 @@
       },
       "source": "game",
       "minimum": 0,
-      "maximum": 10,
+      "maximum": 20,
       "supports_weighting": true,
       "group": "Character Options"
     },

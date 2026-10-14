@@ -7,7 +7,7 @@ from BaseClasses import CollectionState
 from NetUtils import JSONMessagePart
 from rule_builder.options import OptionFilter
 from rule_builder.rules import Rule, True_, Has, HasFromListUnique
-from .characters import CharacterConfig
+from .characters import CharacterConfig, VANILLA_CHARACTERS, DEFAULT_STARTER_POWER
 from .options import AncientRelicLocation, CampfireSanity, GoldSanity
 
 if TYPE_CHECKING:
@@ -29,23 +29,12 @@ SHOP_SLOT_VALUES = (
 )
 
 
-# Missing-starter penalty, then upgrade bonus above the normal starting loadout.
-# these are somewhat arbitrary, like you could reason that neutralize/falling star
-# should be worth 1 instead of 1.5
-STARTER_CARD_POWER = {
-    "Ironclad": (1, 4.5),       # Bash -> Break
-    "Silent": (1.5, 4.5),         # Neutralize -> Suppress
-    "Defect": (1, 3.0),         # Dualcast -> Quadcast
-    "Necrobinder": (1, 2.5),    # Unleash -> Protector
-    "Regent": (1.5, 5.0),         # Falling Star -> Meteor Shower
-}
-STARTER_RELIC_POWER = {
-    "Ironclad": (3.0, 2.5),     # Burning Blood -> Black Blood
-    "Silent": (2, 3.5),           # Ring of the Snake -> Ring of the Drake
-    "Defect": (1, 3.0),         # Cracked Core -> Infused Core
-    "Necrobinder": (4.0, 5.0),  # Bound Phylactery -> Phylactery Unbound
-    "Regent": (1.5, 2.5),         # Divine Right -> Divine Destiny
-}
+# Reviewed values live with character registration. New vanilla definitions explicitly
+# select DEFAULT_STARTER_POWER until their starting loadout has been assessed.
+STARTER_CARD_POWER = {definition.name: definition.starter_power.card
+                      for definition in VANILLA_CHARACTERS if definition.starter_power is not None}
+STARTER_RELIC_POWER = {definition.name: definition.starter_power.relic
+                       for definition in VANILLA_CHARACTERS if definition.starter_power is not None}
 
 
 @dataclasses.dataclass()
@@ -83,9 +72,9 @@ class SpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
                                  options.shop_relic_slots.value, options.shop_potion_slots.value),
             # The APWorld cannot verify a modded character's Orobas mappings. Do not assume
             # those receipts grant upgrades when the client may leave its starters unchanged.
-            starter_card_power=STARTER_CARD_POWER[config.name]
+            starter_card_power=STARTER_CARD_POWER.get(config.name, DEFAULT_STARTER_POWER.card)
                                if config.mod_num == 0 and config.progressive_starter_card else (0, 0),
-            starter_relic_power=STARTER_RELIC_POWER[config.name]
+            starter_relic_power=STARTER_RELIC_POWER.get(config.name, DEFAULT_STARTER_POWER.relic)
                                 if config.mod_num == 0 and config.progressive_starter_relic else (0, 0),
             player=world.player,
         )

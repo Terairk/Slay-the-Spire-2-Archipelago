@@ -6,7 +6,7 @@ from Options import OptionSet, OptionList, Range, Toggle, DefaultOnToggle, Visib
 
 from schema import Schema, Optional, And
 
-from .characters import character_list
+from .characters import character_list, unique_character_ids
 from .constants import NUM_CUSTOM, ASCENSIONS
 
 
@@ -34,9 +34,12 @@ class Characters(OptionSet):
     default = ["Ironclad"]
     valid_keys_casefold = False
 
-class ModdedCharacters(OptionSet):
+class ModdedCharacters(OptionList):
     """Modded characters to include when Advanced Characters is disabled. Enter each character's
-    internal ID. At most 5 modded characters can be present in the generated character set.
+    internal ID. At most 15 modded characters can be present in the generated character set.
+    Duplicate IDs are removed, keeping the first occurrence. Predefined characters use their
+    display names; other selected characters are numbered consecutively in YAML order.
+    A larger candidate list is allowed when Pick Number of Characters selects a subset.
 
     If using a modded character:
     Enter the internal ID of the character to use.
@@ -50,11 +53,14 @@ class ModdedCharacters(OptionSet):
     display_name = "Modded Characters"
     default = []
 
+    def __init__(self, value):
+        super().__init__(unique_character_ids(list(value)))
+
 class GoalNumChar(Range):
     """How many characters you need to complete a run with before you goal. 0 means all characters"""
     display_name = "Number of Characters to Goal"
     range_start = 0
-    range_end = 5 + NUM_CUSTOM
+    range_end = len(character_list) + NUM_CUSTOM
     default = 0
 
 class PickNumberCharacters(Range):
@@ -70,7 +76,7 @@ class PickNumberCharacters(Range):
     """
     display_name = "Pick Number of Characters"
     range_start = 0
-    range_end = 5 + NUM_CUSTOM
+    range_end = len(character_list) + NUM_CUSTOM
     default = 0
 
 class LockCharacters(Choice):
@@ -88,11 +94,10 @@ class UnlockedCharacter(TextChoice):
     """Which character Player 1 starts with, if lock_characters is set to locked_fixed.
     Can also enter a character name for modded characters."""
     default = 0
-    option_ironclad = 0
-    option_silent = 1
-    option_defect = 2
-    option_regent = 3
-    option_necrobinder = 4
+    # Choice's metaclass reads these attributes; keep UI indices separate from AP ID blocks.
+    for _index, _name in enumerate(character_list):
+        locals()[f"option_{_name.lower()}"] = _index
+    del _index, _name
 
 class Ascension(OptionSet):
     """Logic assumes Ascension 1 is enabled for relic checks. A single number N enables Ascensions 1 through N.

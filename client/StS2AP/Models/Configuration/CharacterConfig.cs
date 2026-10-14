@@ -111,7 +111,8 @@ namespace StS2AP.Models
         /// </summary>
         public bool Locked { get; set; } = false;
         /// <summary>
-        /// If this is a modded character, the index of the character in the options in the yaml
+        /// Zero for vanilla characters; otherwise the one-based index in the selected modded roster.
+        /// This is not the character ID block or the generic display-name number.
         /// </summary>
         public int ModNum { get; set; }
         /// <summary>

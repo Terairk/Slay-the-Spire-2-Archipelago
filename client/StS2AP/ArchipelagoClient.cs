@@ -38,7 +38,7 @@ namespace StS2AP
         /// Compatibility marker emitted by APWorld releases. The marker is diagnostic rather
         /// than a symmetric protocol version: a newer APWorld may still support an older client.
         /// </summary>
-        public const int SupportedCompatFlag = 1;
+        public const int SupportedCompatFlag = 2;
 
         private const string ModManifestResourceName = "StS2AP.Archipelago.json";
         private const string ApWorldManifestResourceName = "StS2AP.Spire2Archipelago.json";

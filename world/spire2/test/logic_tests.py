@@ -3,6 +3,7 @@ import unittest
 from BaseClasses import CollectionState
 from test.general import setup_multiworld
 from worlds.spire2 import SlayTheSpire2World
+from worlds.spire2.characters import character_list
 from worlds.spire2.rules import SpireHasPower
 
 
@@ -222,7 +223,7 @@ class LogicTests(unittest.TestCase):
                         self.assertEqual(before, after)
 
     def test_starters_restore_baseline_then_add_upgrade_power_without_hard_gates(self):
-        world = self.make_world(characters=["Ironclad", "Silent", "Defect", "Necrobinder", "Regent"],
+        world = self.make_world(characters=character_list,
                                 progressive_starter_card=True, progressive_starter_relic=True)
         for config in world.characters:
             rule: SpireHasPower.Resolved = SpireHasPower(config.char_offset, 9).resolve(world)

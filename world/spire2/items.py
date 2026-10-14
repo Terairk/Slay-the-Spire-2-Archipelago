@@ -4,8 +4,8 @@ from typing import Dict
 from collections import defaultdict
 from enum import auto, Enum
 
-from worlds.spire2.characters import character_list
-from worlds.spire2.constants import CHAR_OFFSET, NUM_CUSTOM, ASCENSIONS
+from worlds.spire2.characters import CharacterDefinition, character_registry
+from worlds.spire2.constants import CHAR_OFFSET, ASCENSIONS
 
 
 class ItemType(Enum):
@@ -137,43 +137,28 @@ base_event_item_pairs: Dict[str, str] = {
     "Act 3 Boss": "Victory",
 }
 
-def create_item_tables(vanilla_chars: typing.List[str], extras: int) -> typing.Tuple[dict[str, ItemData], dict[
-    typing.Union[str, int],dict[str,ItemData]], dict[str,str]]:
+def create_item_tables(registry: dict[int, CharacterDefinition]) -> tuple[
+        dict[str, ItemData], dict[str, dict[str, ItemData]], dict[str, str]]:
     item_name_to_data = universal_items | universal_bonus_items | trap_item_table
-
-    characters_to_items: dict[typing.Union[str, int],dict[str, ItemData]] = defaultdict(dict)
-    character_event_pairs: dict[str, str] = dict()
-    char_num = 1
-
-    for char in vanilla_chars:
+    characters_to_items: dict[str, dict[str, ItemData]] = defaultdict(dict)
+    character_event_pairs: dict[str, str] = {}
+    for block, definition in registry.items():
         for key, base_data in base_item_table.items():
-            newkey = f"{char} {key}"
-            newval = ItemData.increment(base_data, char_num*CHAR_OFFSET)
-            item_name_to_data[newkey] = newval
-            characters_to_items[char][newkey] = newval
+            name = f"{definition.name} {key}"
+            data = ItemData.increment(base_data, block * CHAR_OFFSET)
+            item_name_to_data[name] = data
+            characters_to_items[definition.name][name] = data
         for key, val in base_event_item_pairs.items():
-            character_event_pairs[f"{char} {key}"] = f"{char} {val}"
-        char_num += 1
-
-    for i in range(extras):
-        for key, base_data in base_item_table.items():
-            newkey = f"Custom Character {i+1} {key}"
-            newval = ItemData.increment(base_data, char_num * CHAR_OFFSET)
-            item_name_to_data[newkey] = newval
-            characters_to_items[i+1][newkey] = newval
-        for key, val in base_event_item_pairs.items():
-            character_event_pairs[f"Custom Character {i+1} {key}"] = f"Custom Character {i+1} {val}"
-        char_num += 1
-
-
+            character_event_pairs[f"{definition.name} {key}"] = f"{definition.name} {val}"
     return item_name_to_data, characters_to_items, character_event_pairs
 
-item_table, chars_to_items, event_item_pairs = create_item_tables(character_list, NUM_CUSTOM)
+
+item_table, chars_to_items, event_item_pairs = create_item_tables(character_registry)
 
 
 def create_item_groups(
         items: dict[str, ItemData],
-        characters_to_items: dict[typing.Union[str, int], dict[str, ItemData]],
+        characters_to_items: dict[str, dict[str, ItemData]],
 ) -> dict[str, typing.Set[str]]:
     groups: dict[str, typing.Set[str]] = {
         "Gold": set(),
@@ -231,8 +216,7 @@ def create_item_groups(
         elif item_name in universal_bonus_items:
             groups["Bonus Items"].add(item_name)
 
-    for character_key, character_items in characters_to_items.items():
-        character_name = character_key if isinstance(character_key, str) else f"Custom Character {character_key}"
+    for character_name, character_items in characters_to_items.items():
         character_groups = {
             ItemType.GOLD: groups.setdefault(f"{character_name} Gold", set()),
             ItemType.CAMPFIRE: groups.setdefault(f"{character_name} Campfire Upgrades", set()),

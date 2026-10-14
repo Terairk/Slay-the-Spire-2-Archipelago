@@ -1,8 +1,5 @@
 <script setup lang="ts">
-import {
-  copyAscensionConfiguration,
-  MAX_MODDED_CHARACTERS,
-} from "../../../wizard/CharacterRoster";
+import { copyAscensionConfiguration } from "../../../wizard/CharacterRoster";
 import type { ModdedCharacterAnswers } from "../../../wizard/WizardAnswers";
 import WizardMarkdownDocument from "../core/WizardMarkdownDocument.vue";
 
@@ -17,18 +14,12 @@ const emit = defineEmits<{
 /**
  * Adds one blank modded-character row with copied Ascension settings.
  *
- * @returns Nothing; emits a new row when the table has a source row and is below the
- * configured maximum.
+ * @returns Nothing; emits a new candidate row when the table has a source row.
  * @remarks The parent mounts this table only after creating its mandatory first row.
  * New rows copy the final existing row so the independent Ascension configuration is
  * never shared by reference between characters.
  */
 function addModdedCharacter(): void {
-  // Respect the Python world's hard limit before creating another editable row.
-  if (props.modelValue.length >= MAX_MODDED_CHARACTERS) {
-    return;
-  }
-
   // The mounted table should always have one row; keep corrupted empty input inert.
   const sourceCharacter = props.modelValue.at(-1);
 
@@ -141,7 +132,6 @@ function setModdedCharacterName(index: number, value: unknown): void {
               size="sm"
               square
               class="cursor-pointer"
-              :disabled="modelValue.length >= MAX_MODDED_CHARACTERS"
               aria-label="Add modded character"
               @click="addModdedCharacter"
             />

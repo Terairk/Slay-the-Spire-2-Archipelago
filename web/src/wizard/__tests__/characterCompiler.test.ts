@@ -355,7 +355,7 @@ function rejectsInvalidModdedAndAscensionAnswers(): void {
 
   expect(compileOrphanedAscensionDown).toThrow("requires Ascension A1");
 
-  // The current Python world reserves no more than five custom character slots.
+  // A generated roster supports at most fifteen modded characters.
   answers.characters.sharedAscensions = {
     enabled: [1],
     ascensionDownsEnabled: false,
@@ -363,7 +363,7 @@ function rejectsInvalidModdedAndAscensionAnswers(): void {
   };
   answers.characters.moddedCharacters = [];
 
-  for (let index = 1; index <= 6; index += 1) {
+  for (let index = 1; index <= 16; index += 1) {
     answers.characters.moddedCharacters.push({
       name: `Modded${index}`,
       ascensions: {
@@ -376,11 +376,11 @@ function rejectsInvalidModdedAndAscensionAnswers(): void {
 
   /** Compiles the deliberately oversized modded-character roster. */
   function compileTooManyModdedCharacters(): void {
-    // Exercise the same hard limit enforced by the portrait card's plus button.
+    // Exercise the generated-roster limit independently of candidate row count.
     compileWizardAnswers(answers, optionCatalog);
   }
 
-  expect(compileTooManyModdedCharacters).toThrow("no more than 5");
+  expect(compileTooManyModdedCharacters).toThrow("no more than 15");
 }
 
 /**
@@ -654,5 +654,71 @@ describe("per-character progressive starters", () => {
       true,
     );
     expect(result.advanced_characters).not.toHaveProperty("OLD_ID");
+  });
+});
+
+describe("expanded modded rosters", () => {
+  it("preserves fifteen candidate IDs in both basic and advanced YAML order", () => {
+    const names = [
+      "WATCHER-WATCHER",
+      "GUARDIAN-GUARDIAN",
+      ...Array.from(
+        { length: 13 },
+        (_, i) => `Unknown-${String(13 - i).padStart(2, "0")}`,
+      ),
+    ];
+    for (const mode of ["shared", "individual"] as const) {
+      const answers = createTestAnswers(["Ironclad"]);
+      answers.characters.selectedCharacters = [];
+      answers.characters.startingCharacter = null;
+      answers.characters.availability = "all";
+      answers.characters.ascensionMode = mode;
+      answers.characters.selectionMode = "all";
+      answers.characters.goal = "all";
+      answers.characters.moddedCharacters = names.map((name) => ({
+        name,
+        ascensions: { enabled: [1], ascensionDownsEnabled: false, downs: [] },
+      }));
+      const result = compileWizardAnswers(answers, optionCatalog);
+      if (mode === "shared") {
+        expect(result.modded_characters).toEqual(names);
+      } else {
+        expect(Object.keys(result.advanced_characters as object)).toEqual(
+          names,
+        );
+      }
+      const yaml = optionsToYaml(result);
+      const positions = names.map((name) => yaml.indexOf(name));
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
+      expect(positions.every((position) => position >= 0)).toBe(true);
+    }
+  });
+
+  it("accepts a larger candidate list only when the selected roster can fit", () => {
+    const answers = createTestAnswers(["Ironclad"]);
+    answers.characters.selectedCharacters = [];
+    answers.characters.startingCharacter = null;
+    answers.characters.availability = "all";
+    answers.characters.selectionMode = "random";
+    answers.characters.randomCharacterCount = 15;
+    answers.characters.goal = "all";
+    answers.characters.moddedCharacters = Array.from(
+      { length: 25 },
+      (_, i) => ({
+        name: `Mod-${i}`,
+        ascensions: { enabled: [1], ascensionDownsEnabled: false, downs: [] },
+      }),
+    );
+    const result = compileWizardAnswers(answers, optionCatalog);
+    expect(result.pick_num_characters).toBe(15);
+    expect(result.modded_characters).toHaveLength(25);
+    answers.characters.randomCharacterCount = 16;
+    expect(() => compileWizardAnswers(answers, optionCatalog)).toThrow(
+      "no more than 15",
+    );
+    answers.characters.selectedCharacters = ["Ironclad"];
+    expect(
+      compileWizardAnswers(answers, optionCatalog).pick_num_characters,
+    ).toBe(16);
   });
 });

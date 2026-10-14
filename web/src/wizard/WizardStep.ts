@@ -168,7 +168,7 @@ export const characterSetupStep: WizardStep = {
     {
       id: "modded-characters",
       title: "Setup Modded Characters",
-      description: `Enter each modded character's unique ID so that the Archipelago mod can find them and use them properly in-game. You can have up to ${MAX_MODDED_CHARACTERS} modded characters.`,
+      description: `Enter each modded character's unique ID so that the Archipelago mod can find them and use them properly in-game. Each generated roster can include up to ${MAX_MODDED_CHARACTERS} modded characters. Larger candidate lists require random selection. Recognised characters use their display names; other selected characters are numbered in table order.`,
       isVisible: hasModdedCharacters,
     },
     {
