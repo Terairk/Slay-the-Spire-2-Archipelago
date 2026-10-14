@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nextTick, ref } from "vue";
 import { copyAscensionConfiguration } from "../../../wizard/CharacterRoster";
 import type { ModdedCharacterAnswers } from "../../../wizard/WizardAnswers";
 import WizardMarkdownDocument from "../core/WizardMarkdownDocument.vue";
@@ -11,15 +12,17 @@ const emit = defineEmits<{
   "update:modelValue": [value: ModdedCharacterAnswers[]];
 }>();
 
+const characterTable = ref<HTMLDivElement | null>(null);
+
 /**
  * Adds one blank modded-character row with copied Ascension settings.
  *
- * @returns Nothing; emits a new candidate row when the table has a source row.
+ * @returns Resolves after the new row renders and its input receives focus.
  * @remarks The parent mounts this table only after creating its mandatory first row.
  * New rows copy the final existing row so the independent Ascension configuration is
  * never shared by reference between characters.
  */
-function addModdedCharacter(): void {
+async function addModdedCharacter(): Promise<void> {
   // The mounted table should always have one row; keep corrupted empty input inert.
   const sourceCharacter = props.modelValue.at(-1);
 
@@ -35,6 +38,23 @@ function addModdedCharacter(): void {
 
   // Emit an immutable collection so Character Setup remains the state owner.
   emit("update:modelValue", [...props.modelValue, moddedCharacter]);
+  await nextTick();
+  characterTable.value
+    ?.querySelector<HTMLInputElement>(
+      ".modded-character-table__row:last-child input",
+    )
+    ?.focus();
+}
+
+function addModdedCharacterOnEnter(event: KeyboardEvent): void {
+  // Let IME users finish composing their character ID before adding another row.
+  if (event.isComposing) {
+    return;
+  }
+  event.preventDefault();
+  if (!event.repeat) {
+    void addModdedCharacter();
+  }
 }
 
 /**
@@ -97,6 +117,7 @@ function setModdedCharacterName(index: number, value: unknown): void {
 <template>
   <div class="modded-character-section">
     <div
+      ref="characterTable"
       class="modded-character-table"
       role="table"
       aria-label="Modded characters"
@@ -158,6 +179,7 @@ function setModdedCharacterName(index: number, value: unknown): void {
             variant="outline"
             class="w-full"
             @update:model-value="setModdedCharacterName(index, $event)"
+            @keydown.enter="addModdedCharacterOnEnter"
           />
         </div>
 
