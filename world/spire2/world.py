@@ -13,7 +13,7 @@ from .regions import create_regions
 from .rules import FALLBACK_REASON, MID_ACT_1_POWER, select_logic, set_rules
 from . import rules_old
 from .web_world import SlayTheSpire2Web
-from .characters import (CharacterConfig, character_list, character_offset_map, character_registry,
+from .characters import (CharacterConfig, character_list, vanilla_character_ids, character_registry,
                          registered_character_blocks, unique_character_ids)
 from .constants import NUM_CUSTOM, ASCENSION_LIST, CHAR_OFFSET, GENERIC_CHARACTER_BLOCKS
 from .items import item_table, chars_to_items, bonus_item_table, ItemType, base_event_item_pairs, ItemData, item_groups
@@ -177,11 +177,11 @@ class SlayTheSpire2World(World):
             else:
                 selected_chars = self.random.sample(remaining, k=num_rand_chars)
 
-        modded_chars = [char for char in selected_chars if char.casefold() not in character_offset_map]
+        modded_chars = [char for char in selected_chars if char.casefold() not in vanilla_character_ids]
         excess = len(modded_chars) - NUM_CUSTOM
         if excess > 0:
             supported_chars = [char for char in char_options
-                               if char.casefold() in character_offset_map and char not in selected_chars]
+                               if char.casefold() in vanilla_character_ids and char not in selected_chars]
             # A random subset may substitute unselected vanilla characters to meet the cap.
             # Never silently reduce the requested roster or remove its fixed unlocked character.
             if num_rand_chars == 0 or len(supported_chars) < excess:
@@ -201,13 +201,12 @@ class SlayTheSpire2World(World):
         modded_num = 0
         generic_num = 0
         for option_name in selected_chars:
+            character_id = option_name.casefold()
             mod_num = 0
-            if option_name.casefold() not in character_offset_map:
+            if character_id not in vanilla_character_ids:
                 modded_num += 1
                 mod_num = modded_num
-            block = character_offset_map.get(option_name.casefold())
-            if block is None:
-                block = registered_character_blocks.get(option_name.casefold())
+            block = registered_character_blocks.get(character_id)
             if block is None:
                 generic_num += 1
                 block = GENERIC_CHARACTER_BLOCKS[generic_num - 1]

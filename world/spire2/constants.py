@@ -5,10 +5,8 @@ CHAR_OFFSET = 10000
 NUM_CUSTOM = 15
 
 # These are permanent ID ranges, not counts of currently installed characters.
-# Preserve the original vanilla and custom blocks when extending either roster.
-ORIGINAL_VANILLA_BLOCKS = range(1, 6)
-GENERIC_CHARACTER_BLOCKS = range(6, 21)
-FUTURE_VANILLA_BLOCKS = range(21, 40)
+VANILLA_CHARACTER_BLOCKS = range(1, 11)
+GENERIC_CHARACTER_BLOCKS = range(11, 26)
 PREDEFINED_CHARACTER_BLOCKS = range(40, 100)
 
 ASCENSIONS = {

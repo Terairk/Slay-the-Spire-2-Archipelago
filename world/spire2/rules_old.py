@@ -17,7 +17,7 @@ from NetUtils import JSONMessagePart
 from rule_builder.field_resolvers import FieldResolver
 from rule_builder.options import OptionFilter
 from rule_builder.rules import Rule, True_, Has, HasFromListUnique
-from .characters import CharacterConfig, character_offset_map
+from .characters import CharacterConfig, character_registry
 from .items import ItemType
 from .options import CampfireSanity, ShopSanity, GoldSanity, ShopRemoveSlots
 from worlds.AutoWorld import LogicMixin
@@ -88,9 +88,11 @@ class LegacySpireHasPower(Rule['SlayTheSpire2World'], game="Slay the Spire II"):
 
         @override
         def explain_json(self, state: CollectionState | None = None) -> List[JSONMessagePart]:
+            definition = character_registry.get(self.char_offset)
+            name = definition.name if definition is not None else str(self.char_offset)
             return [
                 {
-                    "type": "text", "text": f"{next((name for name, offset in character_offset_map.items() if offset == self.char_offset), str(self.char_offset))} has power level {self.power_level}"
+                    "type": "text", "text": f"{name} has power level {self.power_level}"
                 }
             ]
 

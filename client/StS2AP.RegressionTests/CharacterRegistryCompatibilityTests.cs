@@ -21,12 +21,25 @@ public sealed class CharacterRegistryCompatibilityTests
         try
         {
             Type type = context.LoadFromAssemblyPath(path).GetType("StS2AP.Models.CharacterConfig", true)!;
+            // Each row is an independent slot configuration, not part of one combined roster.
+            // Block is the one-based AP ID block supplied as char_offset; it determines item
+            // and location IDs. ModNum is the selected modded-roster position (zero for vanilla),
+            // not an ID block or the number in "Custom Character X".
+            // Blocks must be unique within a roster, but can repeat across these scenarios.
+            // Positive ModNum values are unique within a roster; all vanilla entries use zero.
             var configurations = new[]
             {
+                // An old generated seed called Watcher Custom Character 1 and assigned block 6.
+                // A newer client must retain that seed's supplied values, not remap it to block 51.
                 (Name: "Custom Character 1", InternalId: "WATCHER-WATCHER", Block: 6, ModNum: 1),
+                // A new seed selects Watcher first: its predefined block is independent of position.
                 (Name: "Watcher", InternalId: "WATCHER-WATCHER", Block: 51, ModNum: 1),
-                (Name: "Custom Character 1", InternalId: "UNKNOWN-MOD", Block: 6, ModNum: 2),
-                (Name: "Future Vanilla", InternalId: "FUTURE_VANILLA", Block: 21, ModNum: 0),
+                // After a predefined character, the second mod is the first unknown character.
+                // It therefore uses generic block 11 and display number 1, while ModNum is 2.
+                (Name: "Custom Character 1", InternalId: "UNKNOWN-MOD", Block: 11, ModNum: 2),
+                // A future sixth vanilla character uses reserved vanilla block 6 and ModNum 0.
+                // Sharing block 6 with the old-seed scenario is valid: these are different seeds.
+                (Name: "Future Vanilla", InternalId: "FUTURE_VANILLA", Block: 6, ModNum: 0),
             };
             foreach (var entry in configurations)
             {

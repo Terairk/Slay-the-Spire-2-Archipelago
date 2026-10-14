@@ -103,7 +103,7 @@ class LogicModeTests(unittest.TestCase):
             state.collect(old.create_item('Ironclad ' + suffix), prevent_sweep=True)
         rule = LegacySpireHasPower(old.characters[0].char_offset, 7).resolve(old)
         self.assertTrue(rule(state))
-        self.assertIn('ironclad', str(rule.explain_json(state)))
+        self.assertIn('Ironclad', str(rule.explain_json(state)))
         copied = state.copy()
         copied.remove(old.create_item('Ironclad Card Reward'))
         self.assertFalse(rule(copied))

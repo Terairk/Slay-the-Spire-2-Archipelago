@@ -4,11 +4,11 @@
   "sources": {
     "characters": {
       "path": "world/spire2/characters.py",
-      "sha256": "75354c147d9498ed844fde2501d070299a53213ebe7fdcf8b6c7b23b69c8558f"
+      "sha256": "0faec5f867b640914f86b132d86c28890b8dc4bde81fdd41484641106e43a92b"
     },
     "constants": {
       "path": "world/spire2/constants.py",
-      "sha256": "24618d1ae94c7ac431d4c1bf0ba7ec96a0f8e726d808bac54dc5f1c1d4803d7f"
+      "sha256": "4e80e272e7d9ef3054b3dd8edd97d6a7dab560239967f7ff0b33c3b75a28fe12"
     },
     "options": {
       "path": "world/spire2/options.py",

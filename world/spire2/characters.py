@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import List, Any, Sequence
 
-from .constants import (NUM_CUSTOM, ORIGINAL_VANILLA_BLOCKS, GENERIC_CHARACTER_BLOCKS,
-                        FUTURE_VANILLA_BLOCKS, PREDEFINED_CHARACTER_BLOCKS)
+from .constants import (NUM_CUSTOM, VANILLA_CHARACTER_BLOCKS, GENERIC_CHARACTER_BLOCKS,
+                        PREDEFINED_CHARACTER_BLOCKS)
 
 
 @dataclass(frozen=True)
@@ -53,12 +53,17 @@ def create_character_registry(
         vanilla: Sequence[CharacterDefinition] = VANILLA_CHARACTERS,
         predefined: Sequence[CharacterDefinition] = PREDEFINED_CHARACTERS,
 ) -> dict[int, CharacterDefinition]:
-    vanilla_blocks = (*ORIGINAL_VANILLA_BLOCKS, *FUTURE_VANILLA_BLOCKS)
-    if len(vanilla) > len(vanilla_blocks) or len(predefined) > len(PREDEFINED_CHARACTER_BLOCKS):
+    """Return character definitions keyed by their one-based AP ID block number.
+
+    The integer key is the slot-data ``char_offset``, not a YAML roster position
+    or a complete item/location ID. Items use block * CHAR_OFFSET + base ID;
+    locations use (block - 1) * CHAR_OFFSET + base ID.
+    """
+    if len(vanilla) > len(VANILLA_CHARACTER_BLOCKS) or len(predefined) > len(PREDEFINED_CHARACTER_BLOCKS):
         raise ValueError("Character registry exceeds its reserved ID range")
     if NUM_CUSTOM > len(GENERIC_CHARACTER_BLOCKS):
         raise ValueError("Custom character limit exceeds its reserved ID range")
-    registry = dict(zip(vanilla_blocks, vanilla))
+    registry = dict(zip(VANILLA_CHARACTER_BLOCKS, vanilla))
     registry.update({block: CharacterDefinition(f"Custom Character {index}", None)
                      for index, block in enumerate(GENERIC_CHARACTER_BLOCKS[:NUM_CUSTOM], start=1)})
     registry.update(zip(PREDEFINED_CHARACTER_BLOCKS, predefined))
@@ -73,16 +78,21 @@ def create_character_registry(
 character_registry = create_character_registry()
 character_list = [definition.name for definition in VANILLA_CHARACTERS]
 vanilla_by_name = {definition.name: definition for definition in VANILLA_CHARACTERS}
-character_offset_map = {
-    name.casefold(): block
-    for block, definition in character_registry.items()
-    if definition.name in vanilla_by_name
+vanilla_character_ids = {
+    name.casefold()
+    for definition in VANILLA_CHARACTERS
     for name in (definition.name, definition.internal_id)
+    if name is not None
 }
 registered_character_blocks = {
     definition.internal_id.casefold(): block
     for block, definition in character_registry.items() if definition.internal_id is not None
 }
+# Vanilla options also accept display names when they differ from the game's IDs.
+registered_character_blocks.update({
+    definition.name.casefold(): block
+    for block, definition in character_registry.items() if definition.name in vanilla_by_name
+})
 
 
 def unique_character_ids(values: Sequence[str]) -> list[str]:

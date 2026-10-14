@@ -10,7 +10,7 @@ from worlds.AutoWorld import call_all
 from worlds.spire2 import SlayTheSpire2World
 from worlds.spire2.characters import (
     CharacterDefinition, DEFAULT_STARTER_POWER, PREDEFINED_CHARACTERS, VANILLA_CHARACTERS,
-    character_list, character_registry, create_character_registry, registered_character_blocks,
+    character_list, character_registry, create_character_registry,
 )
 from worlds.spire2.constants import CHAR_OFFSET, NUM_CUSTOM
 from worlds.spire2.items import base_item_table, create_item_tables, item_table
@@ -20,11 +20,11 @@ from worlds.spire2.rules_new import STARTER_CARD_POWER, STARTER_RELIC_POWER, Spi
 
 
 class TestCharacterRegistry(unittest.TestCase):
-    def test_existing_vanilla_and_generic_ids_are_unchanged(self):
-        # Freeze the published order independently of the registry implementation.
-        original = ["Ironclad", "Silent", "Defect", "Regent", "Necrobinder"]
-        original += [f"Custom Character {i}" for i in range(1, 6)]
-        for block, name in enumerate(original, start=1):
+    def test_vanilla_and_generic_ids_use_separate_reserved_ranges(self):
+        # Freeze the intended ranges independently of the registry implementation.
+        vanilla = ["Ironclad", "Silent", "Defect", "Regent", "Necrobinder"]
+        generic = [f"Custom Character {i}" for i in range(1, 16)]
+        for block, name in [*enumerate(vanilla, start=1), *enumerate(generic, start=11)]:
             for suffix, data in base_item_table.items():
                 expected = None if data.code is None else block * CHAR_OFFSET + data.code
                 self.assertEqual(expected, item_table[f"{name} {suffix}"].code)
@@ -56,12 +56,22 @@ class TestCharacterRegistry(unittest.TestCase):
     def test_new_vanilla_character_does_not_renumber_existing_tables(self):
         future = CharacterDefinition("Future Vanilla", "FUTURE_VANILLA", DEFAULT_STARTER_POWER)
         registry = create_character_registry((*VANILLA_CHARACTERS, future))
-        self.assertEqual(future, registry[21])
+        self.assertEqual(future, registry[6])
         items, _, _ = create_item_tables(registry)
         locations, _, _ = create_location_tables(registry)
         self.assertEqual(item_table, {name: items[name] for name in item_table})
         self.assertEqual(location_table, {name: locations[name] for name in location_table})
-        self.assertEqual(210004, items["Future Vanilla Progressive Ancient"].code)
+        self.assertEqual(60004, items["Future Vanilla Progressive Ancient"].code)
+
+    def test_ten_vanilla_characters_fit_without_overlapping_generic_blocks(self):
+        future = tuple(CharacterDefinition(f"Future {i}", f"FUTURE_{i}", DEFAULT_STARTER_POWER)
+                       for i in range(6, 11))
+        registry = create_character_registry((*VANILLA_CHARACTERS, *future))
+        self.assertEqual(future[-1], registry[10])
+        self.assertEqual("Custom Character 1", registry[11].name)
+        with self.assertRaisesRegex(ValueError, "reserved ID range"):
+            create_character_registry((*VANILLA_CHARACTERS, *future,
+                                       CharacterDefinition("Overflow", "OVERFLOW", DEFAULT_STARTER_POWER)))
 
     def test_ids_are_unique_and_stay_within_the_client_player_block(self):
         for ids in ([data.code for data in item_table.values() if data.code is not None],
@@ -100,7 +110,7 @@ class TestCharacterRosters(unittest.TestCase):
                                   advanced_characters={name: {} for name in roster})
             self.assertEqual(["Watcher", "Custom Character 1", "The Guardian", "Custom Character 2"],
                              [config.name for config in world.characters])
-            self.assertEqual([51, 6, 44, 7], [config.char_offset for config in world.characters])
+            self.assertEqual([51, 11, 44, 12], [config.char_offset for config in world.characters])
             self.assertEqual(roster, [config.official_name for config in world.characters])
 
     def test_advanced_case_collisions_are_rejected(self):
@@ -136,7 +146,7 @@ class TestCharacterRosters(unittest.TestCase):
     def test_all_fifteen_generic_slots_and_overflow(self):
         roster = [f"Unknown-{i}" for i in range(16)]
         world = self.generate(modded_characters=roster[:15])
-        self.assertEqual(20, world.characters[-1].char_offset)
+        self.assertEqual(25, world.characters[-1].char_offset)
         self.assertEqual("Custom Character 15", world.characters[-1].name)
         with self.assertRaisesRegex(OptionError, "at most 15"):
             self.generate(modded_characters=roster)
@@ -161,14 +171,9 @@ class TestCharacterRosters(unittest.TestCase):
         distribute_items_restrictive(mw, panic_method="raise")
         self.assertTrue(mw.can_beat_game())
 
-    def test_tracker_restores_new_and_legacy_generic_assignments(self):
-        for legacy in (False, True):
-            # Model the old APWorld's assignment of Watcher to generic block 6.
-            registered = dict(registered_character_blocks)
-            if legacy:
-                registered.pop("watcher-watcher")
-            with patch.dict(registered_character_blocks, registered, clear=True):
-                original = self.generate(modded_characters=["WATCHER-WATCHER", "ModA"])
+    def test_tracker_restores_named_and_generic_assignments(self):
+        for roster in (["WATCHER-WATCHER", "ModA"], ["ModA", "WATCHER-WATCHER"]):
+            original = self.generate(modded_characters=roster)
             data = copy.deepcopy(original.fill_slot_data())
             regenerated = setup_solo_multiworld(SlayTheSpire2World, steps=())
             regenerated.re_gen_passthrough = {SlayTheSpire2World.game: data}
@@ -183,9 +188,9 @@ class TestCharacterRosters(unittest.TestCase):
                              [(item.name, item.code) for item in regenerated.itempool if item.advancement])
             first = restored.characters[0]
             location = restored.get_location(f"{first.name} Potion Drop 1")
-            if legacy:
-                self.assertEqual("WATCHER-WATCHER Potion Drop 1", restored.location_id_to_alias[location.address])
-                self.assertEqual(6, first.char_offset)
+            if first.name == "Custom Character 1":
+                self.assertEqual("ModA Potion Drop 1", restored.location_id_to_alias[location.address])
+                self.assertEqual(11, first.char_offset)
             else:
                 self.assertNotIn(location.address, restored.location_id_to_alias)
                 self.assertEqual("Watcher", first.name)
