@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using StS2AP.Data;
 using StS2AP.Utils;
 
@@ -74,7 +75,7 @@ namespace StS2AP.Patches
         public static class CaptureAscensionLabel
         {
             [HarmonyPostfix]
-            public static void PostFix(MegaLabel ____ascensionLabel)
+            public static void PostFix(NTopBar __instance, MegaLabel ____ascensionLabel)
             {
                 // AP_MP: Ascension UI overrides require a host-authoritative shared set.
                 if (!MultiplayerSupport.ShouldRunReplicatedConstruction(
@@ -82,7 +83,9 @@ namespace StS2AP.Patches
                     return;
 
                 _ascensionLabel = ____ascensionLabel;
-                ChangeAscensionLabel(AscensionMultiplayer.GetCurrentCount().ToString());
+                // Initialize is already on the UI thread. Replace the native 10 before drawing.
+                ____ascensionLabel.SetTextAutoSize(AscensionMultiplayer.GetCurrentCount().ToString());
+                __instance._ascensionIcon.Visible = true;
             }
         }
 
@@ -193,22 +196,40 @@ namespace StS2AP.Patches
         /// </summary>
         public static void UpdateCharacterSelectAscension(
             NCharacterSelectScreen screen,
-            NCharacterSelectButton characterButton,
+            NCharacterSelectButton? characterButton,
             CharacterModel character
         )
         {
-            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
-            if (settings == null
-                || !MultiplayerSupport.IsFeatureEnabled(MultiplayerFeature.AscensionEffects))
+            if (!MultiplayerSupport.ShouldRunReplicatedConstruction(MultiplayerFeature.AscensionEffects))
                 return;
 
             var panel = screen._ascensionPanel;
-            if (panel == null)
+            if (panel == null || panel._ascensionLevel == null || panel._info == null)
             {
                 return;
             }
 
-            if (characterButton.IsLocked
+            if (screen.Lobby?.NetService.Type == NetGameType.Client
+                && ApRunData.TryGetLobbySharedState(screen.Lobby, out var shared)
+                && shared.AscensionStateInitialized)
+            {
+                SetPanelLevels(panel, shared.CurrentAscensions);
+                return;
+            }
+
+            // Client lobby contributions do not include the host's shared block until launch.
+            // Never interpret the native construction value as the host's actual AP settings.
+            if (screen.Lobby?.NetService.Type == NetGameType.Client)
+            {
+                panel._ascensionLevel.SetTextAutoSize("—");
+                panel._info.Text = "Ascensions are set by the host.";
+                panel.Visible = true;
+                return;
+            }
+
+            ArchipelagoSettings? settings = ArchipelagoClient.Settings;
+            if (characterButton?.IsLocked == true
+                || settings == null
                 || !settings.Characters.TryGetValue(
                     character.Id.Entry,
                     out var config
@@ -218,20 +239,46 @@ namespace StS2AP.Patches
                 return;
             }
 
-            var levelLabel = panel._ascensionLevel;
-            var description = panel._info;
-            if (levelLabel == null || description == null)
-            {
-                return;
-            }
-
             var effectiveAscensions = GetEffectiveAscensions(config);
-            levelLabel.SetTextAutoSize(effectiveAscensions.Count.ToString());
+            SetPanelLevels(panel, effectiveAscensions.Select(level => (int)level));
+        }
+
+        private static void SetPanelLevels(NAscensionPanel panel, IEnumerable<int> levels)
+        {
+            int[] currentLevels = levels.Distinct().OrderBy(level => level).ToArray();
+            panel._ascensionLevel.SetTextAutoSize(currentLevels.Length.ToString());
             // The native description names just one level and cannot describe gaps from Ascension Downs.
-            description.Text = "[b][gold]"
-                + AscensionBanner.FormatLevels(effectiveAscensions.Select(level => (int)level))
-                + "[/gold][/b]";
+            panel._info.Text = "[b][gold]" + AscensionBanner.FormatLevels(currentLevels) + "[/gold][/b]";
             panel.Visible = true;
+        }
+
+        [HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.AscensionChanged))]
+        public static class RefreshLobbyAscension
+        {
+            [HarmonyPostfix]
+            public static void Postfix(NCharacterSelectScreen __instance)
+            {
+                if (__instance.Lobby == null)
+                    return;
+                UpdateCharacterSelectAscension(__instance, __instance._selectedButton,
+                    BetaMainCompatibility.GetLocalCharacter(__instance.Lobby));
+            }
+        }
+
+        [HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.MaxAscensionChanged))]
+        public static class RefreshLobbyMaxAscension
+        {
+            [HarmonyPostfix]
+            public static void Postfix(NCharacterSelectScreen __instance) =>
+                RefreshLobbyAscension.Postfix(__instance);
+        }
+
+        [HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.OnSubmenuOpened))]
+        public static class RefreshOpenedLobbyAscension
+        {
+            [HarmonyPostfix]
+            public static void Postfix(NCharacterSelectScreen __instance) =>
+                RefreshLobbyAscension.Postfix(__instance);
         }
 
         private static HashSet<AscensionLevel> GetEffectiveAscensions(CharacterConfig config)

@@ -579,6 +579,7 @@ public static class AscensionMultiplayer
                 {
                     runState.Map.BossMapPoint.RemoveChildPoint(secondBossPoint);
                 }
+                StS2AP.Patches.Patches_APBossPresentation.Refresh();
                 break;
         }
     }

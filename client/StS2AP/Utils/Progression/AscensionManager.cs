@@ -286,6 +286,7 @@ namespace StS2AP.Utils
                             }
                         }
                     }
+                    Patches_APBossPresentation.Refresh();
                     break;
                 case AscensionLevel.Poverty:
                     // Multiplayer routes Ascension Downs through AscensionMultiplayer, which
