@@ -11,6 +11,10 @@
 name: Spire2Player
 description: "Example settings; customise them before generating."
 game: "Slay the Spire II"
+requires:
+  version: 0.6.7 # Minimum Archipelago version for this YAML.
+  game:
+    Slay the Spire II: 1.2.0 # Minimum APWorld version for this YAML.
 Slay the Spire II:
   #####################
   # Character Options #
@@ -204,3 +208,34 @@ Slay the Spire II:
   vigor_filler_weight: "high"                       # Vigor
   thorns_filler_weight: "high"                      # Thorns
   artifact_filler_weight: "medium"                    # Artifact
+
+  ###########################
+  # Item & Location Options #
+  ###########################
+
+  # Forces these items to be in your own world.
+  local_items: []
+
+  # Forces these items to be in other players' worlds.
+  non_local_items: []
+
+  # Start with the given amount of these items, e.g. {"Ironclad Relic": 1}
+  start_inventory: {}
+
+  # Start with these items' locations already hinted (as if you'd used !hint).
+  start_hints: []
+
+  # Start with these locations and their items already hinted.
+  start_location_hints: []
+
+  # Prevent these locations from having an important item.
+  exclude_locations: []
+
+  # Prevent these locations from having an unimportant item.
+  priority_locations: []
+
+  # Share part of your item pool with other players.
+  item_links: []
+
+  # Generic item plando.
+  plando_items: []
