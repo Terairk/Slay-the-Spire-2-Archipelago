@@ -83,10 +83,10 @@ class PickNumberCharacters(Range):
     default = 0
 
 class LockCharacters(Choice):
-    """Whether in a multi character run "Unlock [Char]" items should be shuffled in.
-    locked_fixed uses unlocked_character for Player 1 and randomizes the starting character for other players.
-    locked_random independently randomizes which character each player starts with.
-    unlocked makes every character in each player's roster available."""
+    """Whether characters must be unlocked by "Unlock [Char]" items in a multi-character run.
+    unlocked makes every character available from the start.
+    locked_random starts you with one random character; the others are unlock items.
+    locked_fixed starts you with unlocked_character; the others are unlock items."""
     display_name = "Lock Characters"
     option_unlocked = 0
     option_locked_random = 1
@@ -94,7 +94,9 @@ class LockCharacters(Choice):
     default = 1
 
 class UnlockedCharacter(TextChoice):
-    """Which character Player 1 starts with, if lock_characters is set to locked_fixed.
+    """Which character you start with when lock_characters is set to locked_fixed.
+    It must be one of your configured characters, and is always kept when Pick Number of
+    Characters selects a subset. Leave it empty ("") to start with a random character.
     Can also enter a predefined display name or full internal ID for modded characters.
     The list of predefined display names will probably be pinned somewhere on Discord."""
     default = 0

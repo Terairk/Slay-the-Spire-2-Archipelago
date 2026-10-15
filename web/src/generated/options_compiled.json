@@ -12,7 +12,7 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "a85d5c67f95a8814dc0195e211469cc6173200d0202d49511f36b06ed554697f"
+      "sha256": "ff26fb23951b8970f0348a56b1bcbbbb0a68b16a7de51fed499398c278c07c41"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
@@ -664,7 +664,7 @@
       "module": "worlds.spire2.options",
       "kind": "choice",
       "display_name": "Lock Characters",
-      "description": "Whether in a multi character run \"Unlock [Char]\" items should be shuffled in.\nlocked_fixed uses unlocked_character for Player 1 and randomizes the starting character for other players.\nlocked_random independently randomizes which character each player starts with.\nunlocked makes every character in each player's roster available.",
+      "description": "Whether characters must be unlocked by \"Unlock [Char]\" items in a multi-character run.\nunlocked makes every character available from the start.\nlocked_random starts you with one random character; the others are unlock items.\nlocked_fixed starts you with unlocked_character; the others are unlock items.",
       "default": "locked_random",
       "raw_default": 1,
       "visibility": {
@@ -705,7 +705,7 @@
       "module": "worlds.spire2.options",
       "kind": "text_choice",
       "display_name": "Unlocked Character",
-      "description": "Which character Player 1 starts with, if lock_characters is set to locked_fixed.\nCan also enter a predefined display name or full internal ID for modded characters.\nThe list of predefined display names will probably be pinned somewhere on Discord.",
+      "description": "Which character you start with when lock_characters is set to locked_fixed.\nIt must be one of your configured characters, and is always kept when Pick Number of\nCharacters selects a subset. Leave it empty (\"\") to start with a random character.\nCan also enter a predefined display name or full internal ID for modded characters.\nThe list of predefined display names will probably be pinned somewhere on Discord.",
       "default": "ironclad",
       "raw_default": 0,
       "visibility": {
