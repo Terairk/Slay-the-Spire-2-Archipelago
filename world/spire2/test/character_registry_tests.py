@@ -23,7 +23,7 @@ class TestCharacterRegistry(unittest.TestCase):
     def test_vanilla_and_generic_ids_use_separate_reserved_ranges(self):
         # Freeze the intended ranges independently of the registry implementation.
         vanilla = ["Ironclad", "Silent", "Defect", "Regent", "Necrobinder"]
-        generic = [f"Custom Character {i}" for i in range(1, 16)]
+        generic = [f"Custom Character {i}" for i in range(1, 21)]
         for block, name in [*enumerate(vanilla, start=1), *enumerate(generic, start=11)]:
             for suffix, data in base_item_table.items():
                 expected = None if data.code is None else block * CHAR_OFFSET + data.code
@@ -179,34 +179,43 @@ class TestCharacterRosters(unittest.TestCase):
         self.assertEqual(("Custom Character 1", roster[-1]),
                          (fixed.characters[0].name, fixed.characters[0].official_name))
 
-    def test_fifteen_modded_characters_and_vanilla_can_generate_and_fill(self):
-        roster = [definition.internal_id for definition in PREDEFINED_CHARACTERS] + ["ModA", "ModB", "ModC"]
+    def test_twenty_modded_characters_and_vanilla_can_generate_and_fill(self):
+        roster = [definition.internal_id for definition in PREDEFINED_CHARACTERS] + [f"Mod-{i}" for i in range(8)]
         for new_logic in (False, True):
             with self.subTest(new_logic=new_logic):
                 world = self.generate(characters=character_list, modded_characters=roster,
                                       use_new_logic=new_logic)
-                self.assertEqual(len(character_list) + 15, len(world.characters))
-                self.assertEqual(15, world.modded_num)
+                self.assertEqual(len(character_list) + 20, len(world.characters))
+                self.assertEqual(20, world.modded_num)
                 distribute_items_restrictive(world.multiworld, panic_method="raise")
                 self.assertFalse(world.multiworld.get_unfilled_locations())
                 self.assertTrue(world.multiworld.can_beat_game())
 
-    def test_all_fifteen_generic_slots_and_overflow(self):
-        roster = [f"Unknown-{i}" for i in range(16)]
-        world = self.generate(modded_characters=roster[:15])
-        self.assertEqual(25, world.characters[-1].char_offset)
-        self.assertEqual("Custom Character 15", world.characters[-1].name)
-        with self.assertRaisesRegex(OptionError, "at most 15"):
-            self.generate(modded_characters=roster)
-        with self.assertRaisesRegex(OptionError, "at most 15"):
-            self.generate(modded_characters=roster, pick_num_characters=16)
+    def test_all_twenty_generic_slots_and_overflow(self):
+        roster = [f"Unknown-{i}" for i in range(21)]
+        for advanced in (False, True):
+            with self.subTest(advanced=advanced):
+                def generate(names, **options):
+                    if advanced:
+                        return self.generate(use_advanced_characters=True,
+                                             advanced_characters={name: {} for name in names}, **options)
+                    return self.generate(modded_characters=names, **options)
+
+                world = generate(roster[:20])
+                self.assertEqual(20, world.modded_num)
+                self.assertEqual(30, world.characters[-1].char_offset)
+                self.assertEqual("Custom Character 20", world.characters[-1].name)
+                with self.assertRaisesRegex(OptionError, "at most 20"):
+                    generate(roster)
+                with self.assertRaisesRegex(OptionError, "at most 20"):
+                    generate(roster, pick_num_characters=21)
 
     def test_random_selection_replaces_excess_mods_without_shrinking_or_losing_fixed_start(self):
         roster = [f"Unknown-{i}" for i in range(30)]
         world = self.generate(characters=character_list, modded_characters=roster,
-                              pick_num_characters=20, lock_characters=2, unlocked_character=roster[-1])
-        self.assertEqual(20, len(world.characters))
-        self.assertEqual(15, world.modded_num)
+                              pick_num_characters=25, lock_characters=2, unlocked_character=roster[-1])
+        self.assertEqual(25, len(world.characters))
+        self.assertEqual(20, world.modded_num)
         self.assertEqual([roster[-1]], [c.option_name for c in world.characters if not c.locked])
 
     def test_two_players_can_use_different_order_without_changing_named_ids(self):

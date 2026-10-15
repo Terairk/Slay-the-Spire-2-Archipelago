@@ -355,7 +355,7 @@ function rejectsInvalidModdedAndAscensionAnswers(): void {
 
   expect(compileOrphanedAscensionDown).toThrow("requires Ascension A1");
 
-  // A generated roster supports at most fifteen modded characters.
+  // A generated roster supports at most twenty modded characters.
   answers.characters.sharedAscensions = {
     enabled: [1],
     ascensionDownsEnabled: false,
@@ -363,7 +363,7 @@ function rejectsInvalidModdedAndAscensionAnswers(): void {
   };
   answers.characters.moddedCharacters = [];
 
-  for (let index = 1; index <= 16; index += 1) {
+  for (let index = 1; index <= 21; index += 1) {
     answers.characters.moddedCharacters.push({
       name: `Modded${index}`,
       ascensions: {
@@ -380,7 +380,7 @@ function rejectsInvalidModdedAndAscensionAnswers(): void {
     compileWizardAnswers(answers, optionCatalog);
   }
 
-  expect(compileTooManyModdedCharacters).toThrow("no more than 15");
+  expect(compileTooManyModdedCharacters).toThrow("no more than 20");
 }
 
 /**
@@ -658,13 +658,13 @@ describe("per-character progressive starters", () => {
 });
 
 describe("expanded modded rosters", () => {
-  it("preserves fifteen candidate IDs in both basic and advanced YAML order", () => {
+  it("preserves twenty candidate IDs in both basic and advanced YAML order", () => {
     const names = [
       "WATCHER-WATCHER",
       "GUARDIAN-GUARDIAN",
       ...Array.from(
-        { length: 13 },
-        (_, i) => `Unknown-${String(13 - i).padStart(2, "0")}`,
+        { length: 18 },
+        (_, i) => `Unknown-${String(18 - i).padStart(2, "0")}`,
       ),
     ];
     for (const mode of ["shared", "individual"] as const) {
@@ -700,7 +700,7 @@ describe("expanded modded rosters", () => {
     answers.characters.startingCharacter = null;
     answers.characters.availability = "all";
     answers.characters.selectionMode = "random";
-    answers.characters.randomCharacterCount = 15;
+    answers.characters.randomCharacterCount = 20;
     answers.characters.goal = "all";
     answers.characters.moddedCharacters = Array.from(
       { length: 25 },
@@ -710,15 +710,15 @@ describe("expanded modded rosters", () => {
       }),
     );
     const result = compileWizardAnswers(answers, optionCatalog);
-    expect(result.pick_num_characters).toBe(15);
+    expect(result.pick_num_characters).toBe(20);
     expect(result.modded_characters).toHaveLength(25);
-    answers.characters.randomCharacterCount = 16;
+    answers.characters.randomCharacterCount = 21;
     expect(() => compileWizardAnswers(answers, optionCatalog)).toThrow(
-      "no more than 15",
+      "no more than 20",
     );
     answers.characters.selectedCharacters = ["Ironclad"];
     expect(
       compileWizardAnswers(answers, optionCatalog).pick_num_characters,
-    ).toBe(16);
+    ).toBe(21);
   });
 });

@@ -38,7 +38,7 @@ class ModdedCharacters(OptionList):
     """Modded characters to include when Advanced Characters is disabled. Enter each character's
     internal ID or a predefined display name, such as Watcher, Guardian, or Tectonic.
     The list of predefined display names will probably be pinned somewhere on Discord.
-    At most 15 modded characters can be present in the generated character set.
+    At most 20 modded characters can be present in the generated character set.
     Duplicate aliases and IDs are removed, keeping the first occurrence. Predefined characters use their
     display names; other selected characters are numbered consecutively in YAML order.
     A larger candidate list is allowed when Pick Number of Characters selects a subset.

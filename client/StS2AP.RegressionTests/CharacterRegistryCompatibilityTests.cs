@@ -37,6 +37,8 @@ public sealed class CharacterRegistryCompatibilityTests
                 // After a predefined character, the second mod is the first unknown character.
                 // It therefore uses generic block 11 and display number 1, while ModNum is 2.
                 (Name: "Custom Character 1", InternalId: "UNKNOWN-MOD", Block: 11, ModNum: 2),
+                // The expanded generic range reaches block 30 for the twentieth modded character.
+                (Name: "Custom Character 20", InternalId: "UNKNOWN-MOD-20", Block: 30, ModNum: 20),
                 // A future sixth vanilla character uses reserved vanilla block 6 and ModNum 0.
                 // Sharing block 6 with the old-seed scenario is valid: these are different seeds.
                 (Name: "Future Vanilla", InternalId: "FUTURE_VANILLA", Block: 6, ModNum: 0),

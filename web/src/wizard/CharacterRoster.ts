@@ -14,7 +14,7 @@ import type {
 } from "./WizardAnswers";
 
 /** Maximum modded characters selected for one generated roster. */
-export const MAX_MODDED_CHARACTERS = 15;
+export const MAX_MODDED_CHARACTERS = 20;
 
 /**
  * Copies an Ascension configuration for immutable answer-model updates.
