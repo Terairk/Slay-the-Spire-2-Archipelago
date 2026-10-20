@@ -661,6 +661,7 @@ class SlayTheSpire2World(World):
             "ancient_relic_location",
             "ancient_relic_pool",
             "relic_rewards_available_anytime",
+            "remove_op_relics",
             "release_on_victory",
             "shop_sanity",
             "potion_sanity",

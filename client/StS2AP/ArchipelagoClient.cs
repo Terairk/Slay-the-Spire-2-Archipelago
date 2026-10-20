@@ -1573,6 +1573,15 @@ namespace StS2AP
                 settings.RelicRewardsAvailableAnytime = Convert.ToInt32(slotData["relic_rewards_available_anytime"]);
             if(slotData.ContainsKey("release_on_victory"))
                 settings.ReleaseOnVictory = Convert.ToBoolean(slotData["release_on_victory"]);
+            // Older APWorlds omit this key; their slots keep every relic.
+            if (slotData.GetValueOrDefault("remove_op_relics") is JArray categoryNames)
+            {
+                settings.RemovedOpRelics = OpRelicCategoryNames.Parse(
+                    categoryNames.Select(name => name.Type == JTokenType.String ? (string?)name : name.ToString()),
+                    unknown => LogUtility.Warn($"SLOT - Ignoring unknown remove_op_relics category '{unknown}'")
+                );
+                LogUtility.Info($"SLOT - Removed overpowered relic categories: {settings.RemovedOpRelics}");
+            }
 
             if (slotData.TryGetValue("bonus_items", out object? bonusItemsValue))
             {
