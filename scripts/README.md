@@ -24,7 +24,10 @@ Archipelago checkout. Per-character starter values stay in `world/spire2/charact
 with the sibling Archipelago checkout and counts failures. Run it after changing logic numbers.
 `--sparse` draws floorless, no-gold, no-potion seeds, which fall back to old logic when alone;
 `--sparse-new-logic` forces new logic on them, and `--partner apquest` or `--partner spire` adds
-a second player. [The logic design notes](../docs/contributing/apworld-logic.md) record past results.
+a second player. `--option-set NAME` (repeatable) replaces random options with fixed one-character
+option sets, generated on the same seeds, and `--spheres` reports the sphere in which each region
+opens and the share of the world's progression items found before it.
+[The logic design notes](../docs/contributing/apworld-logic.md) record past results.
 
 `python scripts/simulate_card_drafts.py` is a toy model for shaping the card strength tables.
 It compares drafting AP Card Rewards from a stockpile at the start of a run against receiving
