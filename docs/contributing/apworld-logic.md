@@ -32,25 +32,31 @@ Universal Tracker's explanation lists each contribution to a check.
 - **Path track:** the Early, Mid, Late and Boss regions. They hold every check a run can reach
   while walking around elites: floors, card rewards, gold, potions, campfires and the Act 1
   chest relic.
-- **Elite track:** Act 1/2/3 Elites regions, entered from each act's Mid region. Acts 2 and 3
-  also need the previous act's Elites region, so relic counts add up across a run.
+- **Elite track:** one region per relic. Each act's elites are fought in turn (Act 1 Elite 1
+  and 2, Act 2 Elite 1 and 2, Act 3 Elite 1 to 3), each entered from the one before and the
+  first from the act's Mid region. In Acts 2 and 3, a Chest region entered from Mid holds the
+  chest relic a run reaches after the previous act's elites. Each act's chest and first elite
+  need the previous act's last elite, so relic counts add up across a run.
 
 Relic N is the run's Nth elite, chest or Black Star reward. Relic 1 is the Act 1 chest on the
-path. Relics 2-3, 4-6 and 7-10 are in the Act 1, 2 and 3 Elites regions, assuming a run fights
-two elites in Acts 1 and 2 and three in Act 3.
+path; relics 2-3 are Act 1's elites, 4 the Act 2 chest, 5-6 Act 2's elites, 7 the Act 3 chest
+and 8-10 Act 3's elites, assuming a run fights two elites in Acts 1 and 2 and three in Act 3.
 
 Mid and Late Act 1 need 2 and 7 power. With Seeded Run they keep the elite-inclusive 4 and 10:
-every run replays one map, which may force an elite. Old logic keeps its original relic
-placement and has no Elites regions.
+every run replays one map, which may force an elite. Elites climb from about Mid power to Late
+power over each act (4.5 and 6.5; 15.5 and 17; 26, 26.5 and 27), and chests take Mid power (14
+and 25.5). Elite track rows otherwise copy their act's Late row, including its vanilla card
+credit. Old logic keeps its original relic placement and has no elite track.
 
 ### Claimable relics
 
 A run claims AP Relics past Relic Rewards Available Anytime only after elite, chest or Black Star
 rewards, one claim per reward, so a power check counts at most anytime + the relic rewards taken
 by then. Walking around elites, those are the chests passed, including the one on each Mid
-region's fixed row. When an earlier Elites region is reachable, a region may count its rewards
-too: 3 after the Act 1 elites, 6 after Act 2's and 10 after Act 3's, plus later chests. Each
-entrance is an either/or of up to four power checks (`region_power` in `rules_new.py`), and
+region's fixed row. When an earlier act's last elite is reachable, a region may count the
+rewards up to it too: 3 after Act 1's elites, 6 after Act 2's and 10 after Act 3's, plus later
+chests. An elite track region counts the rewards before its relic. Each path entrance is an
+either/or of up to four power checks (`region_power` in `rules_new.py`), and
 `python3 scripts/print_logic_table.py` prints the counts. The early items of sparse openings
 make up any relics Mid Act 1 cannot count with Card Rewards.
 
@@ -124,10 +130,11 @@ From the 0.111 beta decompile unless stated otherwise.
   sparse solo seeds (`--sparse-new-logic`) failed about 16% before two tracks, 12% after, 15-16%
   once vanilla card rewards counted 0.85, and 8.5% with the sparse placement order. Once the
   fuzz also drew Relic Rewards Available Anytime, its new seed sequence gave 0 failures in 5000
-  normal seeds, 0-1 of 3000 for each partner run (`--sparse --partner apquest` and `--sparse
-  --partner spire` with `--rng-seed 31`, `--partner spire` with 32), and 7.1% forced sparse with
-  the tuning and claimable relics below. Multiworlds give fill much more room than these solo
-  seeds.
+  normal seeds, 0 of 3000 for each partner run (`--sparse --partner apquest` and `--sparse
+  --partner spire` with `--rng-seed 31`, `--partner spire` with 32), and 6.9% forced sparse with
+  the tuning, elite track and claimable relics below (9.0% for the previous logic on the same
+  seeds).
+  Multiworlds give fill much more room than these solo seeds.
 - **Sparse worlds fall back to old logic only when generated alone.** In a solo sparse world,
   every location behind a gate must hold an item that the gate can do without. New logic's late
   gates leave about half the slack of old logic's (Act 3 Boss 30 of about 35 power with all
@@ -164,12 +171,29 @@ From the 0.111 beta decompile unless stated otherwise.
   1.15 per solo world. Alternatives measured: boss 22.5 (+9.1 / +8.3) changed less, boss 21.5
   (+7.4 / +10.1) moved the wall onto Early Act 3, and raising Late Act 2 enlarged Mid to Late
   Act 2, already one of the largest steps.
+- **The elite track has one region per relic** (user's choices, 2026-10-21). One Elites region
+  per act held two to four relics behind one number: Act 1's two elites opened with Late Act 1
+  in every seed (both 7), and the Act 2 and 3 chest relics waited for elite power although a
+  run reaches them without fighting that act's elites. A single Act 1 Elites region at 5.5 was
+  tried first: it opened a sphere before Late Act 1 in 22-30% of seeds, while 8.5 delayed later
+  acts by about 0.1 sphere and raised forced sparse failures from 8.5% to 9.5%. The split gives
+  Act 1 4.5 and 6.5, keeping 5.5 on average: at 7 the second elite opened with Late Act 1 in
+  every seed, at 6.5 a sphere earlier in about 9%. By progression found (default set), relics 2
+  and 3 now open at 14% and 19% instead of both at 16% with one region at 5.5, relics 4-6 at 43%,
+  47% and 53% instead of all at 46%, and relic 10 at 83% instead of 79% with relics 7-9. Path
+  regions moved by at most 0.07 sphere, and generation was unchanged: 0 failures in every normal
+  and partner run, and 347 of 5000 forced sparse seeds (356 before the split, 343 with one
+  region at 5.5). The first Act 2 elite keeps 15.5: raising the whole
+  Act 2 Elites region to 17 or 18 had made more runs end in Late Act 2 (0.69 and 0.74 against
+  0.63) and raised forced sparse failures to 8.8% and 9.8%. Because elite track rows take the
+  Late row's vanilla card credit, with half shuffle Act 3's first two elites (26 and 26.5 at
+  19 rewards) ask for less AP power than Mid Act 3 (25.5 at 17) and open with it.
 - **Logic counts only claimable relics** (user's choice, 2026-10-21). Before, a power check
   counted every received relic. At the moment each region opened, a check limited to claimable
   relics would have failed Early Act 2 in 5-20% of seeds and Early Act 3 in 9-18% at the default
   anytime count of 2, and 39-65% of both at 0. Counting only the chests on the path cannot reach
   the Act 3 boss with a low anytime count (69-85% of random seeds failed at anytime 0-3),
-  because boss checks assume elite relics; hence the either/or with Elites regions. The chest
+  because boss checks assume elite relics; hence the either/or with the elite track. The chest
   inside each Mid region must count: without it, anytime 0 failed 80% of floorless seeds. With
   the current table, at anytime 0, 1 and 2, 5000 random seeds, 10000 fixed-set seeds and 3000
   each beside APQuest, beside another Spire world and sparse beside Spire had 0-1 failures
@@ -182,6 +206,50 @@ From the 0.111 beta decompile unless stated otherwise.
   `logic_table.py`) beside the new code under renamed rule classes, then comparing every
   entrance result and power total for random item counts across random option combinations.
   That check is a throwaway script for each refactor, because it freezes old code.
+
+## Where regions open
+
+`scripts/fuzz_apworld_generation.py --spheres` reports the sphere in which each region opens
+over successful seeds, and the share of the world's own progression items found before it.
+`--option-set` replaces random options with fixed one-Ironclad option sets on the same seeds:
+`default` (the options' defaults: floor checks, half shuffle, Anytime Ancients, Relic Rewards
+Available Anytime 2), `all-cards`, `campfire-shop`, `everything` (all shuffled, every sanity,
+Neow, starters) and `floorless` (with gold and potion checks). Mean opening sphere, 2000 seeds
+per set (`--rng-seed 2026`):
+
+| Region | Power | default | all-cards | everything | floorless | Progression before (default) |
+|---|---|---|---|---|---|---|
+| Mid Act 1 | 2 | 2.0 | 2.0 | 2.4 | 2.0 | 13% |
+| Late Act 1 | 7 | 2.6 | 2.6 | 3.6 | 2.3 | 20% |
+| Act 1 Elite 1 | 4.5 | 2.1 | 2.2 | 3.3 | 2.0 | 14% |
+| Act 1 Elite 2 | 6.5 | 2.5 | 2.5 | 3.5 | 2.2 | 19% |
+| Act 1 Boss Arena | 11.5 | 3.3 | 3.3 | 4.5 | 3.1 | 34% |
+| Early Act 2 | 12 | 3.9 | 3.9 | 5.3 | 3.7 | 40% |
+| Mid Act 2 | 14 | 4.2 | 4.5 | 6.3 | 3.9 | 43% |
+| Act 2 Chest | 14 | 4.2 | 4.6 | 6.4 | 3.9 | 43% |
+| Act 2 Elite 1 | 15.5 | 4.4 | 4.8 | 6.6 | 4.0 | 47% |
+| Act 2 Elite 2 | 17 | 4.7 | 5.1 | 6.7 | 4.4 | 53% |
+| Late Act 2 | 18 | 4.9 | 5.3 | 6.9 | 4.6 | 57% |
+| Act 2 Boss Arena | 22 | 5.3 | 5.8 | 7.5 | 5.0 | 65% |
+| Early Act 3 | 23 | 6.1 | 6.5 | 8.0 | 5.8 | 73% |
+| Mid Act 3 | 25.5 | 6.6 | 7.2 | 8.6 | 6.3 | 79% |
+| Act 3 Chest | 25.5 | 6.7 | 7.3 | 8.7 | 6.3 | 79% |
+| Act 3 Elite 1 | 26 | 6.6 | 7.4 | 8.8 | 6.3 | 79% |
+| Act 3 Elite 2 | 26.5 | 6.6 | 7.6 | 8.8 | 6.3 | 79% |
+| Act 3 Elite 3 | 27 | 6.9 | 7.6 | 8.9 | 6.6 | 83% |
+| Late Act 3 | 27 | 6.9 | 7.6 | 8.9 | 6.6 | 83% |
+| Act 3 Boss Arena | 30 | 7.4 | 8.2 | 9.4 | 7.1 | 94% |
+
+How to read it:
+
+- A solo world has only 7-9 spheres, so a gate's step shows as a fraction of a sphere. A player
+  at the logic minimum plays about one run per sphere, so the sphere gap between a path region
+  and the next is roughly how many runs end there: 0.5-0.8 in Acts 1 and 2 (largest after Late
+  Act 1, 0.76) and 0.3-0.5 in Act 3.
+- Each act's relic checks open in steps: the first elite near Mid power, the last near Late.
+- By progression found, the largest steps are Late Act 1 to the Act 1 boss and Mid to Late
+  Act 2 (13-14 points each), then the Act 3 boss (11). Early Act 3, which also asks for the
+  third Ancient, opens about 0.8 sphere after the Act 2 boss.
 
 ## Card rewards: stockpile versus one at a time
 
