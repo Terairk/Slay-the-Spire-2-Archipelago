@@ -20,6 +20,16 @@ Every number used by the APWorld's power logic lives in `world/spire2/logic_tabl
 `python scripts/print_logic_table.py` prints those tables as plain text, without needing an
 Archipelago checkout. Per-character starter values stay in `world/spire2/characters.py`.
 
+`.venv/bin/python scripts/fuzz_apworld_generation.py` generates random solo seeds through fill
+with the sibling Archipelago checkout and counts failures. Run it after changing logic numbers;
+`--sparse-new-logic` measures the floorless, no-gold, no-potion seeds that normally fall back
+to old logic. [The logic design notes](../docs/contributing/apworld-logic.md) record past results.
+
+`python scripts/simulate_card_drafts.py` is a toy model for shaping the card strength tables.
+It compares drafting AP Card Rewards from a stockpile at the start of a run against receiving
+them one at a time with forced early picks. Its assumptions (lean deck size, forced picks,
+archetype bonus) are command-line options; the output shows a curve's shape, not calibrated values.
+
 # Release preparation
 
 See [the release guide](../docs/releasing.md) for the supported manual workflow.
