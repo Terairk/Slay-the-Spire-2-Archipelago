@@ -43,6 +43,22 @@ every run replays one map, which may force an elite. Old logic (the fallback for
 floor, gold and potion checks all off) keeps its original relic placement and has no Elites
 regions.
 
+### Shop gold
+
+With Shop and Gold Sanity, each act's shop entrance asks for Elite and Boss Gold (30 and 75,
+Poverty-safe). A run needs enough gold for the dearest checks that shop can list: two per visit,
+or one with Tiered prices. A run already has 99 starting gold plus 31 per earlier act's chest.
+Gold needed in Acts 1 / 2 / 3 (`python3 scripts/print_logic_table.py` prints this):
+
+| Cost mode | Default page 2/1/2/2 | Full page 5/2/3/3 + removals |
+|---|---|---|
+| Fixed, Super Discount | none | none |
+| Discount | 131 / 100 / 69 | 59 / 100 / 69 |
+| Tiered | 131 / 100 / 69 | 59 / 100 / 69 |
+
+Elite and Boss Gold are `useful`, not progression, whenever no shop needs gold. Without Gold
+Sanity, vanilla gold rewards pay for shops, and logic does not count them.
+
 ## Game facts the logic relies on
 
 From the 0.111 beta decompile unless stated otherwise.
@@ -66,6 +82,17 @@ From the 0.111 beta decompile unless stated otherwise.
   and its three cards stay fixed for the run.
 - Each shop visit fills its AP page from the unchecked Shop Slot checks up to the act's ceiling
   (5, 10 or 16 slots). Checks bought in earlier runs are skipped.
+- The AP page fills positions in slot order: character cards (up to 5), neutral cards (2),
+  relics (3), then potions (3), up to the configured counts. The three card-removal checks take
+  otherwise unused positions in the same order (`GetApSlotCounts` in `Patches_ShopSanity.cs`).
+- An AP check is priced by its position: cards by the placed item's classification (rare 150 for
+  progression; the AP card pool is not colorless), relics as Shop rarity (200) and potions as
+  common (50), with the usual random range of cards and potions ±5% and relics ±15%. That makes
+  the dearest Tiered checks about 158, 230 and 53. Discount and Super Discount take 50% and 20%;
+  Fixed charges 15. Main 0.107.1 prices the same way.
+- Chest gold comes from `DoLocalTreasureRoomRewards`, which Gold Sanity does not replace. Gold
+  Sanity replaces the first 20 monster and elite gold rewards and both boss gold rewards. AP
+  gold items pay 15 (Combat), 40 (Elite) and 100 (Boss), claimable in every run.
 
 ## Decisions
 
@@ -76,6 +103,13 @@ From the 0.111 beta decompile unless stated otherwise.
   on fully sparse seeds (`--sparse-new-logic`) still fails: about 16% before two tracks, 12%
   after, and 16% again once vanilla card rewards counted 0.85. The old-logic fallback therefore
   stays. Multiworlds give fill much more room than these solo seeds.
+- **Shop gold asks for the dearest listed checks, not a whole shop.** Logic assumes restarts, so
+  one affordable check per run would be enough to be in logic. That can mean five or six runs
+  to clear one act's shop with Discount prices, which feels bad. Two checks per visit cut that to
+  three. Tiered stays at one per visit: two would need almost every gold item (217-360 in Act 1),
+  and with vanilla prices a shop takes several runs to clear anyway. Chest gold counts because
+  every path passes the chest; event gold and Combat Gold items do not count. Over 5000 Shop and
+  Gold Sanity seeds with random cost modes, generation had no failures.
 - **Refactors are checked for equivalence** by loading the previous `rules_new.py` (and
   `logic_table.py`) beside the new code under renamed rule classes, then comparing every
   entrance result and power total for random item counts across random option combinations.
@@ -129,12 +163,6 @@ What the logic uses now:
   paths, so per-run counters (Relic N, Card Reward N) rise sooner. This could be modelled as
   extra elite tiers with either/or rules. Low value: only about one extra elite per act is
   realistic, and it only loosens checks that already come late.
-- **Shop gold per check.** Checks persist and every shop visit lists unchecked slots, so logic
-  only needs a run that can afford the most expensive single check at that shop. Guaranteed
-  gold is 99 at start plus about 31 per earlier chest (with Poverty); event gold cannot be
-  counted. Priciest check by cost mode: Fixed 15, Super Discount about 63, Discount about 158,
-  Tiered about 316. Fixed and Super Discount would then need no gold items at all, while only
-  Elite and Boss Gold stay progression.
 - **Calibrate from run data.** AP decides what a run starts with, so starting items against
   how far each run got is close to a randomized experiment. Logging those per run would allow
   fitting each value instead of setting it by feel. Abandoned runs and player skill need care.
