@@ -137,6 +137,17 @@ From the 0.111 beta decompile unless stated otherwise.
   and with vanilla prices a shop takes several runs to clear anyway. Chest gold counts because
   every path passes the chest; event gold and Combat Gold items do not count. Over 5000 Shop and
   Gold Sanity seeds with random cost modes, generation had no failures.
+- **The climb from Act 2 to Act 3 is split between the boss and Early Act 3.** The user chose
+  (2026-10-21) to smooth the largest step by the pool's power: Late Act 2 (18) to the Act 2
+  boss (23.5, card strength 5) asked for 17-18% more of the full pool, and Early Act 3 for no
+  more power. Early Act 3 still opened 0.4-0.7 sphere after the boss, because it asks for the
+  third Ancient (4.5 power while missing with Anytime, an item gate with Start of Act), so
+  lowering only the boss moves the wall there. The boss now needs 22 and card strength 4, and
+  Early Act 3 23. On the same seeds, progression found per step (default set) went from +10.4
+  and +6.9 to +7.8 and +8.8, and runs ending at the Act 2 boss or in Early Act 3 from 1.27 to
+  1.15 per solo world. Alternatives measured: boss 22.5 (+9.1 / +8.3) changed less, boss 21.5
+  (+7.4 / +10.1) moved the wall onto Early Act 3, and raising Late Act 2 enlarged Mid to Late
+  Act 2, already one of the largest steps.
 - **Refactors are checked for equivalence** by loading the previous `rules_new.py` (and
   `logic_table.py`) beside the new code under renamed rule classes, then comparing every
   entrance result and power total for random item counts across random option combinations.
