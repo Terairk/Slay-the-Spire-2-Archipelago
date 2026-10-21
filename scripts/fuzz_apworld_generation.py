@@ -57,6 +57,8 @@ def random_options(rng: random.Random, sparse: bool) -> dict:
         "shop_relic_slots": rng.randint(0, 3),
         "shop_potion_slots": rng.randint(0, 3),
         "shop_remove_slots": rng.random() < 0.5,
+        # Shop prices set how much Elite and Boss Gold each shop needs with Gold Sanity.
+        "shop_sanity_costs": rng.randrange(4),
         "neow_sanity": rng.random() < 0.5,
         "ancient_relic_location": rng.choice(("start_of_act", "anytime")),
         "progressive_starter_card": rng.random() < 0.5,

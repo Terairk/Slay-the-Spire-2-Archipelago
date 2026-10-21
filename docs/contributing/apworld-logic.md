@@ -99,10 +99,12 @@ From the 0.111 beta decompile unless stated otherwise.
 - **Ascension is not part of logic.** Players choose ascension to match their skill, so
   requirements stay the same at every ascension and Ascension Down items are not progression.
 - **Generation reliability is measured with `scripts/fuzz_apworld_generation.py`.** Normal
-  options: no failures in 5000 random solo seeds after each change so far. Forcing new logic
-  on fully sparse seeds (`--sparse-new-logic`) still fails: about 16% before two tracks, 12%
-  after, and 16% again once vanilla card rewards counted 0.85. The old-logic fallback therefore
-  stays. Multiworlds give fill much more room than these solo seeds.
+  options: no failures in 5000 random solo seeds after each change, until the fuzz began drawing
+  Shop Sanity Costs. Its new seed sequence then found 1 in 5000: a floorless solo seed with only
+  potion checks, which fails the same way before the shop gold change. Forcing new logic on fully
+  sparse seeds (`--sparse-new-logic`) still fails: about 16% before two tracks, 12% after, and
+  15-16% once vanilla card rewards counted 0.85. The old-logic fallback therefore stays.
+  Multiworlds give fill much more room than these solo seeds.
 - **Shop gold asks for the dearest listed checks, not a whole shop.** Logic assumes restarts, so
   one affordable check per run would be enough to be in logic. That can mean five or six runs
   to clear one act's shop with Discount prices, which feels bad. Two checks per visit cut that to
