@@ -224,7 +224,7 @@ namespace StS2AP.Data
                 {
                     try
                     {
-                        var id = session.Locations.GetLocationIdFromName("Slay the Spire II", CoopSlot.Name($"{character.APName()} Act {a} Campfire {c}"));
+                        var id = session.Locations.GetLocationIdFromName("Slay the Spire II", $"{character.APName()} Act {a} Campfire {c}");
                         ids.Add(id);
                     } 
                     catch 
@@ -291,7 +291,7 @@ namespace StS2AP.Data
             }
             for(int i = start; i <= count; i++)
             {
-                string locationName = CoopSlot.Name(pattern.Replace("#", i.ToString()));
+                string locationName = pattern.Replace("#", i.ToString());
                 long id = session.Locations.GetLocationIdFromName(
                     "Slay the Spire II",
                     locationName
