@@ -1,15 +1,17 @@
 """Generate many solo Slay the Spire II seeds with random options and count fill failures.
 
 Usage (from the repository root, with the sibling Archipelago 0.6.8 checkout set up):
-    .venv/bin/python scripts/fuzz_apworld_generation.py [--seeds N] [--rng-seed N] [--sparse-new-logic]
+    .venv/bin/python scripts/fuzz_apworld_generation.py [--seeds N] [--rng-seed N]
+        [--sparse | --sparse-new-logic] [--partner apquest|spire]
 
 Each seed follows Archipelago's generation through fill: every generation step, then
 distribute_items_restrictive (which also places early items) with the default swap panic
 method, then post_fill. A seed fails if fill raises, the goal is unbeatable, or a location is
 unreachable. Solo worlds are the hardest case; real multiworlds give fill far more room.
 
---sparse-new-logic makes every seed floorless with gold and potion checks off, and forces new
-logic instead of the old-logic fallback those seeds normally use.
+--sparse makes every seed floorless with gold and potion checks off. Alone, such a world falls
+back to old logic; --sparse-new-logic forces new logic instead. --partner adds a second player:
+APQuest with default options, or another Slay the Spire II world with random normal options.
 """
 from __future__ import annotations
 
@@ -32,10 +34,11 @@ from BaseClasses import CollectionState  # noqa: E402
 from test.general import setup_multiworld  # noqa: E402
 # Load every world before Fill; some worlds import Fill while loading.
 from Fill import FillError, distribute_items_restrictive  # noqa: E402
-from worlds.AutoWorld import call_all  # noqa: E402
+from worlds.AutoWorld import World, call_all  # noqa: E402
 from worlds.spire2 import SlayTheSpire2World  # noqa: E402
 from worlds.spire2.characters import character_list  # noqa: E402
 import worlds.spire2.world as spire2_world  # noqa: E402
+from worlds.apquest import APQuestWorld  # noqa: E402
 
 logging.disable(logging.WARNING)
 
@@ -75,8 +78,13 @@ def force_new_logic(world: SlayTheSpire2World) -> None:
     world.logic_fallback_reason = None
 
 
-def generate(options: dict, seed: int) -> tuple[str, str]:
-    multiworld = setup_multiworld(SlayTheSpire2World, seed=seed, options=options)
+def generate(options: dict, seed: int, partner: tuple[type[World], dict] | None = None) -> tuple[str, str]:
+    worlds: list[type[World]] = [SlayTheSpire2World]
+    all_options = [options]
+    if partner is not None:
+        worlds.append(partner[0])
+        all_options.append(partner[1])
+    multiworld = setup_multiworld(worlds, seed=seed, options=all_options)
     world = multiworld.worlds[1]
     mode = world.effective_logic + ("" if options["include_floor_checks"] else " floorless")
     try:
@@ -95,7 +103,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--seeds", type=int, default=1000)
     parser.add_argument("--rng-seed", type=int, default=2026)
-    parser.add_argument("--sparse-new-logic", action="store_true")
+    sparse = parser.add_mutually_exclusive_group()
+    sparse.add_argument("--sparse", action="store_true")
+    sparse.add_argument("--sparse-new-logic", action="store_true")
+    parser.add_argument("--partner", choices=("apquest", "spire"))
     args = parser.parse_args()
     if args.sparse_new_logic:
         spire2_world.select_logic = force_new_logic
@@ -105,9 +116,14 @@ def main() -> None:
     failures = []
     started = time.time()
     for _ in range(args.seeds):
-        options = random_options(rng, args.sparse_new_logic)
+        options = random_options(rng, args.sparse or args.sparse_new_logic)
+        partner = None
+        if args.partner == "apquest":
+            partner = APQuestWorld, {}
+        elif args.partner == "spire":
+            partner = SlayTheSpire2World, random_options(rng, False)
         seed = rng.randint(1, 10 ** 9)
-        mode, result = generate(options, seed)
+        mode, result = generate(options, seed, partner)
         outcomes[mode, result] += 1
         if result != "ok":
             failures.append((seed, result, options))

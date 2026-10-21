@@ -39,9 +39,16 @@ path. Relics 2-3, 4-6 and 7-10 are in the Act 1, 2 and 3 Elites regions, assumin
 two elites in Acts 1 and 2 and three in Act 3.
 
 Mid and Late Act 1 need 2 and 7 power. With Seeded Run they keep the elite-inclusive 4 and 10:
-every run replays one map, which may force an elite. Old logic (the fallback for seeds with
-floor, gold and potion checks all off) keeps its original relic placement and has no Elites
-regions.
+every run replays one map, which may force an elite. Old logic keeps its original relic
+placement and has no Elites regions.
+
+### Sparse worlds
+
+A world with floor, gold and potion checks all off has about one location per item, and almost
+every item is progression. Generated alone, such a world falls back to old logic. Beside other
+players it uses new logic, and its `fill_hook` reorders its own progression so fill places Card
+Rewards first and Rests, Ancients, Smiths and Unlocks last (`sparse_placement_rank` in
+`world.py`).
 
 ### Shop gold
 
@@ -102,9 +109,27 @@ From the 0.111 beta decompile unless stated otherwise.
   options: no failures in 5000 random solo seeds after each change, until the fuzz began drawing
   Shop Sanity Costs. Its new seed sequence then found 1 in 5000: a floorless solo seed with only
   potion checks, which fails the same way before the shop gold change. Forcing new logic on fully
-  sparse seeds (`--sparse-new-logic`) still fails: about 16% before two tracks, 12% after, and
-  15-16% once vanilla card rewards counted 0.85. The old-logic fallback therefore stays.
-  Multiworlds give fill much more room than these solo seeds.
+  sparse solo seeds (`--sparse-new-logic`) failed about 16% before two tracks, 12% after, 15-16%
+  once vanilla card rewards counted 0.85, and 8.5% with the sparse placement order. Multiworlds
+  give fill much more room than these solo seeds.
+- **Sparse worlds fall back to old logic only when generated alone.** In a solo sparse world,
+  every location behind a gate must hold an item that the gate can do without. New logic's late
+  gates leave about half the slack of old logic's (Act 3 Boss 30 of about 35 power with all
+  card rewards shuffled, against 27 of 38), and a missing Rest or Smith costs 3-4 power, so
+  random fill often strands items behind the gates that need them. Measured on 5000 forced
+  sparse solo seeds (`--rng-seed 31`): 14.5% failed as before, 8.5% with the placement order,
+  and 2.2% if five Card Rewards per character were also `useful`. Most of what is left needs
+  Campfire Sanity with Start of Act Ancients, where Act 1's 11 or so locations must hold
+  nearly everything the Act 1 boss and Early Act 2 need. Lowering the late gates by 2-3 power
+  helped less (11-10%), and an early Smith made it worse. Beside one other player (APQuest,
+  another sparse world or a normal world), new logic with the placement order failed 1-2 in
+  3000, about as often as normal options. Choosing logic by player count follows other worlds'
+  use of `multiworld.players`; Mega Man 3's `fill_hook`, for example, only acts on solo
+  generations. The spoiler header records the logic each world used.
+- **The placement order works because fill places items in reverse.** Archipelago's fill takes
+  each player's progression from the end of the shuffled pool and puts it in the first reachable
+  empty location, reachable with every item still unplaced. Items placed early can land behind
+  any gate; items placed late only reach early spheres. The reverse order failed 20.6%.
 - **Shop gold asks for the dearest listed checks, not a whole shop.** Logic assumes restarts, so
   one affordable check per run would be enough to be in logic. That can mean five or six runs
   to clear one act's shop with Discount prices, which feels bad. Two checks per visit cut that to
