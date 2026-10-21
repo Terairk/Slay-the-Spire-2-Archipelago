@@ -94,6 +94,8 @@ def random_options(rng: random.Random, sparse: bool) -> dict:
         # Floorless seeds with gold or potion checks are the sparse cases new logic still handles.
         "gold_sanity": not sparse and rng.random() < (0.5 if floors else 0.7),
         "potion_sanity": not sparse and rng.random() < (0.3 if floors else 0.5),
+        # Logic counts only the relics a run can claim, which low anytime counts limit most.
+        "relic_rewards_available_anytime": rng.choice((0, 1, 2, 3, 5, 10)),
     }
 
 

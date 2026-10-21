@@ -14,7 +14,8 @@ run, starting with every AP item received so far, is strong enough to get there:
 
 - **Card strength** counts AP Card Rewards (through a per-count table), the vanilla card
   rewards that half shuffle leaves in a run, rare card rewards and an upgraded starter card.
-- **Power** is card strength plus relics and an upgraded starter relic.
+- **Power** is card strength plus the relics a run can claim by then and an upgraded starter
+  relic.
 - **Missing support** is what a normal run has that AP items have not restored yet: starting
   card and relic, rests, smiths, card removals, Ancients and shop choices. Its value raises the
   requirement, so extra power can make up for it. Unshuffled support is never missing.
@@ -41,6 +42,17 @@ two elites in Acts 1 and 2 and three in Act 3.
 Mid and Late Act 1 need 2 and 7 power. With Seeded Run they keep the elite-inclusive 4 and 10:
 every run replays one map, which may force an elite. Old logic keeps its original relic
 placement and has no Elites regions.
+
+### Claimable relics
+
+A run claims AP Relics past Relic Rewards Available Anytime only after elite, chest or Black Star
+rewards, one claim per reward, so a power check counts at most anytime + the relic rewards taken
+by then. Walking around elites, those are the chests passed, including the one on each Mid
+region's fixed row. When an earlier Elites region is reachable, a region may count its rewards
+too: 3 after the Act 1 elites, 6 after Act 2's and 10 after Act 3's, plus later chests. Each
+entrance is an either/or of up to four power checks (`region_power` in `rules_new.py`), and
+`python3 scripts/print_logic_table.py` prints the counts. The early items of sparse openings
+make up any relics Mid Act 1 cannot count with Card Rewards.
 
 ### Sparse worlds
 
@@ -110,8 +122,12 @@ From the 0.111 beta decompile unless stated otherwise.
   Shop Sanity Costs. Its new seed sequence then found 1 in 5000: a floorless solo seed with only
   potion checks, which fails the same way before the shop gold change. Forcing new logic on fully
   sparse solo seeds (`--sparse-new-logic`) failed about 16% before two tracks, 12% after, 15-16%
-  once vanilla card rewards counted 0.85, and 8.5% with the sparse placement order. Multiworlds
-  give fill much more room than these solo seeds.
+  once vanilla card rewards counted 0.85, and 8.5% with the sparse placement order. Once the
+  fuzz also drew Relic Rewards Available Anytime, its new seed sequence gave 0 failures in 5000
+  normal seeds, 0-1 of 3000 for each partner run (`--sparse --partner apquest` and `--sparse
+  --partner spire` with `--rng-seed 31`, `--partner spire` with 32), and 7.1% forced sparse with
+  the tuning and claimable relics below. Multiworlds give fill much more room than these solo
+  seeds.
 - **Sparse worlds fall back to old logic only when generated alone.** In a solo sparse world,
   every location behind a gate must hold an item that the gate can do without. New logic's late
   gates leave about half the slack of old logic's (Act 3 Boss 30 of about 35 power with all
@@ -148,6 +164,20 @@ From the 0.111 beta decompile unless stated otherwise.
   1.15 per solo world. Alternatives measured: boss 22.5 (+9.1 / +8.3) changed less, boss 21.5
   (+7.4 / +10.1) moved the wall onto Early Act 3, and raising Late Act 2 enlarged Mid to Late
   Act 2, already one of the largest steps.
+- **Logic counts only claimable relics** (user's choice, 2026-10-21). Before, a power check
+  counted every received relic. At the moment each region opened, a check limited to claimable
+  relics would have failed Early Act 2 in 5-20% of seeds and Early Act 3 in 9-18% at the default
+  anytime count of 2, and 39-65% of both at 0. Counting only the chests on the path cannot reach
+  the Act 3 boss with a low anytime count (69-85% of random seeds failed at anytime 0-3),
+  because boss checks assume elite relics; hence the either/or with Elites regions. The chest
+  inside each Mid region must count: without it, anytime 0 failed 80% of floorless seeds. With
+  the current table, at anytime 0, 1 and 2, 5000 random seeds, 10000 fixed-set seeds and 3000
+  each beside APQuest, beside another Spire world and sparse beside Spire had 0-1 failures
+  each, and regions opened within 0.3 sphere of before. The either/or rules make a solo
+  generation through fill about 40% slower (25 ms against 18 ms). Relic Rewards Available
+  Anytime was already in slot data and restored for Universal Tracker; the fuzz now draws it.
+  The client lets a player override the count locally, and a lower override than the slot's
+  leaves logic expecting relics that player cannot claim.
 - **Refactors are checked for equivalence** by loading the previous `rules_new.py` (and
   `logic_table.py`) beside the new code under renamed rule classes, then comparing every
   entrance result and power total for random item counts across random option combinations.
@@ -192,9 +222,6 @@ What the logic uses now:
 
 ## Ideas not built yet
 
-- **Credit only claimable relics.** Relics past `relic_rewards_available_anytime` are only
-  claimable after elites or chests, so a run's usable relics are about
-  anytime + elite/chest rewards so far. Deferred: it could sharply raise generation failures.
 - **Logic leniency option.** Parked. It only changes when checks are expected, not how hard
   the game is once everything has arrived; difficulty belongs to ascension and the item pool.
 - **Aggressive restarts.** A strong run can fight every elite it can reach and take fight-heavy

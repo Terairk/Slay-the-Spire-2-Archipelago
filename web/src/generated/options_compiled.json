@@ -4,7 +4,7 @@
   "sources": {
     "characters": {
       "path": "world/spire2/characters.py",
-      "sha256": "c8c54f1a375bc6f9d24ec13a92525d7cf78e42a3d06abbf1ca4e6c5899902bd0"
+      "sha256": "7f56d0c59560d2a9930cc97934cfb399267acdb1c6af4a3fe921f884e7af21c7"
     },
     "constants": {
       "path": "world/spire2/constants.py",
@@ -12,7 +12,7 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "98c64a01a50c8cc67389973903a742da4849d26290e4082c126f5e700cf510ad"
+      "sha256": "8707596537f43832c28b73576aee51b710ba5c7e28f1f2ea42b4f82a66a7040a"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
@@ -859,7 +859,7 @@
       "module": "worlds.spire2.options",
       "kind": "toggle",
       "display_name": "Use New Logic",
-      "description": "Use the new logic. Disable to use the previous 1.1.X and below logic.\nNew logic allows more random item order—for example, Extra relics and cards can help supplement missing ancients or rests.\nOne example is that old logic required your progressive starter card+relic to beat your 1st elite but new logic\nno longer requires this as 'Power' can be made up with extra cards/relics. Similar cases for ancients/smiths/rests.\n\nOld logic is used automatically (regardless of this option) when floor, gold, and potion checks\n are all disabled to reduce failed generations.",
+      "description": "Use the new logic. Disable to use the previous 1.1.X and below logic.\nNew logic allows more random item order—for example, Extra relics and cards can help supplement missing ancients or rests.\nOne example is that old logic required your progressive starter card+relic to beat your 1st elite but new logic\nno longer requires this as 'Power' can be made up with extra cards/relics. Similar cases for ancients/smiths/rests.\n\nOld logic is used automatically (regardless of this option) when floor, gold, and potion checks\nare all disabled and this is the only world in the generation, to reduce failed generations.\nThe spoiler log records which logic a world used.",
       "default": true,
       "raw_default": 1,
       "visibility": {
@@ -972,7 +972,7 @@
       "module": "worlds.spire2.options",
       "kind": "range",
       "display_name": "Relic Rewards Available Anytime",
-      "description": "How many AP Relic items can be claimed via the AP Menu without fighting elites or visiting chests.\nLater AP Relic Items can only be 'claimed' by beating Elites or opening treasure chests.\ni.e. A value of 2 here and receiving 3 relics from AP means you get 2 relics in your AP menu and the 3rd \nrequires beating one elite or visiting one chest. \ntldr; fight elites and go to chests to get more relics. Lower value = elites matter more so don't skip them",
+      "description": "How many AP Relic items can be claimed via the AP Menu without fighting elites or visiting chests.\nLater AP Relic Items can only be 'claimed' by beating Elites or opening treasure chests.\ni.e. A value of 2 here and receiving 3 relics from AP means you get 2 relics in your AP menu and the 3rd \nrequires beating one elite or visiting one chest. \ntldr; fight elites and go to chests to get more relics. Lower value = elites matter more so don't skip them\n\nLogic only counts the relics a run can claim: these, plus one per chest and elite on the way. With a lower\nvalue, logic expects more Card Rewards or elite fights before later checks. Setting a lower value in the\nmod's settings than in this YAML can put checks in logic that your relics cannot reach yet.",
       "default": 2,
       "raw_default": 2,
       "visibility": {
@@ -1514,7 +1514,7 @@
       "module": "worlds.spire2.options",
       "kind": "choice",
       "display_name": "Shop Sanity Costs",
-      "description": "Controls the price paid for location checks on the AP shop page. Normal shop-item prices are\nunaffected. Tiered modes first calculate a vanilla-style baseline for the AP card, relic, or potion.\n\nFixed: 15 gold per AP check.\nSuper Discount Tiered: 20 percent of the calculated baseline.\nDiscount Tiered: 50 percent of the calculated baseline.\nTiered: the full calculated baseline.\n\nGeneration logic does not account for these prices.",
+      "description": "Controls the price paid for location checks on the AP shop page. Normal shop-item prices are\nunaffected. Tiered modes first calculate a vanilla-style baseline for the AP card, relic, or potion.\n\nFixed: 15 gold per AP check.\nSuper Discount Tiered: 20 percent of the calculated baseline.\nDiscount Tiered: 50 percent of the calculated baseline.\nTiered: the full calculated baseline.\n\nWith Gold Sanity, logic expects enough Elite and Boss Gold, on top of starting and chest gold,\nto buy the two most expensive checks a shop can list (one with Tiered prices).",
       "default": "Discount_Tiered",
       "raw_default": 2,
       "visibility": {
