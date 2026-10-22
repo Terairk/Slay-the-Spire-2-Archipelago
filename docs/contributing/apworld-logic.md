@@ -24,7 +24,9 @@ Logic assumes a player restarts with everything they hold, so each gate describe
 with the current items, not the run in progress.
 
 Every number lives in `world/spire2/logic_table.py`. Starter values are reviewed per character
-in `world/spire2/characters.py`. `python3 scripts/print_logic_table.py` prints the tables, and
+in `world/spire2/characters.py`. Modded characters use the default values: they are assumed to
+define Archaic Tooth and Touch of Orobas mappings, as every predefined one does. A mod without
+them keeps its starters unchanged, and logic would then credit upgrades it never gets. `python3 scripts/print_logic_table.py` prints the tables, and
 Universal Tracker's explanation lists each contribution to a check.
 
 ### Two tracks per act
@@ -219,6 +221,12 @@ From the 0.111 beta decompile unless stated otherwise.
   3000 beside Spire with `--rng-seed 32`, and 319 of 5000 forced sparse (347 before). Measured
   with Mid Act 1 at 2, moving the fourth fight into Mid Act 1 instead failed 3, 2 and 598 of
   those normal, sparse-beside-Spire and forced sparse seeds; the Hallway alone 0, 0 and 342.
+- **Modded starters use the default starter power** (user's choice, 2026-10-22). New logic used
+  to require a modded character's shuffled Progressive Starter Card and Relic before Late Act 1
+  and credit no upgrade, because the APWorld cannot see whether a mod defines Archaic Tooth and
+  Touch of Orobas mappings. Every predefined modded character does, so all modded characters
+  are now assumed to: a missing starter card or relic costs the default 1 or 2.5 power and each
+  upgrade adds 4, as for a vanilla character without reviewed values. Old logic keeps its gates.
 - **Refactors are checked for equivalence** by loading the previous `rules_new.py` (and
   `logic_table.py`) beside the new code under renamed rule classes, then comparing every
   entrance result and power total for random item counts across random option combinations.
