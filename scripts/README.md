@@ -1,3 +1,9 @@
+# APWorld progression statistics
+
+See [progression_stats.md](progression_stats.md) for the fixed-YAML comparison runner,
+SQLite schema, sphere definitions, report generation and example queries. Reports
+can be regenerated from the saved database without repeating generation.
+
 # Local client build and deployment
 
 Rider Build and `dotnet build client/StS2AP/StS2AP.csproj` default to `BuildMode=Local`:
