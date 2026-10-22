@@ -29,9 +29,9 @@ Universal Tracker's explanation lists each contribution to a check.
 
 ### Two tracks per act
 
-- **Path track:** the Early, Mid, Late and Boss regions. They hold every check a run can reach
-  while walking around elites: floors, card rewards, gold, potions, campfires and the Act 1
-  chest relic.
+- **Path track:** the Early, Mid, Late and Boss regions, plus Act 1's Hallway between Early and
+  Mid. They hold every check a run can reach while walking around elites: floors, card rewards,
+  gold, potions, campfires and the Act 1 chest relic.
 - **Elite track:** one region per relic. Each act's elites are fought in turn (Act 1 Elite 1
   and 2, Act 2 Elite 1 and 2, Act 3 Elite 1 to 3), each entered from the one before and the
   first from the act's Mid region. In Acts 2 and 3, a Chest region entered from Mid holds the
@@ -42,8 +42,12 @@ Relic N is the run's Nth elite, chest or Black Star reward. Relic 1 is the Act 1
 path; relics 2-3 are Act 1's elites, 4 the Act 2 chest, 5-6 Act 2's elites, 7 the Act 3 chest
 and 8-10 Act 3's elites, assuming a run fights two elites in Acts 1 and 2 and three in Act 3.
 
-Mid and Late Act 1 need 2 and 7 power. With Seeded Run they keep the elite-inclusive 4 and 10:
-every run replays one map, which may force an elite. Elites climb from about Mid power to Late
+Early Act 1 needs only the character: it holds the three weak hallway fights that open the act.
+The Act 1 Hallway holds the fourth fight's checks (Combat Gold 4, Card Reward 4 with all card
+rewards shuffled, and Reached Floor 6). Its base power is 0, so it asks only for a normal start:
+a run missing its starter card, starter relic or Neow needs that much power instead. Mid and
+Late Act 1 need 3 and 7 power. With Seeded Run they keep the elite-inclusive 4 and 10: every
+run replays one map, which may force an elite. Elites climb from about Mid power to Late
 power over each act (4.5 and 6.5; 15.5 and 17; 26, 26.5 and 27), and chests take Mid power (14
 and 25.5). Elite track rows otherwise copy their act's Late row, including its vanilla card
 credit. Old logic keeps its original relic placement and has no elite track.
@@ -90,8 +94,9 @@ From the 0.111 beta decompile unless stated otherwise.
 
 - Acts have 15, 14 and 13 rooms; with the Ancient and boss that is 17, 16 and 15 floors.
   Multiplayer maps have one room fewer per act.
-- Map rows 1-5 cannot hold elites or rest sites (`StandardActMap`), so elites start at floors
-  7, 24 and 40. Row 1 is always a monster.
+- Map rows 1-5 cannot hold elites or rest sites (`StandardActMap`), so both start at floors
+  7, 24 and 40, and no Early region has a rest site. Row 1 is always a monster; rows 2-5 hold
+  monsters, ? rooms and shops. The row before the boss is all rest sites.
 - Each act has one treasure chest on a fixed row seven rows before the boss: floors 10, 26 and
   41. Chests give 42-52 gold as well as a relic.
 - ? rooms never become elites; their elite odds are disabled (`UnknownMapPointOdds`).
@@ -104,7 +109,8 @@ From the 0.111 beta decompile unless stated otherwise.
   Inflation makes that 100, rising by 50.
 - The client counts the first ten eligible elite, chest and Black Star rewards in a run as
   Relic 1-10. Every received AP Card Reward is claimable from the AP menu from the first floor,
-  and its three cards stay fixed for the run.
+  and its three cards stay fixed for the run. With half shuffle, every odd combat card reward is
+  a check, so Card Reward N is the run's card reward 2N - 1.
 - Each shop visit fills its AP page from the unchecked Shop Slot checks up to the act's ceiling
   (5, 10 or 16 slots). Checks bought in earlier runs are skipped.
 - The AP page fills positions in slot order: character cards (up to 5), neutral cards (2),
@@ -202,6 +208,17 @@ From the 0.111 beta decompile unless stated otherwise.
   Anytime was already in slot data and restored for Universal Tracker; the fuzz now draws it.
   The client lets a player override the count locally, and a lower override than the slot's
   leaves logic expecting relics that player cannot claim.
+- **The fourth Act 1 fight waits for a normal start** (user's choice, 2026-10-22). Early Act 1
+  needed only the character but held Combat Gold 4, Card Reward 4 (all shuffled) and Reached
+  Floor 6: a fourth fight, the first from the normal pool. Without Neow, the starter card and
+  the starter relic that fight is close to impossible (play experience). The Act 1 Hallway now
+  holds those checks at base power 0, so only a missing normal start costs power: with Neow
+  Sanity and both starters shuffled, 6 for Ironclad and 4-7.5 across the vanilla characters.
+  Mid Act 1 rose from 2 to 3 at the same time. On the usual fuzz sequences: 0 of 5000 normal
+  seeds failed, 0 of 3000 sparse beside APQuest, 1 of 3000 sparse beside Spire (0 before), 0 of
+  3000 beside Spire with `--rng-seed 32`, and 319 of 5000 forced sparse (347 before). Measured
+  with Mid Act 1 at 2, moving the fourth fight into Mid Act 1 instead failed 3, 2 and 598 of
+  those normal, sparse-beside-Spire and forced sparse seeds; the Hallway alone 0, 0 and 342.
 - **Refactors are checked for equivalence** by loading the previous `rules_new.py` (and
   `logic_table.py`) beside the new code under renamed rule classes, then comparing every
   entrance result and power total for random item counts across random option combinations.
@@ -219,37 +236,41 @@ per set (`--rng-seed 2026`):
 
 | Region | Power | default | all-cards | everything | floorless | Progression before (default) |
 |---|---|---|---|---|---|---|
-| Mid Act 1 | 2 | 2.0 | 2.0 | 2.4 | 2.0 | 13% |
-| Late Act 1 | 7 | 2.6 | 2.6 | 3.6 | 2.3 | 20% |
-| Act 1 Elite 1 | 4.5 | 2.1 | 2.2 | 3.3 | 2.0 | 14% |
-| Act 1 Elite 2 | 6.5 | 2.5 | 2.5 | 3.5 | 2.2 | 19% |
-| Act 1 Boss Arena | 11.5 | 3.3 | 3.3 | 4.5 | 3.1 | 34% |
-| Early Act 2 | 12 | 3.9 | 3.9 | 5.3 | 3.7 | 40% |
-| Mid Act 2 | 14 | 4.2 | 4.5 | 6.3 | 3.9 | 43% |
-| Act 2 Chest | 14 | 4.2 | 4.6 | 6.4 | 3.9 | 43% |
-| Act 2 Elite 1 | 15.5 | 4.4 | 4.8 | 6.6 | 4.0 | 47% |
-| Act 2 Elite 2 | 17 | 4.7 | 5.1 | 6.7 | 4.4 | 53% |
-| Late Act 2 | 18 | 4.9 | 5.3 | 6.9 | 4.6 | 57% |
-| Act 2 Boss Arena | 22 | 5.3 | 5.8 | 7.5 | 5.0 | 65% |
-| Early Act 3 | 23 | 6.1 | 6.5 | 8.0 | 5.8 | 73% |
-| Mid Act 3 | 25.5 | 6.6 | 7.2 | 8.6 | 6.3 | 79% |
-| Act 3 Chest | 25.5 | 6.7 | 7.3 | 8.7 | 6.3 | 79% |
-| Act 3 Elite 1 | 26 | 6.6 | 7.4 | 8.8 | 6.3 | 79% |
-| Act 3 Elite 2 | 26.5 | 6.6 | 7.6 | 8.8 | 6.3 | 79% |
-| Act 3 Elite 3 | 27 | 6.9 | 7.6 | 8.9 | 6.6 | 83% |
-| Late Act 3 | 27 | 6.9 | 7.6 | 8.9 | 6.6 | 83% |
-| Act 3 Boss Arena | 30 | 7.4 | 8.2 | 9.4 | 7.1 | 94% |
+| Act 1 Hallway | 0 | 1.0 | 1.0 | 2.1 | 1.0 | 0% |
+| Mid Act 1 | 3 | 2.0 | 2.0 | 3.1 | 2.0 | 13% |
+| Late Act 1 | 7 | 2.5 | 2.6 | 4.2 | 2.2 | 20% |
+| Act 1 Elite 1 | 4.5 | 2.0 | 2.2 | 4.0 | 2.0 | 14% |
+| Act 1 Elite 2 | 6.5 | 2.5 | 2.5 | 4.1 | 2.1 | 19% |
+| Act 1 Boss Arena | 11.5 | 3.2 | 3.3 | 5.1 | 3.0 | 34% |
+| Early Act 2 | 12 | 3.9 | 3.9 | 5.9 | 3.5 | 40% |
+| Mid Act 2 | 14 | 4.2 | 4.5 | 6.9 | 3.7 | 43% |
+| Act 2 Chest | 14 | 4.2 | 4.6 | 7.0 | 3.7 | 43% |
+| Act 2 Elite 1 | 15.5 | 4.4 | 4.8 | 7.1 | 3.8 | 47% |
+| Act 2 Elite 2 | 17 | 4.7 | 5.1 | 7.3 | 4.1 | 53% |
+| Late Act 2 | 18 | 4.9 | 5.2 | 7.4 | 4.3 | 57% |
+| Act 2 Boss Arena | 22 | 5.3 | 5.8 | 8.0 | 4.8 | 65% |
+| Early Act 3 | 23 | 6.0 | 6.4 | 8.5 | 5.5 | 74% |
+| Mid Act 3 | 25.5 | 6.6 | 7.2 | 9.2 | 6.0 | 79% |
+| Act 3 Chest | 25.5 | 6.6 | 7.3 | 9.3 | 6.0 | 79% |
+| Act 3 Elite 1 | 26 | 6.6 | 7.4 | 9.3 | 6.0 | 79% |
+| Act 3 Elite 2 | 26.5 | 6.6 | 7.6 | 9.4 | 6.0 | 79% |
+| Act 3 Elite 3 | 27 | 6.8 | 7.6 | 9.5 | 6.2 | 83% |
+| Late Act 3 | 27 | 6.8 | 7.6 | 9.5 | 6.2 | 83% |
+| Act 3 Boss Arena | 30 | 7.4 | 8.2 | 10.0 | 6.7 | 94% |
 
 How to read it:
 
 - A solo world has only 7-9 spheres, so a gate's step shows as a fraction of a sphere. A player
   at the logic minimum plays about one run per sphere, so the sphere gap between a path region
-  and the next is roughly how many runs end there: 0.5-0.8 in Acts 1 and 2 (largest after Late
-  Act 1, 0.76) and 0.3-0.5 in Act 3.
+  and the next is roughly how many runs end there: 0.3-0.7 in Acts 1 and 2 (default set) and
+  0.2-0.7 in Act 3.
 - Each act's relic checks open in steps: the first elite near Mid power, the last near Late.
 - By progression found, the largest steps are Late Act 1 to the Act 1 boss and Mid to Late
   Act 2 (13-14 points each), then the Act 3 boss (11). Early Act 3, which also asks for the
-  third Ancient, opens about 0.8 sphere after the Act 2 boss.
+  third Ancient, opens about 0.7 sphere after the Act 2 boss.
+- The Act 1 Hallway opens in sphere 1 unless starters or Neow are shuffled. In `everything`
+  it waits for them about one sphere, and every later region opens 0.5-0.7 sphere later than
+  before the Hallway.
 
 ## Card rewards: stockpile versus one at a time
 
@@ -296,6 +317,11 @@ What the logic uses now:
   paths, so per-run counters (Relic N, Card Reward N) rise sooner. This could be modelled as
   extra elite tiers with either/or rules. Low value: only about one extra elite per act is
   realistic, and it only loosens checks that already come late.
+- **Campfire 1 checks in Mid regions.** Each act's Campfire 1 check sits in its Early region,
+  which has no rest site (they start at map row 6). Moving Act 1's into Mid Act 1 failed 1 of
+  5000 normal seeds, 1 of 3000 sparse beside Spire and 441 of 5000 forced sparse (342 without
+  the move), all with Campfire and Neow Sanity and nearly all floorless: those openings have
+  few other locations. Left in place (user's choice, 2026-10-22).
 - **Calibrate from run data.** AP decides what a run starts with, so starting items against
   how far each run got is close to a randomized experiment. Logging those per run would allow
   fitting each value instead of setting it by feel. Abandoned runs and player skill need care.
