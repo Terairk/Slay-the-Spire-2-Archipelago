@@ -97,7 +97,11 @@ namespace StS2AP.Patches
                 if (settings.GoldSanity)
                 {
                     var goldLocations = LocationData.GetGoldsanityLocations(character);
-                    SetCheckedLocation(ArchipelagoCharTrackerUI.GoldsanityChecks, goldLocations, ArchipelagoProgress._maxGoldRewards);
+                    SetCheckedLocation(
+                        ArchipelagoCharTrackerUI.GoldsanityChecks,
+                        goldLocations,
+                        ArchipelagoProgress._maxGoldRewards + ArchipelagoProgress._maxBossGoldRewards
+                    );
                 }
 
                 // Update Potionsanity Locations
