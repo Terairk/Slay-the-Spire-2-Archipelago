@@ -4,7 +4,7 @@
   "sources": {
     "characters": {
       "path": "world/spire2/characters.py",
-      "sha256": "8dcaf2e40c49ae065afbb0bdc9cfd1436475c7660741864e1483fcb4c14e6b79"
+      "sha256": "aefbca7127ce3246d996329c36ec5335fcfc631e169953b202645a55260fbacb"
     },
     "constants": {
       "path": "world/spire2/constants.py",
@@ -12,7 +12,7 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "cb5281743bf1897e1c7e4771fb9139a8e92b4964a259f601297255653754f105"
+      "sha256": "a869458355bc64eb51c061b5b7201b3f5a1118b964ee1b537e5780e30578d390"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
@@ -1363,7 +1363,7 @@
       "module": "worlds.spire2.options",
       "kind": "toggle",
       "display_name": "Gold Sanity",
-      "description": "Whether to replace combat, elite, and boss gold rewards with AP locations. Adds 22 locations per character.",
+      "description": "Whether to replace combat, elite, and boss gold rewards with AP locations. Adds 22 locations per character.\nNew logic then expects Elite and Boss Gold before shopping in Acts 2 and 3, because shops need gold.",
       "default": false,
       "raw_default": 0,
       "visibility": {
