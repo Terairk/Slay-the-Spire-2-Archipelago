@@ -17,8 +17,9 @@ run, starting with every AP item received so far, is strong enough to get there:
 - **Power** is card strength plus the relics a run can claim by then and an upgraded starter
   relic.
 - **Missing support** is what a normal run has that AP items have not restored yet: starting
-  card and relic, rests, smiths, card removals, Ancients and shop choices. Its value raises the
-  requirement, so extra power can make up for it. Unshuffled support is never missing.
+  card and relic, rests, smiths, card removals, Ancients, shop choices and, with Gold Sanity, the
+  gold to buy them. Its value raises the requirement, so extra power can make up for it.
+  Unshuffled support is never missing. Only Ancients keep item gates (Start of Act checkpoints).
 
 Logic assumes a player restarts with everything they hold, so each gate describes a fresh run
 with the current items, not the run in progress.
@@ -48,7 +49,7 @@ Early Act 1 needs only the character: it holds the three weak hallway fights tha
 The Act 1 Hallway holds the fourth fight's checks (Combat Gold 4, Card Reward 4 with all card
 rewards shuffled, and Reached Floor 6). Its base power is 0, so it asks only for a normal start:
 a run missing its starter card, starter relic or Neow needs that much power instead. Mid and
-Late Act 1 need 3 and 7 power. With Seeded Run they keep the elite-inclusive 4 and 10: every
+Late Act 1 need 2.5 and 7 power. With Seeded Run they keep the elite-inclusive 4 and 10: every
 run replays one map, which may force an elite. Elites climb from about Mid power to Late
 power over each act (4.5 and 6.5; 15.5 and 17; 26, 26.5 and 27), and chests take Mid power (14
 and 25.5). Elite track rows otherwise copy their act's Late row, including its vanilla card
@@ -73,6 +74,36 @@ either/or of up to four power checks (`region_power` in `rules_new.py`), and
 `python3 scripts/print_logic_table.py` prints the counts. The early items of sparse openings
 make up any relics Mid Act 1 cannot count with Card Rewards.
 
+### Campfires
+
+A rest site offers one action: rest or smith (`RestSitePolicy` removes whichever is locked). A
+port of the map generator (below) counts the rest sites a path passes, and both campfire supports
+follow from that.
+
+- **Rest** is worth 3, 3.5 and 4 power in its act's Mid, Late, elite and boss regions. A run that
+  can smith but not rest there smiths at every rest site instead, so a missing Rest costs half
+  (`REST_SHARE_WHILE_SMITHING`).
+- **Smith** tiers are worth 2.5, 2.5 and 1.25: about one power per upgrade, two or three
+  upgrades an act for a run that seeks rest sites, less in Act 3 because the best cards are
+  already upgraded. Upgrades add up as a run passes rest sites, so an act's own tier counts for
+  the share of its rest sites passed by each region: Early 0, Mid 0.25 (and the chest), first
+  elite 0.4, Late and later elites 0.6, boss 1 (`SMITHS_*`). Earlier acts' tiers count in full.
+  No item gate remains: a run without Smith tier 1 needs 2.5 more power at the Act 1 boss.
+
+### Shop choices
+
+With Shop Sanity, missing slots cost their values in `SHOP_SLOT_VALUES` (4.5 for a full page),
+scaled by 1/3, 2/3 and 1 in Acts 1, 2 and 3: purchases stay for the run, so a run without shop
+choices falls further behind each act, as card removals do (1, 2.5 and 4.5).
+
+A shop also needs gold. With Gold Sanity, whose checks replace vanilla fight gold, the choices a
+shop offers count only as far as a run's gold reaches a normal run's by that act's Late region:
+185, 368 and 551 (walking around elites, Poverty-safe). A run counts 99 starting gold, 31 per
+chest, every Combat Gold (13 x 11, assumed held), Elite Gold (30) and Boss Gold (75), so it has
+273, 304 and 335 before Elite and Boss Gold. Act 1 needs none of them; a run holding none needs
+about 0.5 more power in Act 2 and 1.8 in Act 3 with every slot available. Universal Tracker shows
+this as "Missing shop gold". Without Gold Sanity, vanilla gold pays and logic does not count it.
+
 ### Sparse worlds
 
 A world with floor, gold and potion checks all off has about one location per item, and almost
@@ -94,8 +125,8 @@ Gold needed in Acts 1 / 2 / 3 (`python3 scripts/print_logic_table.py` prints thi
 | Discount | 131 / 100 / 69 | 59 / 100 / 69 |
 | Tiered | 131 / 100 / 69 | 59 / 100 / 69 |
 
-Elite and Boss Gold are `useful`, not progression, whenever no shop needs gold. Without Gold
-Sanity, vanilla gold rewards pay for shops, and logic does not count them.
+With Gold Sanity, Elite and Boss Gold are always progression in new logic, because shop choices
+count them too (see "Shop choices"). Combat Gold stays `useful`.
 
 ## Game facts the logic relies on
 
@@ -116,6 +147,21 @@ From the 0.111 beta decompile unless stated otherwise.
   fights, from `UnknownMapPointOdds`) gives these fights on paths that avoid elites: about 6, 8
   and 10 in Act 1 (fewest, average, most), 6, 7.4 and 9 in Act 2, and 5, 6.6 and 8 in Act 3.
   The port was a throwaway script.
+- Each act map gets 6-7 random rest sites (5-6 in Act 3), 3 shops and 5 elites (`GetMapPointTypes`
+  of each act; `MapPointTypeCounts`). Rest sites cannot sit on rows 1-5 or the two rows before the
+  all-rest row. A second port, with the pruning pass (2026-10-23, 2000 maps per act), counts the
+  rest sites a path passes before the all-rest row (that row adds one more):
+
+  | Act | Average path | Most rest sites, no elites | Most rest sites |
+  |---|---|---|---|
+  | 1 | 1.4 (Mid 1.0, Late 0.5) | 2.4 (Mid 1.7, Late 0.7) | 2.8 |
+  | 2 | 1.3 (0.8, 0.5) | 2.1 (1.4, 0.8) | 2.5 |
+  | 3 | 1.1 (0.9, 0.3) | 2.0 (1.5, 0.5) | 2.3 |
+
+  A path seeking rest sites while avoiding elites passes three or more before the all-rest row in
+  44%, 26% and 19% of maps. The average path passes 0.7 shops per act, one seeking shops about 2.
+- Vanilla gold: monsters 10-20, elites 35-45, bosses 100 (`EncounterModel`), chests 42-52. Gold
+  Sanity's pool has 13 Combat Gold (15), 7 Elite Gold (40) and 2 Boss Gold (100) per character.
 - Combat Gold N and Card Reward N count every non-boss combat in a run, including elites and ?
   room fights (`Patches_InjectAPRewards.cs`). The Act 1 and 2 bosses' card rewards are Rare Card
   Reward 1 and 2 instead.
@@ -242,8 +288,13 @@ From the 0.111 beta decompile unless stated otherwise.
   to require a modded character's shuffled Progressive Starter Card and Relic before Late Act 1
   and credit no upgrade, because the APWorld cannot see whether a mod defines Archaic Tooth and
   Touch of Orobas mappings. Every predefined modded character does, so all modded characters
-  are now assumed to: a missing starter card or relic costs the default 1 or 2.5 power and each
-  upgrade adds 4, as for a vanilla character without reviewed values. Old logic keeps its gates.
+  are now assumed to and use the default starter power. Old logic keeps its gates.
+- **The default starter power follows the vanilla average** (user's choice, 2026-10-23). It was
+  a guess: a missing card or relic cost 1 or 2.5, and each upgrade added 4. The five reviewed
+  vanilla characters average 1.2 / 3.9 for the card and 2.3 / 3.3 for the relic; the user rounded
+  that to card 1 / 4 and relic 2 / 3.5. Necrobinder's pair penalty stays out, because it only fits
+  a known card and relic pair. A registry test keeps each default value within 0.5 of the average
+  when vanilla values change.
 - **Act 1 holds seven fights' checks, and Campfire 1 waits for a rest site with floor checks**
   (user's choice, 2026-10-23). Late Act 1 held the eighth fight's checks, although
   `logic_table.REGIONS` budgets seven combat card rewards before the Act 1 boss; on paths that
@@ -262,6 +313,51 @@ From the 0.111 beta decompile unless stated otherwise.
 
   With both, regions open within 0.1 sphere of before. Old logic keeps 8, 6 and 6 fights and
   every Campfire 1 in its Early region.
+- **Balance decides logic numbers; generation failures are secondary** (user, 2026-10-23). The
+  remaining fill failures are confined to solo seeds without floor checks, so options are judged
+  on how well they model the game: normal-run parity, map facts, the gold economy and the runs a
+  gate implies. Failure counts and sphere shifts are still reported alongside.
+- **A missing Rest costs half while that act's Smith works** (user's choice, 2026-10-23). A rest
+  site offers one action, so a run that can smith but not rest smiths at every rest site instead.
+  Missing both still costs the sum. Considered: Act 1 Rest 2 instead of 3 whether or not Smith
+  works, and also halving the act's Smith tier while resting works, rejected because extra heals
+  are rarely needed while upgrades last the whole run. With the shop and starter changes below, a
+  trial on 3000 forced sparse seeds (`--rng-seed 31`) went from 221 to 181 failures, and
+  campfire and shop worlds opened regions 0.1-0.2 sphere earlier.
+- **Missing shop choices add up across acts** (user's choice, 2026-10-23). A full missing page
+  cost 3, 1.5 and 0.75 power in Acts 1, 2 and 3 (scale 2/3, 1/3, 1/6); it now costs 1.5, 3 and
+  4.5. One Act 1 shop visit buys about one item, about 330 vanilla gold per act buys roughly two
+  besides a removal, and purchases stay for the run, as removals already did. Considered: 1.5 /
+  1.5 / 0.75 and 1.5 / 2.25 / 3. On a full page each opened the Act 1 boss about 0.25 sphere
+  earlier; by Act 3 they opened 0.17 and 0.12 sphere earlier and the chosen scale as before.
+  Generation did not change.
+- **Mid Act 1 needs 2.5** (user's choice, 2026-10-23). A normal run entering Mid Act 1 has taken
+  three card rewards, 3 x 0.85 = 2.55, so 2.5 is parity; 3 asked half a point more, and the
+  earliest gate deserves the smallest buffer. With half shuffle one Relic opens it, one Card
+  Reward does not (1.275 + 1). Sparse openings without anytime relics now hold a Relic and no
+  Card Reward. Measured: 24-26 more forced sparse failures per 3000, and floorless worlds' later
+  regions open 0.1-0.4 sphere later, because a lower gate lets fill put its last-placed items in
+  Mid Act 1 instead of the opening.
+- **Smith tiers count the rest sites passed, at 2.5 / 2.5 / 1.25, with no Smith gate in Act 1**
+  (user's idea and choices, 2026-10-23). One Smith does not add its value at once: upgrades add up
+  as a run passes rest sites. Before, a new act's tier counted in full from the act's Early
+  region, which has no rest sites, and tier 1 never counted because the Act 1 boss required Smith
+  as an item. The map port gives the shares (see "Campfires") and two or three upgrades an act
+  for a run that seeks rest sites; at about one power per upgrade the tiers are 2.5 / 2.5 / 1.25
+  (3.5 / 3 / 1.5 before). Considered: 2 / 2 / 1 and 3 / 3 / 1.5. Measured: the Act 2-3 ramp alone
+  took forced sparse failures from 181 to 103 of 3000; Act 1's ramp and the dropped gate kept
+  regions within 0.1 sphere and opened Late Act 1 about 0.1 later in campfire worlds. One solo
+  seed with floor checks in 5000 now fails because of Act 1's smith charge (Necrobinder, Seeded,
+  Campfire Sanity, both starters, Start of Act Ancients); the next seeds with its options generate.
+- **With Gold Sanity, shop choices need gold** (user's idea and choice, 2026-10-23). Shop choices
+  turn gold into power, and Gold Sanity replaces vanilla fight gold with items. Elite and Boss
+  Gold count; Combat Gold is assumed held, because counting it would make 13 more items per
+  character progression for little power each. Considered: counting all gold items (a Gold
+  Sanity world without Shop Sanity would have 46 of 94 items progression instead of 24, and its
+  Acts 2-3 opened 0.1-0.25 sphere later in a trial), and Elite and Boss Gold standing in for
+  combat gold too (Act 3 up to 0.4 sphere later). The chosen version makes Elite and Boss Gold
+  progression whenever Gold Sanity is on: 33 of 94 in that world, and no change with Shop Sanity,
+  where they already were.
 - **Refactors are checked for equivalence** by loading the previous `rules_new.py` (and
   `logic_table.py`) beside the new code under renamed rule classes, then comparing every
   entrance result and power total for random item counts across random option combinations.
@@ -279,27 +375,27 @@ per set (`--rng-seed 2026`):
 
 | Region | Power | default | all-cards | everything | floorless | Progression before (default) |
 |---|---|---|---|---|---|---|
-| Act 1 Hallway | 0 | 1.0 | 1.0 | 2.1 | 1.0 | 0% |
-| Mid Act 1 | 3 | 2.0 | 2.0 | 3.1 | 2.0 | 13% |
-| Late Act 1 | 7 | 2.5 | 2.6 | 4.2 | 2.2 | 20% |
-| Act 1 Elite 1 | 4.5 | 2.0 | 2.2 | 4.0 | 2.0 | 14% |
-| Act 1 Elite 2 | 6.5 | 2.5 | 2.5 | 4.2 | 2.1 | 19% |
-| Act 1 Boss Arena | 11.5 | 3.2 | 3.3 | 5.1 | 2.9 | 34% |
-| Early Act 2 | 12 | 3.9 | 3.9 | 5.9 | 3.5 | 40% |
-| Mid Act 2 | 14 | 4.2 | 4.6 | 6.9 | 3.8 | 43% |
-| Act 2 Chest | 14 | 4.2 | 4.6 | 7.0 | 3.8 | 43% |
-| Act 2 Elite 1 | 15.5 | 4.4 | 4.9 | 7.2 | 3.9 | 47% |
-| Act 2 Elite 2 | 17 | 4.7 | 5.1 | 7.3 | 4.2 | 53% |
-| Late Act 2 | 18 | 4.9 | 5.3 | 7.5 | 4.4 | 57% |
-| Act 2 Boss Arena | 22 | 5.3 | 5.8 | 8.0 | 4.8 | 65% |
-| Early Act 3 | 23 | 6.0 | 6.5 | 8.5 | 5.5 | 74% |
-| Mid Act 3 | 25.5 | 6.6 | 7.2 | 9.2 | 6.0 | 79% |
-| Act 3 Chest | 25.5 | 6.6 | 7.3 | 9.3 | 6.1 | 79% |
-| Act 3 Elite 1 | 26 | 6.6 | 7.4 | 9.3 | 6.0 | 79% |
-| Act 3 Elite 2 | 26.5 | 6.6 | 7.6 | 9.4 | 6.0 | 79% |
-| Act 3 Elite 3 | 27 | 6.8 | 7.6 | 9.4 | 6.3 | 83% |
-| Late Act 3 | 27 | 6.8 | 7.6 | 9.4 | 6.3 | 83% |
-| Act 3 Boss Arena | 30 | 7.4 | 8.2 | 10.0 | 6.8 | 94% |
+| Act 1 Hallway | 0 | 1.0 | 1.0 | 2.2 | 1.0 | 0% |
+| Mid Act 1 | 2.5 | 2.0 | 2.0 | 3.1 | 2.0 | 13% |
+| Late Act 1 | 7 | 2.6 | 2.6 | 4.3 | 2.3 | 20% |
+| Act 1 Elite 1 | 4.5 | 2.1 | 2.2 | 4.1 | 2.0 | 14% |
+| Act 1 Elite 2 | 6.5 | 2.5 | 2.5 | 4.2 | 2.2 | 19% |
+| Act 1 Boss Arena | 11.5 | 3.3 | 3.3 | 5.1 | 3.0 | 34% |
+| Early Act 2 | 12 | 3.9 | 3.9 | 5.9 | 3.7 | 41% |
+| Mid Act 2 | 14 | 4.2 | 4.6 | 6.9 | 4.0 | 43% |
+| Act 2 Chest | 14 | 4.2 | 4.6 | 7.0 | 4.0 | 43% |
+| Act 2 Elite 1 | 15.5 | 4.4 | 4.9 | 7.2 | 4.1 | 47% |
+| Act 2 Elite 2 | 17 | 4.7 | 5.1 | 7.3 | 4.5 | 54% |
+| Late Act 2 | 18 | 4.9 | 5.3 | 7.5 | 4.6 | 57% |
+| Act 2 Boss Arena | 22 | 5.3 | 5.8 | 8.1 | 5.1 | 65% |
+| Early Act 3 | 23 | 6.1 | 6.5 | 8.6 | 5.8 | 74% |
+| Mid Act 3 | 25.5 | 6.6 | 7.2 | 9.2 | 6.3 | 79% |
+| Act 3 Chest | 25.5 | 6.7 | 7.3 | 9.3 | 6.4 | 79% |
+| Act 3 Elite 1 | 26 | 6.6 | 7.4 | 9.3 | 6.3 | 79% |
+| Act 3 Elite 2 | 26.5 | 6.6 | 7.6 | 9.4 | 6.3 | 79% |
+| Act 3 Elite 3 | 27 | 6.9 | 7.6 | 9.5 | 6.6 | 83% |
+| Late Act 3 | 27 | 6.9 | 7.6 | 9.5 | 6.6 | 83% |
+| Act 3 Boss Arena | 30 | 7.4 | 8.2 | 10.0 | 7.1 | 94% |
 
 How to read it:
 
@@ -310,7 +406,7 @@ How to read it:
 - Each act's relic checks open in steps: the first elite near Mid power, the last near Late.
 - By progression found, the largest steps are Late Act 1 to the Act 1 boss and Mid to Late
   Act 2 (13-14 points each), then the Act 3 boss (11). Early Act 3, which also asks for the
-  third Ancient, opens about 0.7 sphere after the Act 2 boss.
+  third Ancient, opens about 0.8 sphere after the Act 2 boss.
 - The Act 1 Hallway opens in sphere 1 unless starters or Neow are shuffled. In `everything`
   it waits for them about one sphere, and every later region opens 0.5-0.7 sphere later than
   before the Hallway.
@@ -353,6 +449,11 @@ What the logic uses now:
   power by the Act 3 boss.
 
 ## Ideas not built yet
+
+- **Rest by rest sites passed.** Rest counts its act's full value from Mid (3 in Mid Act 1),
+  although a run has passed about one rest site by the end of Mid. Heals are spent within the act,
+  so a ramp like the smiths', perhaps gentler because the first heal matters most, would follow
+  the same map facts.
 
 - **Logic leniency option.** Parked. It only changes when checks are expected, not how hard
   the game is once everything has arrived; difficulty belongs to ascension and the item pool.
