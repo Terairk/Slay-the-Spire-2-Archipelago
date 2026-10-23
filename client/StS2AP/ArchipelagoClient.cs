@@ -665,10 +665,7 @@ namespace StS2AP
                 // Log all slot data
                 LogUtility.Info("Dumping Slot Data:");
                 foreach (var kvp in SlotData)
-                {
-                    LogUtility.Info($"KEY: {kvp.Key}");
-                    LogUtility.Info($"VAL: {kvp.Value ?? "<null>"}");
-                }
+                    LogUtility.Info($"SLOT {kvp.Key}: {kvp.Value ?? "<null>"}");
 
                 if (!TryReadApWorldCompatibility(
                         out System.Version apWorldVersion,
@@ -1185,9 +1182,6 @@ namespace StS2AP
                     string locKey = $"AP_LOC_{loc.Key}";
                     string locText = $"{loc.Value.ItemDisplayName} for {loc.Value.Player.Name}";
                     locationLocalizations.Add(locKey, locText);
-                    LogUtility.Warn(
-                        $"{loc.Key}:{loc.Value.LocationName}:{loc.Value.LocationDisplayName}"
-                    );
                 }
                 RunForSession(session, () =>
                 {
@@ -1377,7 +1371,7 @@ namespace StS2AP
 
         private static void OnMessageReceived(LogMessage message)
         {
-            LogUtility.Info($"Got PrintJson packet {message.GetType().Name} {message.ToString()}");
+            LogUtility.Debug($"Got PrintJson packet {message.GetType().Name} {message.ToString()}");
             switch (message)
             {
                 case ItemSendLogMessage itemSend:
