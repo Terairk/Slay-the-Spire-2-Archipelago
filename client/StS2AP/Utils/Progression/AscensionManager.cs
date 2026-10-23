@@ -129,7 +129,6 @@ namespace StS2AP.Utils
                 foreach (var item in ArchipelagoClient.Progress.AllReceivedItems)
                 {
                     var id = item.Item.GetCharacterItemType();
-                    LogUtility.Info($"Checking if item is an ascension {item.Item.ItemName} {id}");
                     if (((int)id) >= 19 && ((int)id) <= 28)
                     {
                         LogUtility.Info($"Removing ascension via item {item.Item.ItemName}");
