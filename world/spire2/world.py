@@ -653,7 +653,6 @@ class SlayTheSpire2World(World):
             "use_new_logic",
             "lock_characters",
             "seeded",
-            "ascension",
             "num_chars_goal",
             "shuffle_all_cards",
             "include_floor_checks",
