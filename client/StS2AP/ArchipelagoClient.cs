@@ -1127,23 +1127,30 @@ namespace StS2AP
                 return false;
             }
 
-            IReadOnlyList<ItemInfo> receivedItems = Session.Items.AllItemsReceived;
-            // A different AP owner may have used this process previously. Rebuild the
-            // selectable set only from this slot's settings and authoritative history.
-            RebuildUnlockedCharactersFromSettings();
-            if (!MultiplayerSupport.PrepareApSession(
-                    Seed,
-                    Session.ConnectionInfo.Team,
-                    Session.ConnectionInfo.Slot,
-                    receivedItems,
-                    out reason))
+            // The SDK adds each item to its history before OnItemReceived runs. Holding the
+            // receipt lock from the snapshot to the watermark means a concurrent receipt is either
+            // in the snapshot (and then ignored by OnItemReceived) or queued after the watermark,
+            // never cleared from the queue unprocessed or counted twice.
+            lock (_itemLock)
             {
-                return false;
-            }
+                IReadOnlyList<ItemInfo> receivedItems = Session.Items.AllItemsReceived;
+                // A different AP owner may have used this process previously. Rebuild the
+                // selectable set only from this slot's settings and authoritative history.
+                RebuildUnlockedCharactersFromSettings();
+                if (!MultiplayerSupport.PrepareApSession(
+                        Seed,
+                        Session.ConnectionInfo.Team,
+                        Session.ConnectionInfo.Slot,
+                        receivedItems,
+                        out reason))
+                {
+                    return false;
+                }
 
-            Patches_ItemProcessor.ClearQueue();
-            Index = receivedItems.Count;
-            Patches_ItemProcessor.LastIndexHandled = Index;
+                Patches_ItemProcessor.ClearQueue();
+                Index = receivedItems.Count;
+                Patches_ItemProcessor.LastIndexHandled = Index;
+            }
             MultiplayerSupport.RestoreFrozenHostSettingsForActiveRun();
             AscensionMultiplayer.QueueReconnectReconciliation();
             return true;
