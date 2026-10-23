@@ -289,7 +289,8 @@ From the 0.111 beta decompile unless stated otherwise.
   to require a modded character's shuffled Progressive Starter Card and Relic before Late Act 1
   and credit no upgrade, because the APWorld cannot see whether a mod defines Archaic Tooth and
   Touch of Orobas mappings. Every predefined modded character does, so all modded characters
-  are now assumed to and use the default starter power. Old logic keeps its gates.
+  are now assumed to and use the default starter power, unless a predefined character's
+  `CharacterDefinition` sets reviewed `starter_power`. Old logic keeps its gates.
 - **The default starter power follows the vanilla average** (user's choice, 2026-10-23). It was
   a guess: a missing card or relic cost 1 or 2.5, and each upgrade added 4. The five reviewed
   vanilla characters average 1.2 / 3.9 for the card and 2.3 / 3.3 for the relic; the user rounded
