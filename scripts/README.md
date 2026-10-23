@@ -1,9 +1,3 @@
-# APWorld progression statistics
-
-See [progression_stats.md](progression_stats.md) for the fixed-YAML comparison runner,
-SQLite schema, sphere definitions, report generation and example queries. Reports
-can be regenerated from the saved database without repeating generation.
-
 # Local client build and deployment
 
 Rider Build and `dotnet build client/StS2AP/StS2AP.csproj` default to `BuildMode=Local`:
@@ -25,20 +19,6 @@ with `.venv/bin/python scripts/build_apworld_local.py`.
 Every number used by the APWorld's power logic lives in `world/spire2/logic_table.py`.
 `python scripts/print_logic_table.py` prints those tables as plain text, without needing an
 Archipelago checkout. Per-character starter values stay in `world/spire2/characters.py`.
-
-`.venv/bin/python scripts/fuzz_apworld_generation.py` generates random solo seeds through fill
-with the sibling Archipelago checkout and counts failures. Run it after changing logic numbers.
-`--sparse` draws floorless, no-gold, no-potion seeds, which fall back to old logic when alone;
-`--sparse-new-logic` forces new logic on them, and `--partner apquest` or `--partner spire` adds
-a second player. `--option-set NAME` (repeatable) replaces random options with fixed one-character
-option sets, generated on the same seeds, and `--spheres` reports the sphere in which each region
-opens and the share of the world's progression items found before it.
-[The logic design notes](../docs/contributing/apworld-logic.md) record past results.
-
-`python scripts/simulate_card_drafts.py` is a toy model for shaping the card strength tables.
-It compares drafting AP Card Rewards from a stockpile at the start of a run against receiving
-them one at a time with forced early picks. Its assumptions (lean deck size, forced picks,
-archetype bonus) are command-line options; the output shows a curve's shape, not calibrated values.
 
 # Release preparation
 

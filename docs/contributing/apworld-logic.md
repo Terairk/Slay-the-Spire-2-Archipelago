@@ -194,7 +194,8 @@ From the 0.111 beta decompile unless stated otherwise.
 
 - **Ascension is not part of logic.** Players choose ascension to match their skill, so
   requirements stay the same at every ascension and Ascension Down items are not progression.
-- **Generation reliability is measured with `scripts/fuzz_apworld_generation.py`.** Normal
+- **Generation reliability is measured with `fuzz_apworld_generation.py`,** a local tool kept
+  outside the repository in `.local-tools/logic-analysis/`. Normal
   options: no failures in 5000 random solo seeds after each change, until the fuzz began drawing
   Shop Sanity Costs. Its new seed sequence then found 1 in 5000: a floorless solo seed with only
   potion checks, which fails the same way before the shop gold change. Forcing new logic on fully
@@ -365,7 +366,7 @@ From the 0.111 beta decompile unless stated otherwise.
 
 ## Where regions open
 
-`scripts/fuzz_apworld_generation.py --spheres` reports the sphere in which each region opens
+The local fuzz's `--spheres` reports the sphere in which each region opens
 over successful seeds, and the share of the world's own progression items found before it.
 `--option-set` replaces random options with fixed one-Ironclad option sets on the same seeds:
 `default` (the options' defaults: floor checks, half shuffle, Anytime Ancients, Relic Rewards
@@ -418,9 +419,10 @@ are taken one at a time. In AP a run can start with many Card Rewards and compar
 cards first, so it can draft toward an archetype and skip freely. Items that arrive during a
 run behave more like the vanilla case.
 
-`python3 scripts/simulate_card_drafts.py` models this. Its defaults: 3 archetypes, a lean
-deck keeps 10 picks, the first 4 one-at-a-time picks must be attacks, scaling cards are worth
-20% more over a run, and an archetype adds 3 cards' worth once it has 4 cards.
+`simulate_card_drafts.py` (local, in `.local-tools/logic-analysis/`) models this. Its
+defaults: 3 archetypes, a lean deck keeps 10 picks, the first 4 one-at-a-time picks must be
+attacks, scaling cards are worth 20% more over a run, and an archetype adds 3 cards' worth
+once it has 4 cards.
 
 What it shows:
 

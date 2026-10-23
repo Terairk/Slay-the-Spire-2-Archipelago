@@ -15,8 +15,8 @@ exists for that branch). Local `v2` is stale; upstream's V2 (#323) is only on th
 |---|---|
 | `a34a5d2` | Every logic number moved into `world/spire2/logic_table.py`; Universal Tracker explanations list each contribution. No behaviour change. |
 | `3df6aee` | Two tracks per act: Act 1/2/3 Elites regions hold relics 2-10. Act 1 path lowered to 2/7 (4/10 with Seeded Run). |
-| `1247ae8` | Card strength as per-count tables with a declining tail; vanilla card rewards count 0.85. Adds `scripts/simulate_card_drafts.py`. |
-| `96bfc81` | Design notes and `scripts/fuzz_apworld_generation.py`. |
+| `1247ae8` | Card strength as per-count tables with a declining tail; vanilla card rewards count 0.85. Adds `simulate_card_drafts.py` (now local). |
+| `96bfc81` | Design notes and `fuzz_apworld_generation.py` (now local). |
 | `131a468` | Shop gold: each shop asks for its two dearest listed checks (one with Tiered), after starting and chest gold. |
 | `29ced77` | The fuzz draws Shop Sanity Costs. |
 | `7de075b` | Sparse worlds use new logic beside other players, with a placement-order `fill_hook`; old logic only when generated alone. Fuzz gains `--sparse` and `--partner`. |
@@ -80,6 +80,13 @@ From the repository root:
   python3 -m unittest discover -s scripts/tests -p "test_*.py"
   ```
 
+- **Local analysis tool tests.** The fuzz, the draft model and the progression statistics
+  tools are local, untracked tools in `.local-tools/logic-analysis/`, described by its README:
+
+  ```bash
+  .venv/bin/python -m unittest discover -s .local-tools/logic-analysis/tests
+  ```
+
 - **Print the tables:**
 
   ```bash
@@ -90,21 +97,21 @@ From the repository root:
   seeds forced onto new logic):
 
   ```bash
-  .venv/bin/python scripts/fuzz_apworld_generation.py --seeds 5000
+  .venv/bin/python .local-tools/logic-analysis/fuzz_apworld_generation.py --seeds 5000
   ```
 
   ```bash
-  .venv/bin/python scripts/fuzz_apworld_generation.py --seeds 3000 --rng-seed 31 --sparse --partner spire
+  .venv/bin/python .local-tools/logic-analysis/fuzz_apworld_generation.py --seeds 3000 --rng-seed 31 --sparse --partner spire
   ```
 
   ```bash
-  .venv/bin/python scripts/fuzz_apworld_generation.py --seeds 5000 --rng-seed 31 --sparse-new-logic
+  .venv/bin/python .local-tools/logic-analysis/fuzz_apworld_generation.py --seeds 5000 --rng-seed 31 --sparse-new-logic
   ```
 
 - **Draft model:**
 
   ```bash
-  python3 scripts/simulate_card_drafts.py --keep 10 --forced 4
+  python3 .local-tools/logic-analysis/simulate_card_drafts.py --keep 10 --forced 4
   ```
 
 Current baselines, after the third session's changes: 1 failure in 5000 normal seeds (a solo
