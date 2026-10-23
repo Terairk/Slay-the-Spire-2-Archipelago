@@ -92,10 +92,11 @@ From the repository root:
   ```
 
 Current baselines (the fuzz draws Relic Rewards Available Anytime since the second session,
-which changed every seed sequence), with the Act 1 Hallway and Mid Act 1 at 3: 0 failures in
-5000 normal seeds; 0 in 3000 with `--sparse --partner apquest` and 1 with `--sparse --partner
-spire` (`--rng-seed 31`); 0 in 3000 with `--partner spire --rng-seed 32`; and 319 of 5000 (6.4%)
-with `--sparse-new-logic --rng-seed 31`. `ba91374` on the same sequences: 0, 0, 0, 0 and 347.
+which changed every seed sequence), with seven fights' checks in Act 1 and Campfire 1 in Mid
+regions with floor checks: 0 failures in 5000 normal seeds; 0 in 3000 with `--sparse --partner
+apquest` and 1 with `--sparse --partner spire` (`--rng-seed 31`); 0 in 3000 with `--partner
+spire --rng-seed 32`; and 365 of 5000 (7.3%) with `--sparse-new-logic --rng-seed 31`. Before
+that change: 0, 0, 1, 0 and 319; `ba91374`: 0, 0, 0, 0 and 347.
 The sphere report for the notes: `--seeds 2000 --spheres` with all five `--option-set` names.
 Each of these runs takes about 1-3 minutes.
 

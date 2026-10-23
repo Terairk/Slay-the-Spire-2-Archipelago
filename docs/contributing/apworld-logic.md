@@ -54,6 +54,13 @@ power over each act (4.5 and 6.5; 15.5 and 17; 26, 26.5 and 27), and chests take
 and 25.5). Elite track rows otherwise copy their act's Late row, including its vanilla card
 credit. Old logic keeps its original relic placement and has no elite track.
 
+Combat checks follow the table's budget of seven combat card rewards in Act 1: Late Act 1 holds
+the seventh fight's checks, and Early Act 2 the eighth's (Combat Gold 8, and Card Reward 8 with
+all card rewards shuffled). The acts hold 7, 7 and 6 fights' checks; half shuffle's Card
+Rewards stay 4, 3 and 3. With floor checks, each act's Campfire 1 check is in its Mid region,
+where rest sites start; floorless worlds keep it in the Early region, which their openings need.
+Old logic keeps 8, 6 and 6 fights and every Campfire 1 in its Early region.
+
 ### Claimable relics
 
 A run claims AP Relics past Relic Rewards Available Anytime only after elite, chest or Black Star
@@ -105,6 +112,16 @@ From the 0.111 beta decompile unless stated otherwise.
 - An act map has 5 elites (8 with Swarming Elites), but one path usually reaches about 3, and
   4 when lucky. 5 or 6 needs Winged Boots from Neow. (Play experience.)
 - Acts 1, 2 and 3 open with 3, 2 and 2 weak hallway encounters.
+- A rough port of `StandardActMap` (without its pruning pass; each ? room counted as about 0.17
+  fights, from `UnknownMapPointOdds`) gives these fights on paths that avoid elites: about 6, 8
+  and 10 in Act 1 (fewest, average, most), 6, 7.4 and 9 in Act 2, and 5, 6.6 and 8 in Act 3.
+  The port was a throwaway script.
+- Combat Gold N and Card Reward N count every non-boss combat in a run, including elites and ?
+  room fights (`Patches_InjectAPRewards.cs`). The Act 1 and 2 bosses' card rewards are Rare Card
+  Reward 1 and 2 instead.
+- A rest site offers every unchecked campfire check of its act and earlier acts
+  (`RestSitePolicy.GetAvailableChecks`), so an act's first campfire check needs a rest site in
+  that act or a later one.
 - Characters start with 99 gold. Poverty multiplies combat and chest gold by 0.75.
 - Shop prices: cards 50 / 75 / 150 by rarity (colorless x1.15), relics 175 / 225 / 275
   (shop relics 200), potions 50 / 75 / 100. Card removal costs 75, rising by 25 each time;
@@ -227,6 +244,24 @@ From the 0.111 beta decompile unless stated otherwise.
   Touch of Orobas mappings. Every predefined modded character does, so all modded characters
   are now assumed to: a missing starter card or relic costs the default 1 or 2.5 power and each
   upgrade adds 4, as for a vanilla character without reviewed values. Old logic keeps its gates.
+- **Act 1 holds seven fights' checks, and Campfire 1 waits for a rest site with floor checks**
+  (user's choice, 2026-10-23). Late Act 1 held the eighth fight's checks, although
+  `logic_table.REGIONS` budgets seven combat card rewards before the Act 1 boss; on paths that
+  avoid elites, 8 is about the average and 6 the fewest. Each act's Campfire 1 sat in its Early
+  region, which has no rest site. Measured in-process on the usual fuzz sequences (normal,
+  sparse beside APQuest, sparse beside Spire, beside Spire with `--rng-seed 32`, forced sparse;
+  before: 0, 0, 1, 0 and 319):
+  - Combat 8 in Early Act 2 (chosen): 0, 0, 1, 0 and 365. Half shuffle does not change: Card
+    Reward 4 is the seventh fight's.
+  - Act 1 also matching the table inside the act (Mid 5, Late 6-7): 0, 0, 1, 0 and 382.
+  - Six fights in Act 1 (Mid 5, Late 6, Early Act 2 7-10): 0, 5, 1, 0 and 626. Half shuffle's
+    Card Reward 4 leaves Act 1 too.
+  - Act 1 Campfire 1 always in Mid Act 1: 0, 6, 1, 0 and 692. Every failure in every suite was a
+    floorless world, so with floor checks only, the move changed no result, for Act 1 alone or
+    for all three acts (chosen).
+
+  With both, regions open within 0.1 sphere of before. Old logic keeps 8, 6 and 6 fights and
+  every Campfire 1 in its Early region.
 - **Refactors are checked for equivalence** by loading the previous `rules_new.py` (and
   `logic_table.py`) beside the new code under renamed rule classes, then comparing every
   entrance result and power total for random item counts across random option combinations.
@@ -248,23 +283,23 @@ per set (`--rng-seed 2026`):
 | Mid Act 1 | 3 | 2.0 | 2.0 | 3.1 | 2.0 | 13% |
 | Late Act 1 | 7 | 2.5 | 2.6 | 4.2 | 2.2 | 20% |
 | Act 1 Elite 1 | 4.5 | 2.0 | 2.2 | 4.0 | 2.0 | 14% |
-| Act 1 Elite 2 | 6.5 | 2.5 | 2.5 | 4.1 | 2.1 | 19% |
-| Act 1 Boss Arena | 11.5 | 3.2 | 3.3 | 5.1 | 3.0 | 34% |
+| Act 1 Elite 2 | 6.5 | 2.5 | 2.5 | 4.2 | 2.1 | 19% |
+| Act 1 Boss Arena | 11.5 | 3.2 | 3.3 | 5.1 | 2.9 | 34% |
 | Early Act 2 | 12 | 3.9 | 3.9 | 5.9 | 3.5 | 40% |
-| Mid Act 2 | 14 | 4.2 | 4.5 | 6.9 | 3.7 | 43% |
-| Act 2 Chest | 14 | 4.2 | 4.6 | 7.0 | 3.7 | 43% |
-| Act 2 Elite 1 | 15.5 | 4.4 | 4.8 | 7.1 | 3.8 | 47% |
-| Act 2 Elite 2 | 17 | 4.7 | 5.1 | 7.3 | 4.1 | 53% |
-| Late Act 2 | 18 | 4.9 | 5.2 | 7.4 | 4.3 | 57% |
+| Mid Act 2 | 14 | 4.2 | 4.6 | 6.9 | 3.8 | 43% |
+| Act 2 Chest | 14 | 4.2 | 4.6 | 7.0 | 3.8 | 43% |
+| Act 2 Elite 1 | 15.5 | 4.4 | 4.9 | 7.2 | 3.9 | 47% |
+| Act 2 Elite 2 | 17 | 4.7 | 5.1 | 7.3 | 4.2 | 53% |
+| Late Act 2 | 18 | 4.9 | 5.3 | 7.5 | 4.4 | 57% |
 | Act 2 Boss Arena | 22 | 5.3 | 5.8 | 8.0 | 4.8 | 65% |
-| Early Act 3 | 23 | 6.0 | 6.4 | 8.5 | 5.5 | 74% |
+| Early Act 3 | 23 | 6.0 | 6.5 | 8.5 | 5.5 | 74% |
 | Mid Act 3 | 25.5 | 6.6 | 7.2 | 9.2 | 6.0 | 79% |
-| Act 3 Chest | 25.5 | 6.6 | 7.3 | 9.3 | 6.0 | 79% |
+| Act 3 Chest | 25.5 | 6.6 | 7.3 | 9.3 | 6.1 | 79% |
 | Act 3 Elite 1 | 26 | 6.6 | 7.4 | 9.3 | 6.0 | 79% |
 | Act 3 Elite 2 | 26.5 | 6.6 | 7.6 | 9.4 | 6.0 | 79% |
-| Act 3 Elite 3 | 27 | 6.8 | 7.6 | 9.5 | 6.2 | 83% |
-| Late Act 3 | 27 | 6.8 | 7.6 | 9.5 | 6.2 | 83% |
-| Act 3 Boss Arena | 30 | 7.4 | 8.2 | 10.0 | 6.7 | 94% |
+| Act 3 Elite 3 | 27 | 6.8 | 7.6 | 9.4 | 6.3 | 83% |
+| Late Act 3 | 27 | 6.8 | 7.6 | 9.4 | 6.3 | 83% |
+| Act 3 Boss Arena | 30 | 7.4 | 8.2 | 10.0 | 6.8 | 94% |
 
 How to read it:
 
@@ -325,11 +360,6 @@ What the logic uses now:
   paths, so per-run counters (Relic N, Card Reward N) rise sooner. This could be modelled as
   extra elite tiers with either/or rules. Low value: only about one extra elite per act is
   realistic, and it only loosens checks that already come late.
-- **Campfire 1 checks in Mid regions.** Each act's Campfire 1 check sits in its Early region,
-  which has no rest site (they start at map row 6). Moving Act 1's into Mid Act 1 failed 1 of
-  5000 normal seeds, 1 of 3000 sparse beside Spire and 441 of 5000 forced sparse (342 without
-  the move), all with Campfire and Neow Sanity and nearly all floorless: those openings have
-  few other locations. Left in place (user's choice, 2026-10-22).
 - **Calibrate from run data.** AP decides what a run starts with, so starting items against
   how far each run got is close to a randomized experiment. Logging those per run would allow
   fitting each value instead of setting it by feel. Abandoned runs and player skill need care.
