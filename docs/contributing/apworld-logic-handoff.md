@@ -141,8 +141,8 @@ their own progression so fill places Card Rewards first and support last. The de
 ("Sparse worlds" and the decisions) explain why and record the measurements.
 
 Code: `is_sparse` and `select_logic` in `rules.py`, `sparse_placement_rank` and
-`SlayTheSpire2World.fill_hook` in `world.py`, the Use New Logic docstring, and
-`test/sparse_fill_tests.py`. The fuzz gained `--sparse` and `--partner apquest|spire`.
+`SlayTheSpire2World.fill_hook` in `world.py`, and the Use New Logic docstring. The fuzz gained
+`--sparse` and `--partner apquest|spire`.
 
 **Still open, only if the user wants solo sparse worlds on new logic too:** forced solo sparse
 seeds fail 8.5%; with five `useful` Card Rewards per character 2.2%, mostly Campfire Sanity
@@ -156,8 +156,8 @@ The user chose (2026-10-21) to require gold for the two dearest checks a shop ca
 with Tiered prices, counting starting and chest gold. The design notes ("Shop gold") have the
 numbers, the pricing facts and why. Code: the shop gold block and functions in `logic_table.py`,
 `shop_gold_by_act` and `SpireHasGold` (which now explains itself in Universal Tracker) in
-`rules_new.py`, Elite/Boss Gold classification in `world.create_item`, and
-`test/shop_gold_tests.py`.
+`rules_new.py`, and Elite/Boss Gold classification in `world.create_item`. `test/logic_tests.py`
+checks that Elite and Boss Gold cover every shop configuration.
 
 Card-removal checks have no prices of their own: they borrow unused page positions and cost what
 those positions cost.
