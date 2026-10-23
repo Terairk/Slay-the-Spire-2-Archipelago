@@ -293,8 +293,8 @@ From the 0.111 beta decompile unless stated otherwise.
   a guess: a missing card or relic cost 1 or 2.5, and each upgrade added 4. The five reviewed
   vanilla characters average 1.2 / 3.9 for the card and 2.3 / 3.3 for the relic; the user rounded
   that to card 1 / 4 and relic 2 / 3.5. Necrobinder's pair penalty stays out, because it only fits
-  a known card and relic pair. A registry test keeps each default value within 0.5 of the average
-  when vanilla values change.
+  a known card and relic pair. Recheck the average by hand when vanilla values change; no test
+  enforces it, so tuning a character never fails the suite.
 - **Act 1 holds seven fights' checks, and Campfire 1 waits for a rest site with floor checks**
   (user's choice, 2026-10-23). Late Act 1 held the eighth fight's checks, although
   `logic_table.REGIONS` budgets seven combat card rewards before the Act 1 boss; on paths that
