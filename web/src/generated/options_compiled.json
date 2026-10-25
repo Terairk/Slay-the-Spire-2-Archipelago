@@ -4,117 +4,20 @@
   "sources": {
     "characters": {
       "path": "world/spire2/characters.py",
-      "sha256": "40da2e821dd9bfc0128c91b8b1d1499b3789554f2d15b759d9a41f15870740fa"
+      "sha256": "596e22b811de233f0ec3f2a62dc6ad691f70d82872dc6a2f47ea72bb762437bb"
     },
     "constants": {
       "path": "world/spire2/constants.py",
-      "sha256": "d72ba9e7d126b9553812f17d97649f5fe3a4bd2d21a903388e4b403914bd3723"
+      "sha256": "157cfe23568604a27a8b3ee11a9f38c5dbaa373c86faa3e112d23e0745355f5f"
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "7e862e4c8926ed5b8dc329cbc320de57ac53fbdcd917d68b68918c1645709658"
+      "sha256": "4f4981128c379da73795e10a9078fdec18a85669d36ecc32d90ed8ca84d8734d"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
-      "sha256": "787ecb32efed12fde3e3c1fd466dd46f008297a2d1293129861362847012190c"
+      "sha256": "9c750c1797bd5e67714759a18706a802b3522f00e6080d535884f226ed161e7a"
     }
-  },
-  "characters": {
-    "generic_character_limit": 20,
-    "predefined": [
-      {
-        "name": "Tectonic",
-        "internal_id": "INTOTHESPIREVERSE-SHADOW_IRONCLAD"
-      },
-      {
-        "name": "Captain",
-        "internal_id": "INTOTHESPIREVERSE-SHADOW_REGENT"
-      },
-      {
-        "name": "Acolyte",
-        "internal_id": "INTOTHESPIREVERSE-SHADOW_SILENT"
-      },
-      {
-        "name": "Slime Boss",
-        "internal_id": "SLIMEBOSS-SLIME_BOSS"
-      },
-      {
-        "name": "Guardian",
-        "internal_id": "GUARDIAN-GUARDIAN"
-      },
-      {
-        "name": "Hexaghost",
-        "internal_id": "HEXAGHOST-HEXAGHOST"
-      },
-      {
-        "name": "Champ",
-        "internal_id": "CHAMP-CHAMP"
-      },
-      {
-        "name": "Automaton",
-        "internal_id": "AUTOMATON-AUTOMATON"
-      },
-      {
-        "name": "Snecko",
-        "internal_id": "SNECKO-SNECKO"
-      },
-      {
-        "name": "Hermit",
-        "internal_id": "HERMIT-HERMIT"
-      },
-      {
-        "name": "Awakened One",
-        "internal_id": "AWAKENED-AWAKENED"
-      },
-      {
-        "name": "Watcher",
-        "internal_id": "WATCHER-WATCHER"
-      },
-      {
-        "name": "Hornet",
-        "internal_id": "HORNET_MOD_CHARACTER_HORNET_MOD_CHARACTER"
-      },
-      {
-        "name": "Slugcat Survivor",
-        "internal_id": "SLUGCAT_THE_SPIRE_II_CHARACTER_RAINWORLD_LIVER"
-      },
-      {
-        "name": "Slugcat Hunter",
-        "internal_id": "SLUGCAT_THE_SPIRE_II_CHARACTER_RAINWORLD_REDCAT"
-      },
-      {
-        "name": "Slugcat Rivulet",
-        "internal_id": "SLUGCAT_THE_SPIRE_II_CHARACTER_RAINWORLD_RIVER"
-      },
-      {
-        "name": "Alchemist",
-        "internal_id": "ALCHEMIST-ALCHEMIST"
-      },
-      {
-        "name": "Runesmith",
-        "internal_id": "RUNESMITH2-RUNESMITH2"
-      },
-      {
-        "name": "Witch",
-        "internal_id": "THEWITCH-WITCH"
-      },
-      {
-        "name": "Tailor",
-        "internal_id": "THETAILOR-THE_TAILOR"
-      },
-      {
-        "name": "Engineer",
-        "internal_id": "THEENGINEER-THE_ENGINEER"
-      },
-      {
-        "name": "Kakarot",
-        "internal_id": "KAKAROTMOD-KAKAROT"
-      },
-      {
-        "name": "Fae Sorceress",
-        "internal_id": "FAESORCERESS-FAE_SORCERESS"
-      }
-    ]
   },
   "option_order": [
     "progression_balancing",
@@ -136,6 +39,7 @@
     "unlocked_character",
     "ascension",
     "ascension_down",
+    "run_modifiers",
     "use_new_logic",
     "ancient_relic_location",
     "ancient_relic_pool",
@@ -202,7 +106,8 @@
         "lock_characters",
         "unlocked_character",
         "ascension",
-        "ascension_down"
+        "ascension_down",
+        "run_modifiers"
       ],
       "start_collapsed": false,
       "source": "web_world"
@@ -944,6 +849,42 @@
         "TightBelt",
         "ToughEnemies",
         "WearyTraveler"
+      ],
+      "valid_keys_casefold": false,
+      "allow_custom_values": false,
+      "supports_weighting": false,
+      "group": "Character Options"
+    },
+    "run_modifiers": {
+      "key": "run_modifiers",
+      "class_name": "RunModifiers",
+      "module": "worlds.spire2.options",
+      "kind": "set",
+      "display_name": "Run Modifiers",
+      "description": "Extra difficulty modifiers for every run, on top of Ascension. Logic does not account for them.\nNames are case-sensitive. In multiplayer, the host's modifiers apply to the whole run.\n\n- 'EliteStrength': Elites and bosses start each combat with 1 Strength.\n- 'RandomEnemyBuffs': Every enemy starts combat with one random buff: 1 Strength, 4 Plating,\n  2 Thorns, 1 Artifact, 3 Regen, 4 Curl Up, 4 Vigor or 1 Slippery.\n- 'WeakerRests': Resting heals 25% of max HP instead of 30%.\n- 'SlowStart': Draw 1 fewer card on the first turn of each combat.\n- 'FrailStart': Start each run with 10% less max HP.\n- 'ExtraAscendersBane': Start each run with an extra Ascender's Bane.\n- 'CursedRun': Gain a random curse at the start of each act (the base game's Cursed Run).\n- 'DeadlyEvents': ? rooms can hold elites, and treasure appears more often (the base game's\n  Deadly Events). Its extra elites and chests make relic checks easier to reach than logic expects.",
+      "default": [],
+      "raw_default": [],
+      "visibility": {
+        "name": "all",
+        "value": 15,
+        "flags": [
+          "template",
+          "simple_ui",
+          "complex_ui",
+          "spoiler",
+          "all"
+        ]
+      },
+      "source": "game",
+      "valid_keys": [
+        "CursedRun",
+        "DeadlyEvents",
+        "EliteStrength",
+        "ExtraAscendersBane",
+        "FrailStart",
+        "RandomEnemyBuffs",
+        "SlowStart",
+        "WeakerRests"
       ],
       "valid_keys_casefold": false,
       "allow_custom_values": false,

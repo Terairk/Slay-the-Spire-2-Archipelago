@@ -118,6 +118,20 @@ class TestProgressiveRelicOptionsConfigured(Spire2TestBase):
         self.assertEqual(0, slot_data["release_on_victory"])
 
 
+class TestRunModifiersDefault(Spire2TestBase):
+    def test_no_modifiers_are_sent_by_default(self):
+        self.assertEqual([], self.world.fill_slot_data()["run_modifiers"])
+
+
+class TestRunModifiersConfigured(Spire2TestBase):
+    options = {
+        "run_modifiers": ["DeadlyEvents", "EliteStrength"],
+    }
+
+    def test_modifier_names_are_sent_sorted_in_slot_data(self):
+        self.assertEqual(["DeadlyEvents", "EliteStrength"], self.world.fill_slot_data()["run_modifiers"])
+
+
 class TestAscensionDowns(Spire2TestBase):
     options = {
         "characters": [
