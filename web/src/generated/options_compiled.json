@@ -12,7 +12,7 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "2d351d8c69d28ff68e2a7e9ece65817786c7c6896656a3c4e6ac32ce46bae47f"
+      "sha256": "fd122b0e17f61e0919e29b313f9daf2ebfa9ab843ed6cd47b79b704681345950"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
@@ -865,7 +865,7 @@
       "module": "worlds.spire2.options",
       "kind": "set",
       "display_name": "Run Modifiers",
-      "description": "Extra difficulty modifiers for every run, on top of Ascension. Logic does not account for them.\nNames are case-sensitive. In multiplayer, the host's modifiers apply to the whole run.\n\n- 'EliteStrength': Elites and bosses start each combat with 1 Strength.\n- 'RandomEnemyBuffs': Every enemy starts combat with one random buff: 1 Strength, 4 Plating,\n  2 Thorns, 1 Artifact, 3 Regen, 4 Curl Up, 4 Vigor or 1 Slippery.\n- 'WeakerRests': Resting heals 25% of max HP instead of 30%.\n- 'SlowStart': Draw 1 fewer card on the first turn of each combat.\n- 'FrailStart': Start each run with 10% less max HP.\n- 'ExtraAscendersBane': Start each run with an extra Ascender's Bane.\n- 'CursedRun': Gain a random curse at the start of each act (the base game's Cursed Run).\n- 'DeadlyEvents': ? rooms can hold elites, and treasure appears more often (the base game's\n  Deadly Events). Its extra elites and chests make relic checks easier to reach than logic expects.",
+      "description": "Extra difficulty modifiers for every run, on top of Ascension. Logic does not account for them.\nNames are case-sensitive. In multiplayer, the host's modifiers apply to the whole run.\n\n- 'EliteStrength': Elites and bosses start each combat with 1 Strength.\n- 'RandomEnemyBuffs': Every enemy starts combat with one random buff: 1 Strength, 4 Plating,\n  2 Thorns, 1 Artifact, 3 Regen, 4 Curl Up, 4 Vigor or 1 Slippery.\n- 'WeakerRests': Resting heals 25% of max HP instead of 30%.\n- 'SlowStart': Draw 1 fewer card on the first turn of each combat.\n- 'FrailStart': Start each run with 10% less max HP.\n- 'ExtraAscendersBane': Start each run with an extra Ascender's Bane.\n- 'CursedRun': Gain a random curse at the start of each act (the base game's Cursed Run).\n- 'DeadlyEvents': ? rooms can hold elites, and treasure appears more often (the base game's\n  Deadly Events). Its extra elites and chests make relic checks easier to reach than logic expects.\n- 'DangerousUnknowns': ? rooms lean towards fights. Combat starts at 20% and rises 15% each\n  time a ? room is not a fight; elites start at 0% and rise 4%; chests start and rise at 1%.\n  Shops are unchanged. The chances reset each act, with no cap. Cannot be combined with\n  'DeadlyEvents'. The extra fights and elites reach combat and relic checks sooner than logic\n  expects.",
       "default": [],
       "raw_default": [],
       "visibility": {
@@ -882,6 +882,7 @@
       "source": "game",
       "valid_keys": [
         "CursedRun",
+        "DangerousUnknowns",
         "DeadlyEvents",
         "EliteStrength",
         "ExtraAscendersBane",
