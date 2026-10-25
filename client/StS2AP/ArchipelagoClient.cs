@@ -1587,6 +1587,10 @@ namespace StS2AP
                 settings.RunModifiers = runModifiers.Select(token => token.ToString()).ToList();
                 LogUtility.Info($"SLOT - Run Modifiers: [{string.Join(",", settings.RunModifiers)}]");
             }
+            if (slotData.ContainsKey("enemy_hp_percent"))
+                settings.EnemyHpPercent = Convert.ToInt32(slotData["enemy_hp_percent"]);
+            if (slotData.ContainsKey("enemy_damage_percent"))
+                settings.EnemyDamagePercent = Convert.ToInt32(slotData["enemy_damage_percent"]);
 
             if (slotData.ContainsKey("campfire_sanity"))
                 settings.CampfireSanity = Convert.ToInt32(slotData["campfire_sanity"]) != 0;

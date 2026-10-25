@@ -12,11 +12,11 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "4f4981128c379da73795e10a9078fdec18a85669d36ecc32d90ed8ca84d8734d"
+      "sha256": "2d351d8c69d28ff68e2a7e9ece65817786c7c6896656a3c4e6ac32ce46bae47f"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
-      "sha256": "9c750c1797bd5e67714759a18706a802b3522f00e6080d535884f226ed161e7a"
+      "sha256": "e995c4345a9d4df17b1b3d43f89c854f5c9d9be877422c64300d37e8bafc10e1"
     }
   },
   "option_order": [
@@ -40,6 +40,8 @@
     "ascension",
     "ascension_down",
     "run_modifiers",
+    "enemy_hp_percent",
+    "enemy_damage_percent",
     "use_new_logic",
     "ancient_relic_location",
     "ancient_relic_pool",
@@ -107,7 +109,9 @@
         "unlocked_character",
         "ascension",
         "ascension_down",
-        "run_modifiers"
+        "run_modifiers",
+        "enemy_hp_percent",
+        "enemy_damage_percent"
       ],
       "start_collapsed": false,
       "source": "web_world"
@@ -889,6 +893,58 @@
       "valid_keys_casefold": false,
       "allow_custom_values": false,
       "supports_weighting": false,
+      "group": "Character Options"
+    },
+    "enemy_hp_percent": {
+      "key": "enemy_hp_percent",
+      "class_name": "EnemyHpPercent",
+      "module": "worlds.spire2.options",
+      "kind": "range",
+      "display_name": "Enemy Max HP Percent",
+      "description": "Every enemy's max HP as a percentage of normal, on top of Ascension. Logic does not account\nfor it. In multiplayer, the host's value applies to the whole run.",
+      "default": 100,
+      "raw_default": 100,
+      "visibility": {
+        "name": "all",
+        "value": 15,
+        "flags": [
+          "template",
+          "simple_ui",
+          "complex_ui",
+          "spoiler",
+          "all"
+        ]
+      },
+      "source": "game",
+      "minimum": 100,
+      "maximum": 150,
+      "supports_weighting": true,
+      "group": "Character Options"
+    },
+    "enemy_damage_percent": {
+      "key": "enemy_damage_percent",
+      "class_name": "EnemyDamagePercent",
+      "module": "worlds.spire2.options",
+      "kind": "range",
+      "display_name": "Enemy Damage Percent",
+      "description": "Damage enemies deal as a percentage of normal, on top of Ascension. Logic does not account\nfor it. In multiplayer, the host's value applies to the whole run.",
+      "default": 100,
+      "raw_default": 100,
+      "visibility": {
+        "name": "all",
+        "value": 15,
+        "flags": [
+          "template",
+          "simple_ui",
+          "complex_ui",
+          "spoiler",
+          "all"
+        ]
+      },
+      "source": "game",
+      "minimum": 100,
+      "maximum": 150,
+      "supports_weighting": true,
       "group": "Character Options"
     },
     "use_new_logic": {
