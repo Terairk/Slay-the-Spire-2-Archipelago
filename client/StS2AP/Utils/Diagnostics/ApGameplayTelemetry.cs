@@ -71,7 +71,7 @@ internal static class ApGameplayTelemetry
                 if (string.IsNullOrWhiteSpace(session.RoomState.Seed)) return;
                 // The AP identity is only a local file lookup. Only unrelated random IDs leave the device.
                 string owner = JsonSerializer.Serialize(new object[] { session.RoomState.Seed,
-                    session.ConnectionInfo.Team, session.ConnectionInfo.Slot, CoopSlot.PlayerNumber });
+                    session.ConnectionInfo.Team, session.ConnectionInfo.Slot });
                 string path = ProjectSettings.GlobalizePath(
                     $"user://ArchipelagoTelemetry/profile-{SaveManager.Instance.CurrentProfileId}/{ApGameplayLedger.Hash(owner)}.json");
                 var ledger = ApGameplayLedger.Load(path);
