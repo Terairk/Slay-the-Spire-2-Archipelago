@@ -12,11 +12,11 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "fd122b0e17f61e0919e29b313f9daf2ebfa9ab843ed6cd47b79b704681345950"
+      "sha256": "baf8a16eddf9f3a72158b090e52125d65469cc9481d1f6311b00d7c4808964fd"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
-      "sha256": "e995c4345a9d4df17b1b3d43f89c854f5c9d9be877422c64300d37e8bafc10e1"
+      "sha256": "f055b4731dca236b1da85a703c9b3ff248c39b2ce9b368c8c06e129bda988d0a"
     }
   },
   "option_order": [
@@ -40,8 +40,7 @@
     "ascension",
     "ascension_down",
     "run_modifiers",
-    "enemy_hp_percent",
-    "enemy_damage_percent",
+    "act_scaling_percent",
     "use_new_logic",
     "ancient_relic_location",
     "ancient_relic_pool",
@@ -110,8 +109,7 @@
         "ascension",
         "ascension_down",
         "run_modifiers",
-        "enemy_hp_percent",
-        "enemy_damage_percent"
+        "act_scaling_percent"
       ],
       "start_collapsed": false,
       "source": "web_world"
@@ -865,7 +863,7 @@
       "module": "worlds.spire2.options",
       "kind": "set",
       "display_name": "Run Modifiers",
-      "description": "Extra difficulty modifiers for every run, on top of Ascension. Logic does not account for them.\nNames are case-sensitive. In multiplayer, the host's modifiers apply to the whole run.\n\n- 'EliteStrength': Elites and bosses start each combat with 1 Strength.\n- 'RandomEnemyBuffs': Every enemy starts combat with one random buff: 1 Strength, 4 Plating,\n  2 Thorns, 1 Artifact, 3 Regen, 4 Curl Up, 4 Vigor or 1 Slippery.\n- 'WeakerRests': Resting heals 25% of max HP instead of 30%.\n- 'SlowStart': Draw 1 fewer card on the first turn of each combat.\n- 'FrailStart': Start each run with 10% less max HP.\n- 'ExtraAscendersBane': Start each run with an extra Ascender's Bane.\n- 'CursedRun': Gain a random curse at the start of each act (the base game's Cursed Run).\n- 'DeadlyEvents': ? rooms can hold elites, and treasure appears more often (the base game's\n  Deadly Events). Its extra elites and chests make relic checks easier to reach than logic expects.\n- 'DangerousUnknowns': ? rooms lean towards fights. Combat starts at 20% and rises 15% each\n  time a ? room is not a fight; elites start at 0% and rise 4%; chests start and rise at 1%.\n  Shops are unchanged. The chances reset each act, with no cap. Cannot be combined with\n  'DeadlyEvents'. The extra fights and elites reach combat and relic checks sooner than logic\n  expects.",
+      "description": "Extra difficulty modifiers for every run, on top of Ascension. Logic does not account for them.\nMost leave Act 1 as it is and grow harder in Acts 2 and 3. Names are case-sensitive. In\nmultiplayer, the host's modifiers apply to the whole run.\n\n- 'RisingStrength': Elites and bosses start each combat with 1 Strength in Act 2 and 2 in Act 3.\n- 'EscalatingBuffs': Enemies start combat with one random buff in Act 2 and two different ones in\n  Act 3, from 1 Strength, 4 Plating, 2 Thorns, 1 Artifact, 3 Regen, 4 Curl Up, 4 Vigor and\n  1 Slippery.\n- 'ShrinkingRests': Resting heals 25% of max HP in Act 2 and 20% in Act 3, instead of 30%.\n- 'MountingCurses': Gain a random curse at the start of Act 2 and of Act 3.\n- 'MountingBanes': Gain an Ascender's Bane, which cannot be removed, at the start of Act 2 and\n  of Act 3.\n- 'CursedRun': Gain a random curse at the start of every act, including Act 1 (the base game's\n  Cursed Run). Stacks with 'MountingCurses'.\n- 'ExtraAscendersBane': Start each run with an extra Ascender's Bane. Stacks with\n  'MountingBanes'.\n- 'SlowStart': Draw 1 fewer card on the first turn of each combat, in every act.\n- 'FrailStart': Start each run with 10% less max HP.\n- 'DangerousUnknowns': ? rooms lean towards fights. Combat starts at 20% and rises 15% each\n  time a ? room is not a fight; elites start at 0% and rise 4%; chests start and rise at 1%.\n  Shops are unchanged. The chances reset each act, with no cap. The extra fights and elites\n  reach combat and relic checks sooner than logic expects.",
       "default": [],
       "raw_default": [],
       "visibility": {
@@ -883,28 +881,29 @@
       "valid_keys": [
         "CursedRun",
         "DangerousUnknowns",
-        "DeadlyEvents",
-        "EliteStrength",
+        "EscalatingBuffs",
         "ExtraAscendersBane",
         "FrailStart",
-        "RandomEnemyBuffs",
-        "SlowStart",
-        "WeakerRests"
+        "MountingBanes",
+        "MountingCurses",
+        "RisingStrength",
+        "ShrinkingRests",
+        "SlowStart"
       ],
       "valid_keys_casefold": false,
       "allow_custom_values": false,
       "supports_weighting": false,
       "group": "Character Options"
     },
-    "enemy_hp_percent": {
-      "key": "enemy_hp_percent",
-      "class_name": "EnemyHpPercent",
+    "act_scaling_percent": {
+      "key": "act_scaling_percent",
+      "class_name": "ActScalingPercent",
       "module": "worlds.spire2.options",
       "kind": "range",
-      "display_name": "Enemy Max HP Percent",
-      "description": "Every enemy's max HP as a percentage of normal, on top of Ascension. Logic does not account\nfor it. In multiplayer, the host's value applies to the whole run.",
-      "default": 100,
-      "raw_default": 100,
+      "display_name": "Act Scaling Percent",
+      "description": "Extra max HP and damage for every enemy after Act 1, as a percentage per act: enemies get this\nmuch more in Act 2 and twice as much in Act 3. Act 1 is unchanged. Stacks with Ascension. Logic\ndoes not account for it. In multiplayer, the host's value applies to the whole run.",
+      "default": 0,
+      "raw_default": 0,
       "visibility": {
         "name": "all",
         "value": 15,
@@ -917,34 +916,8 @@
         ]
       },
       "source": "game",
-      "minimum": 100,
-      "maximum": 150,
-      "supports_weighting": true,
-      "group": "Character Options"
-    },
-    "enemy_damage_percent": {
-      "key": "enemy_damage_percent",
-      "class_name": "EnemyDamagePercent",
-      "module": "worlds.spire2.options",
-      "kind": "range",
-      "display_name": "Enemy Damage Percent",
-      "description": "Damage enemies deal as a percentage of normal, on top of Ascension. Logic does not account\nfor it. In multiplayer, the host's value applies to the whole run.",
-      "default": 100,
-      "raw_default": 100,
-      "visibility": {
-        "name": "all",
-        "value": 15,
-        "flags": [
-          "template",
-          "simple_ui",
-          "complex_ui",
-          "spoiler",
-          "all"
-        ]
-      },
-      "source": "game",
-      "minimum": 100,
-      "maximum": 150,
+      "minimum": 0,
+      "maximum": 25,
       "supports_weighting": true,
       "group": "Character Options"
     },
