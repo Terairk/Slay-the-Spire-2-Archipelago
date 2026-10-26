@@ -12,12 +12,109 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "baf8a16eddf9f3a72158b090e52125d65469cc9481d1f6311b00d7c4808964fd"
+      "sha256": "653881751194a0608624552bd5c947ec98140f1d480ce08fdc26968e8f4b9c06"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
-      "sha256": "f055b4731dca236b1da85a703c9b3ff248c39b2ce9b368c8c06e129bda988d0a"
+      "sha256": "e1b088f4ed952a424220b320866671f33a23ff8e65362e835f822150af99d258"
     }
+  },
+  "characters": {
+    "generic_character_limit": 20,
+    "predefined": [
+      {
+        "name": "Tectonic",
+        "internal_id": "INTOTHESPIREVERSE-SHADOW_IRONCLAD"
+      },
+      {
+        "name": "Captain",
+        "internal_id": "INTOTHESPIREVERSE-SHADOW_REGENT"
+      },
+      {
+        "name": "Acolyte",
+        "internal_id": "INTOTHESPIREVERSE-SHADOW_SILENT"
+      },
+      {
+        "name": "Slime Boss",
+        "internal_id": "SLIMEBOSS-SLIME_BOSS"
+      },
+      {
+        "name": "Guardian",
+        "internal_id": "GUARDIAN-GUARDIAN"
+      },
+      {
+        "name": "Hexaghost",
+        "internal_id": "HEXAGHOST-HEXAGHOST"
+      },
+      {
+        "name": "Champ",
+        "internal_id": "CHAMP-CHAMP"
+      },
+      {
+        "name": "Automaton",
+        "internal_id": "AUTOMATON-AUTOMATON"
+      },
+      {
+        "name": "Snecko",
+        "internal_id": "SNECKO-SNECKO"
+      },
+      {
+        "name": "Hermit",
+        "internal_id": "HERMIT-HERMIT"
+      },
+      {
+        "name": "Awakened One",
+        "internal_id": "AWAKENED-AWAKENED"
+      },
+      {
+        "name": "Watcher",
+        "internal_id": "WATCHER-WATCHER"
+      },
+      {
+        "name": "Hornet",
+        "internal_id": "HORNET_MOD_CHARACTER_HORNET_MOD_CHARACTER"
+      },
+      {
+        "name": "Slugcat Survivor",
+        "internal_id": "SLUGCAT_THE_SPIRE_II_CHARACTER_RAINWORLD_LIVER"
+      },
+      {
+        "name": "Slugcat Hunter",
+        "internal_id": "SLUGCAT_THE_SPIRE_II_CHARACTER_RAINWORLD_REDCAT"
+      },
+      {
+        "name": "Slugcat Rivulet",
+        "internal_id": "SLUGCAT_THE_SPIRE_II_CHARACTER_RAINWORLD_RIVER"
+      },
+      {
+        "name": "Alchemist",
+        "internal_id": "ALCHEMIST-ALCHEMIST"
+      },
+      {
+        "name": "Runesmith",
+        "internal_id": "RUNESMITH2-RUNESMITH2"
+      },
+      {
+        "name": "Witch",
+        "internal_id": "THEWITCH-WITCH"
+      },
+      {
+        "name": "Tailor",
+        "internal_id": "THETAILOR-THE_TAILOR"
+      },
+      {
+        "name": "Engineer",
+        "internal_id": "THEENGINEER-THE_ENGINEER"
+      },
+      {
+        "name": "Kakarot",
+        "internal_id": "KAKAROTMOD-KAKAROT"
+      },
+      {
+        "name": "Fae Sorceress",
+        "internal_id": "FAESORCERESS-FAE_SORCERESS"
+      }
+    ]
   },
   "option_order": [
     "progression_balancing",
@@ -49,6 +146,8 @@
     "progressive_starter_card",
     "progressive_starter_relic",
     "shuffle_all_cards",
+    "strict_card_rewards",
+    "hidden_intents",
     "bonus_items",
     "include_floor_checks",
     "neow_sanity",
@@ -107,7 +206,16 @@
         "lock_characters",
         "unlocked_character",
         "ascension",
-        "ascension_down",
+        "ascension_down"
+      ],
+      "start_collapsed": false,
+      "source": "web_world"
+    },
+    {
+      "name": "Challenges",
+      "option_keys": [
+        "strict_card_rewards",
+        "hidden_intents",
         "run_modifiers",
         "act_scaling_percent"
       ],
@@ -893,7 +1001,7 @@
       "valid_keys_casefold": false,
       "allow_custom_values": false,
       "supports_weighting": false,
-      "group": "Character Options"
+      "group": "Challenges"
     },
     "act_scaling_percent": {
       "key": "act_scaling_percent",
@@ -919,7 +1027,7 @@
       "minimum": 0,
       "maximum": 25,
       "supports_weighting": true,
-      "group": "Character Options"
+      "group": "Challenges"
     },
     "use_new_logic": {
       "key": "use_new_logic",
@@ -1197,6 +1305,78 @@
       ],
       "supports_weighting": true,
       "group": "Game Options"
+    },
+    "strict_card_rewards": {
+      "key": "strict_card_rewards",
+      "class_name": "StrictCardRewards",
+      "module": "worlds.spire2.options",
+      "kind": "toggle",
+      "display_name": "Strict Card Rewards",
+      "description": "Harder: you can no longer look through every Card Reward in the AP Menu before picking.\nOpening one reveals its cards and locks the other Card Rewards until you take a card or Discard it,\nlike a card reward after a fight. Skip, the map, the deck and closing the menu keep the revealed\nreward for later. With Pael's Wing, its Sacrifice replaces Discard.\nDoes not change logic. The mod's settings can override this.",
+      "default": false,
+      "raw_default": 0,
+      "visibility": {
+        "name": "all",
+        "value": 15,
+        "flags": [
+          "template",
+          "simple_ui",
+          "complex_ui",
+          "spoiler",
+          "all"
+        ]
+      },
+      "source": "game",
+      "choices": [
+        {
+          "name": "false",
+          "display_name": "False",
+          "value": 0
+        },
+        {
+          "name": "true",
+          "display_name": "True",
+          "value": 1
+        }
+      ],
+      "supports_weighting": true,
+      "group": "Challenges"
+    },
+    "hidden_intents": {
+      "key": "hidden_intents",
+      "class_name": "HiddenIntents",
+      "module": "worlds.spire2.options",
+      "kind": "toggle",
+      "display_name": "Hidden Intents",
+      "description": "Harder: enemy intents are hidden, like Runic Dome in the first game, and so is the Intent Graph mod's overlay.\nAdds two Progressive Intent Sight items to the item pool, which apply to every character. The first shows what\neach enemy intends to do, without numbers. The second shows damage and other numbers, and the Intent Graph overlay.\nDoes not change logic.",
+      "default": false,
+      "raw_default": 0,
+      "visibility": {
+        "name": "all",
+        "value": 15,
+        "flags": [
+          "template",
+          "simple_ui",
+          "complex_ui",
+          "spoiler",
+          "all"
+        ]
+      },
+      "source": "game",
+      "choices": [
+        {
+          "name": "false",
+          "display_name": "False",
+          "value": 0
+        },
+        {
+          "name": "true",
+          "display_name": "True",
+          "value": 1
+        }
+      ],
+      "supports_weighting": true,
+      "group": "Challenges"
     },
     "bonus_items": {
       "key": "bonus_items",

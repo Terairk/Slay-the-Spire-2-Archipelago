@@ -108,6 +108,7 @@ class TestProgressiveRelicOptionsConfigured(Spire2TestBase):
     options = {
         "relic_rewards_available_anytime": 7,
         "release_on_victory": 0,
+        "strict_card_rewards": 1,
     }
 
     def test_configured_values_are_sent_in_slot_data(self):
@@ -116,6 +117,7 @@ class TestProgressiveRelicOptionsConfigured(Spire2TestBase):
         self.assertEqual(7, slot_data["relic_rewards_available_anytime"])
         self.assertEqual(0, self.world.options.release_on_victory.value)
         self.assertEqual(0, slot_data["release_on_victory"])
+        self.assertEqual(1, slot_data["strict_card_rewards"])
 
 
 class TestRunModifiersDefault(Spire2TestBase):
