@@ -77,12 +77,19 @@ public sealed class MissingCharacterFallbackPlanTests
             plan.WithMirroredLocations([Location(3, 7)]));
     }
 
-    [Fact(DisplayName = "Other characters' checks and reserved IDs are never mirrored")]
-    public void OnlyTheFallbackBlockIsMirrored()
+    [Fact(DisplayName = "Every playable character's checks are mirrored to the missing characters")]
+    public void OtherCharactersChecksMirrorToMissingCharacters()
     {
         var plan = PlanFor(new("IRONCLAD", 1), new("DEFECT", 3), new("HERMIT", 201));
 
-        Assert.Equal([Location(1, 7)], plan.WithMirroredLocations([Location(1, 7)]));
+        Assert.Equal([Location(1, 7), Location(201, 7)], plan.WithMirroredLocations([Location(1, 7)]));
+    }
+
+    [Fact(DisplayName = "Reserved IDs are never mirrored")]
+    public void ReservedIdsAreNotMirrored()
+    {
+        var plan = PlanFor(new("IRONCLAD", 1), new("HERMIT", 201));
+
         Assert.Equal([-1L], plan.WithMirroredLocations([-1L]));
     }
 
@@ -92,7 +99,16 @@ public sealed class MissingCharacterFallbackPlanTests
         var plan = PlanFor(new("IRONCLAD", 1), new("HERMIT", 201), new("", 11), new("WATCHER", 202));
 
         Assert.Equal(["HERMIT", "WATCHER"], plan.GoalCharacterIds("DEFECT"));
-        Assert.Equal(["IRONCLAD"], plan.GoalCharacterIds("IRONCLAD"));
+        Assert.Equal(["HERMIT", "WATCHER"], plan.RepresentedCharacterIds("DEFECT"));
+    }
+
+    [Fact(DisplayName = "Any character's win also credits the missing characters")]
+    public void OtherCharactersWinCreditsMissingCharacters()
+    {
+        var plan = PlanFor(new("IRONCLAD", 1), new("HERMIT", 201), new("WATCHER", 202));
+
+        Assert.Equal(["IRONCLAD", "HERMIT", "WATCHER"], plan.GoalCharacterIds("IRONCLAD"));
+        Assert.Equal(["IRONCLAD"], plan.RepresentedCharacterIds("IRONCLAD"));
     }
 
     [Fact(DisplayName = "A configured Defect win credits Defect and every missing character")]
@@ -101,16 +117,15 @@ public sealed class MissingCharacterFallbackPlanTests
         var plan = PlanFor(new("DEFECT", 3), new("HERMIT", 201));
 
         Assert.Equal(["Defect", "HERMIT"], plan.GoalCharacterIds("Defect"));
+        Assert.Equal(["Defect"], plan.RepresentedCharacterIds("Defect"));
     }
 
-    [Fact(DisplayName = "Mirrored goals satisfy a whole-roster slot goal")]
+    [Fact(DisplayName = "One win with the only playable character satisfies a whole-roster slot goal")]
     public void MirroredGoalsCompleteTheSlotGoal()
     {
         string[] roster = ["IRONCLAD", "HERMIT", "WATCHER"];
         var plan = PlanFor(new("IRONCLAD", 1), new("HERMIT", 201), new("WATCHER", 202));
 
-        var goaled = plan.GoalCharacterIds("DEFECT").Concat(plan.GoalCharacterIds("IRONCLAD"));
-
-        Assert.True(SlotGoalPolicy.IsComplete(goaled, roster, 0));
+        Assert.True(SlotGoalPolicy.IsComplete(plan.GoalCharacterIds("IRONCLAD"), roster, 0));
     }
 }

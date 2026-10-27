@@ -3,12 +3,13 @@ using StS2AP.Data;
 namespace StS2AP.Utils;
 
 /// <summary>
-/// Decides how one installed vanilla character stands in for slot characters whose mods are not
-/// loaded, so a broken or missing character mod never locks a player out of the slot.
+/// Decides how a slot copes with characters whose mods are not loaded, so a broken or missing
+/// character mod never locks a player out of the slot.
 ///
-/// The fallback character plays with its own slot configuration when the slot has one; otherwise
-/// it borrows the configuration (items, ascension, seed) of the first missing character. Either
-/// way, its location checks and victories also count for every missing character.
+/// Like the Slay the Spire 1 Archipelago mod, every playable character's location checks and
+/// victories also count for every missing character. One installed vanilla character is also
+/// guaranteed to be playable: it uses its own slot configuration when the slot has one, and
+/// otherwise borrows the configuration (items, ascension, seed) of the first missing character.
 ///
 /// The plan is derived from the installed characters each time slot settings are prepared and is
 /// never saved, so installing or removing character mods takes effect on the next connection.
@@ -35,7 +36,7 @@ internal sealed class MissingCharacterFallbackPlan
         _missingNumbers = missingCharacters.Select(character => character.Number).ToHashSet();
     }
 
-    /// <summary>The game character ID that stands in for the missing characters.</summary>
+    /// <summary>The game character ID that is always playable while characters are missing.</summary>
     public string FallbackCharacterId { get; }
 
     /// <summary>Configured characters that are not installed, in AP character-number order.</summary>
@@ -79,25 +80,23 @@ internal sealed class MissingCharacterFallbackPlan
     public bool IsMissing(long characterNumber) => _missingNumbers.Contains(characterNumber);
 
     /// <summary>
-    /// Returns the requested locations plus, for each one the fallback character earned, the
-    /// same location in every missing character's block.
+    /// Returns the requested locations plus the same location in every other missing character's
+    /// block. Every character location is mirrored, whoever earned it; a borrowed fallback's
+    /// locations sit in the first missing character's block and reach the others the same way.
     /// </summary>
     public IEnumerable<long> WithMirroredLocations(IEnumerable<long> locationIds)
     {
         foreach (long locationId in locationIds)
         {
             yield return locationId;
-            if (!IsActive
-                || ArchipelagoIdCodec.IsArchipelagoReservedId(locationId)
-                || ArchipelagoIdCodec.GetAPCharacterNumberFromLocationId(locationId) != FallbackCharacterNumber)
-            {
+            if (!IsActive || ArchipelagoIdCodec.IsArchipelagoReservedId(locationId))
                 continue;
-            }
 
+            long sourceCharacterNumber = ArchipelagoIdCodec.GetAPCharacterNumberFromLocationId(locationId);
             long baseLocationId = ArchipelagoIdCodec.GetBaseLocationId(locationId);
             foreach (SlotCharacter missing in MissingCharacters)
             {
-                if (missing.Number != FallbackCharacterNumber
+                if (missing.Number != sourceCharacterNumber
                     && ArchipelagoIdCodec.TryComposeLocationId(baseLocationId, missing.Number, out long mirrored))
                 {
                     yield return mirrored;
@@ -107,23 +106,33 @@ internal sealed class MissingCharacterFallbackPlan
     }
 
     /// <summary>
-    /// Returns the slot characters credited when <paramref name="playedCharacterId"/> wins a run.
-    /// A borrowed fallback is not a slot character itself, so only the missing characters count.
+    /// Returns the slot characters credited when <paramref name="playedCharacterId"/> wins a run:
+    /// the characters it represents plus every missing character.
     /// </summary>
     public IReadOnlyList<string> GoalCharacterIds(string playedCharacterId)
     {
-        if (!IsActive
-            || !string.Equals(playedCharacterId, FallbackCharacterId, StringComparison.OrdinalIgnoreCase))
-        {
+        if (!IsActive)
             return new[] { playedCharacterId };
-        }
 
-        var credited = new List<string>();
-        if (BorrowedCharacter == null)
-            credited.Add(playedCharacterId);
-        credited.AddRange(MissingCharacters
-            .Select(character => character.Id)
-            .Where(id => !string.IsNullOrWhiteSpace(id)));
-        return credited;
+        return RepresentedCharacterIds(playedCharacterId)
+            .Concat(MissingCharacterIds())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
+
+    /// <summary>
+    /// Returns the slot characters whose goals stand for <paramref name="playedCharacterId"/>'s own.
+    /// A borrowed fallback is not a slot character itself, so it stands for the missing characters.
+    /// </summary>
+    public IReadOnlyList<string> RepresentedCharacterIds(string playedCharacterId)
+    {
+        bool isBorrowedFallback = BorrowedCharacter != null
+            && string.Equals(playedCharacterId, FallbackCharacterId, StringComparison.OrdinalIgnoreCase);
+        return isBorrowedFallback ? MissingCharacterIds().ToArray() : new[] { playedCharacterId };
+    }
+
+    private IEnumerable<string> MissingCharacterIds() =>
+        MissingCharacters
+            .Select(character => character.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id));
 }

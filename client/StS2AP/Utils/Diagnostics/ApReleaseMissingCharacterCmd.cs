@@ -8,7 +8,7 @@ namespace StS2AP.Utils.Diagnostics;
 
 /// <summary>
 /// Dev-console escape hatch that sends every remaining location of a slot character whose mod is
-/// not loaded, for when Defect cannot reasonably finish that character's checks. It only targets
+/// not loaded, for when no playable character can reasonably finish that character's checks. It only targets
 /// missing characters, so it cannot release a playable character's checks, and it refuses to run
 /// in race rooms or before the room's race mode is known.
 /// </summary>

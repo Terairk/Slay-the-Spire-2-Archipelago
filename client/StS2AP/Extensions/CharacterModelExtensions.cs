@@ -42,12 +42,12 @@ namespace StS2AP.Extensions
         /// </summary>
         public static bool HasCleared(this CharacterModel character)
         {
-            // Defect standing in for missing character mods has cleared once all of them have.
+            // A Defect borrowing a missing character's slot has cleared once the missing characters have.
             ArchipelagoSettings? settings = ArchipelagoClient.Settings;
             if (settings == null)
                 return GameUtility.HasCharacterGoaled(character.Id.Entry);
             return MissingCharacterFallback.GetPlan(settings)
-                .GoalCharacterIds(character.Id.Entry)
+                .RepresentedCharacterIds(character.Id.Entry)
                 .All(GameUtility.HasCharacterGoaled);
         }
     }

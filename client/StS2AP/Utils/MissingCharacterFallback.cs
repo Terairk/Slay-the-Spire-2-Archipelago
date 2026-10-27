@@ -6,9 +6,10 @@ using StS2AP.Models;
 namespace StS2AP.Utils;
 
 /// <summary>
-/// Applies <see cref="MissingCharacterFallbackPlan"/> to slot settings: Defect stands in for
-/// configured characters whose mods are not loaded. Defect is vanilla, so it is always installed,
-/// and one fixed stand-in is easier for players to remember than a per-slot choice.
+/// Applies <see cref="MissingCharacterFallbackPlan"/> to slot settings while configured characters'
+/// mods are not loaded: every character's checks and wins count for them, and Defect is always
+/// playable. Defect is vanilla, so it is always installed, and one fixed stand-in is easier for
+/// players to remember than a per-slot choice.
 ///
 /// The slot's character table is left exactly as the server sent it; only lookups by game
 /// character go through <see cref="TryGetConfig"/>, which can answer for Defect with a borrowed
@@ -101,8 +102,8 @@ internal static class MissingCharacterFallback
 
         LogUtility.Warn(
             $"Character mod(s) not loaded for AP characters [{string.Join(", ", plan.MissingCharacters)}]; "
-                + $"{plan.FallbackCharacterId} plays as AP character #{plan.FallbackCharacterNumber} "
-                + "and also sends their checks."
+                + $"every character's checks also count for them, and {plan.FallbackCharacterId} "
+                + $"plays as AP character #{plan.FallbackCharacterNumber}."
         );
         return new Resolution(plan, borrowedConfig);
     }

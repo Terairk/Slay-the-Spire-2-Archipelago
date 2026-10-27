@@ -413,7 +413,7 @@ namespace StS2AP.Utils
                 const string storageKey = "StS2AP_GoaledChars";
                 LogUtility.Debug($"TrySetGoalAchieved: charName - {charName}");
 
-                // A Defect win standing in for missing character mods also completes their goals.
+                // Any win also completes the goals of characters whose mods are not loaded.
                 IReadOnlyList<string> goalCharacterIds = MissingCharacterFallback
                     .GetPlan(settings)
                     .GoalCharacterIds(charName);
@@ -509,7 +509,7 @@ namespace StS2AP.Utils
 
         internal static LocationCheckSendResult QueueChecks(IEnumerable<long> locationIds)
         {
-            // Defect's checks also count for characters whose mods are not loaded.
+            // Every check also counts for characters whose mods are not loaded.
             MissingCharacterFallbackPlan fallbackPlan = ArchipelagoClient.Settings is { } settings
                 ? MissingCharacterFallback.GetPlan(settings)
                 : MissingCharacterFallbackPlan.None;
