@@ -16,23 +16,22 @@ namespace StS2AP.Utils;
 /// </summary>
 internal sealed class MissingCharacterFallbackPlan
 {
+    // Id = Character's Internal ID in the game
     public readonly record struct SlotCharacter(string Id, long Number);
 
     public static readonly MissingCharacterFallbackPlan None =
-        new(string.Empty, Array.Empty<SlotCharacter>(), null, null);
+        new(string.Empty, Array.Empty<SlotCharacter>(), null);
 
     private readonly HashSet<long> _missingNumbers;
 
     private MissingCharacterFallbackPlan(
         string fallbackCharacterId,
         IReadOnlyList<SlotCharacter> missingCharacters,
-        SlotCharacter? borrowedCharacter,
-        long? fallbackCharacterNumber)
+        SlotCharacter? borrowedCharacter)
     {
         FallbackCharacterId = fallbackCharacterId;
         MissingCharacters = missingCharacters;
         BorrowedCharacter = borrowedCharacter;
-        FallbackCharacterNumber = fallbackCharacterNumber;
         _missingNumbers = missingCharacters.Select(character => character.Number).ToHashSet();
     }
 
@@ -47,9 +46,6 @@ internal sealed class MissingCharacterFallbackPlan
     /// null when the fallback character has its own configuration in this slot.
     /// </summary>
     public SlotCharacter? BorrowedCharacter { get; }
-
-    /// <summary>The AP character number whose locations the fallback character's runs produce.</summary>
-    public long? FallbackCharacterNumber { get; }
 
     public bool IsActive => MissingCharacters.Count > 0;
 
@@ -72,9 +68,8 @@ internal sealed class MissingCharacterFallbackPlan
             .Select(character => (SlotCharacter?)character)
             .FirstOrDefault();
         SlotCharacter? borrowed = ownConfiguration == null ? missing[0] : null;
-        long fallbackNumber = (ownConfiguration ?? missing[0]).Number;
 
-        return new MissingCharacterFallbackPlan(fallbackCharacterId, missing, borrowed, fallbackNumber);
+        return new MissingCharacterFallbackPlan(fallbackCharacterId, missing, borrowed);
     }
 
     public bool IsMissing(long characterNumber) => _missingNumbers.Contains(characterNumber);
@@ -93,11 +88,11 @@ internal sealed class MissingCharacterFallbackPlan
                 continue;
 
             long sourceCharacterNumber = ArchipelagoIdCodec.GetAPCharacterNumberFromLocationId(locationId);
-            long baseLocationId = ArchipelagoIdCodec.GetBaseLocationId(locationId);
+            long locationIdOffset = ArchipelagoIdCodec.GetLocationIdOffset(locationId);
             foreach (SlotCharacter missing in MissingCharacters)
             {
                 if (missing.Number != sourceCharacterNumber
-                    && ArchipelagoIdCodec.TryComposeLocationId(baseLocationId, missing.Number, out long mirrored))
+                    && ArchipelagoIdCodec.TryComposeLocationId(locationIdOffset, missing.Number, out long mirrored))
                 {
                     yield return mirrored;
                 }

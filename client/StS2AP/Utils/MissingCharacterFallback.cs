@@ -100,10 +100,13 @@ internal static class MissingCharacterFallback
             borrowedConfig.Locked = false;
         }
 
+        string fallbackConfiguration = plan.BorrowedCharacter is { } borrowedCharacter
+            ? $"AP character #{borrowedCharacter.Number}'s configuration"
+            : "its own configuration";
         LogUtility.Warn(
             $"Character mod(s) not loaded for AP characters [{string.Join(", ", plan.MissingCharacters)}]; "
                 + $"every character's checks also count for them, and {plan.FallbackCharacterId} "
-                + $"plays as AP character #{plan.FallbackCharacterNumber}."
+                + $"plays with {fallbackConfiguration}."
         );
         return new Resolution(plan, borrowedConfig);
     }

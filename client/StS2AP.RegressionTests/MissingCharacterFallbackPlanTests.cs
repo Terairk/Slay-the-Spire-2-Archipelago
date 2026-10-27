@@ -37,7 +37,6 @@ public sealed class MissingCharacterFallbackPlanTests
         Assert.True(plan.IsActive);
         Assert.Equal([new SlotCharacter("HERMIT", 201), new SlotCharacter("WATCHER", 202)], plan.MissingCharacters);
         Assert.Equal(new SlotCharacter("HERMIT", 201), plan.BorrowedCharacter);
-        Assert.Equal(201, plan.FallbackCharacterNumber);
     }
 
     [Fact(DisplayName = "A configured Defect keeps its own configuration")]
@@ -46,7 +45,6 @@ public sealed class MissingCharacterFallbackPlanTests
         var plan = PlanFor(new("defect", 3), new("HERMIT", 201));
 
         Assert.Null(plan.BorrowedCharacter);
-        Assert.Equal(3, plan.FallbackCharacterNumber);
     }
 
     [Fact(DisplayName = "Blank character IDs count as missing")]
