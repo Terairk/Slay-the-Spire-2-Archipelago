@@ -144,6 +144,25 @@ namespace StS2AP
         }
 
         /// <summary>
+        /// The characters unlocked for this slot: those from slot data and received Unlock items,
+        /// plus the stand-in for missing character mods. The stand-in is derived here instead of
+        /// stored in <see cref="Progress"/>, because Progress is replaced when a run starts and
+        /// only Unlock items are replayed into the new one.
+        /// </summary>
+        internal static IReadOnlyList<CharacterModel> UnlockedCharactersWithFallback
+        {
+            get
+            {
+                List<CharacterModel> unlocked = Progress.UnlockedCharacters;
+                if (Settings is not { } settings || !MissingCharacterFallback.GetPlan(settings).IsActive)
+                    return unlocked;
+
+                CharacterModel fallback = MissingCharacterFallback.FallbackCharacter;
+                return unlocked.Any(character => character.Id == fallback.Id) ? unlocked : [.. unlocked, fallback];
+            }
+        }
+
+        /// <summary>
         /// Validates a character against the current slot rather than the reused native
         /// character-select button state.
         /// </summary>
@@ -161,7 +180,7 @@ namespace StS2AP
                 return false;
             }
 
-            if (!Progress.UnlockedCharacters.Any(unlocked => unlocked.Id == character.Id))
+            if (!UnlockedCharactersWithFallback.Any(unlocked => unlocked.Id == character.Id))
             {
                 reason = $"Character {character.Id.Entry} is not unlocked for this AP slot.";
                 return false;
@@ -1000,19 +1019,10 @@ namespace StS2AP
                 LogUtility.Info($"Unlocking starting character {model.Id.Entry} from slot data");
             }
 
-            // While any character mod is missing, Defect stays selectable to play in its place,
-            // whatever the missing characters' own unlock state.
-            if (MissingCharacterFallback.GetPlan(settings).IsActive)
-            {
-                CharacterModel fallback = MissingCharacterFallback.FallbackCharacter;
-                if (ids.Add(fallback.Id.Entry))
-                {
-                    Progress.UnlockedCharacters.Add(fallback);
-                    LogUtility.Info($"Unlocking {fallback.Id.Entry} to stand in for missing character mods");
-                }
-            }
-
-            bool someoneUnlocked = ids.Any(id => settings.TryGetCharacterConfig(id, out _));
+            // While any character mod is missing, the stand-in is always selectable; see
+            // UnlockedCharactersWithFallback.
+            bool someoneUnlocked = MissingCharacterFallback.GetPlan(settings).IsActive
+                || ids.Any(id => settings.TryGetCharacterConfig(id, out _));
             if (!someoneUnlocked)
             {
                 // A configured starting character could not be resolved, most likely

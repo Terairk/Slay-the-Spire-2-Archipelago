@@ -38,8 +38,9 @@ namespace StS2AP.Patches
                 if (MultiplayerSupport.IsRealMultiplayerRun)
                     return;
 
-                LogUtility.Debug($"OverrideUnlockedCharacterData: Overriding unlocked characters. UnlockedCharacters count: {ArchipelagoClient.Progress.UnlockedCharacters.Count}");
-                __result = ArchipelagoClient.Progress.UnlockedCharacters;
+                IReadOnlyList<CharacterModel> unlocked = ArchipelagoClient.UnlockedCharactersWithFallback;
+                LogUtility.Debug($"OverrideUnlockedCharacterData: Overriding unlocked characters. UnlockedCharacters count: {unlocked.Count}");
+                __result = unlocked;
             }
         }
 
