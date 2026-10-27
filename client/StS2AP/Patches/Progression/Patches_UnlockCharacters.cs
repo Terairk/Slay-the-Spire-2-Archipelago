@@ -106,7 +106,7 @@ namespace StS2AP.Patches
                     var name = charModel.Id.Entry;
 
                     // Hide any character that isn't in the available characters list for this Archipelago slot
-                    bool isVisible = ArchipelagoClient.Settings.Characters.ContainsKey(name);
+                    bool isVisible = ArchipelagoClient.Settings.TryGetCharacterConfig(name, out _);
                     LogUtility.Debug($"OverrideCharacterSelectMenuOptions: '{name}' isVisible={isVisible}");
 
                     button.Visible = isVisible;

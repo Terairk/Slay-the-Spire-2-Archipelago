@@ -40,6 +40,11 @@ namespace StS2AP.Data
             return locationId % BlockSize;
         }
 
+        public static long GetAPCharacterNumberFromLocationId(long locationId)
+        {
+            return (locationId / BlockSize) + 1;
+        }
+
         public static bool TryComposeLocationId(
             long baseLocationId,
             long apCharacterNumber,
