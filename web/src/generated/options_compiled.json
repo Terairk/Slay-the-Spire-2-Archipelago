@@ -12,11 +12,11 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "653881751194a0608624552bd5c947ec98140f1d480ce08fdc26968e8f4b9c06"
+      "sha256": "2dccf960ab4e31bca3f9d3152683a0022077f98dbd5547a5b0df27a59cf1e609"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
-      "sha256": "e1b088f4ed952a424220b320866671f33a23ff8e65362e835f822150af99d258"
+      "sha256": "e6f136967483f5731f668c297cbe287fd15843fcdaaeae3e27dd7c6d352178d9"
     }
   },
   "characters": {
@@ -148,6 +148,7 @@
     "shuffle_all_cards",
     "strict_card_rewards",
     "hidden_intents",
+    "hidden_health",
     "bonus_items",
     "include_floor_checks",
     "neow_sanity",
@@ -216,6 +217,7 @@
       "option_keys": [
         "strict_card_rewards",
         "hidden_intents",
+        "hidden_health",
         "run_modifiers",
         "act_scaling_percent"
       ],
@@ -1349,6 +1351,42 @@
       "kind": "toggle",
       "display_name": "Hidden Intents",
       "description": "Harder: enemy intents are hidden, like Runic Dome in the first game, and so is the Intent Graph mod's overlay.\nAdds two Progressive Intent Sight items to the item pool, which apply to every character. The first shows what\neach enemy intends to do, without numbers. The second shows damage and other numbers, and the Intent Graph overlay.\nDoes not change logic.",
+      "default": false,
+      "raw_default": 0,
+      "visibility": {
+        "name": "all",
+        "value": 15,
+        "flags": [
+          "template",
+          "simple_ui",
+          "complex_ui",
+          "spoiler",
+          "all"
+        ]
+      },
+      "source": "game",
+      "choices": [
+        {
+          "name": "false",
+          "display_name": "False",
+          "value": 0
+        },
+        {
+          "name": "true",
+          "display_name": "True",
+          "value": 1
+        }
+      ],
+      "supports_weighting": true,
+      "group": "Challenges"
+    },
+    "hidden_health": {
+      "key": "hidden_health",
+      "class_name": "HiddenHealth",
+      "module": "worlds.spire2.options",
+      "kind": "toggle",
+      "display_name": "Hidden Health",
+      "description": "Harder: health is hidden. Health bars stay full and show no numbers, the top bar shows no HP, and the\npoison and doom previews on health bars are hidden. Block is still shown. Adds two Progressive Health Sight\nitems to the item pool, which apply to every character. The first shows your own side's health, the second\nshows enemy health too. Does not change logic.",
       "default": false,
       "raw_default": 0,
       "visibility": {
