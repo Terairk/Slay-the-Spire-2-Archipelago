@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using StS2AP.Persistence;
 using Xunit;
 
@@ -106,6 +107,49 @@ public sealed class ApRunGraphLogTests : IDisposable
         bool progression, bool useful, bool trap, ApRunGraphItemType expected)
     {
         Assert.Equal(expected, ApRunGraphLog.Classify(progression, useful, trap));
+    }
+
+    [Fact]
+    public void DeleteRemovesOnlyThatRunsLog()
+    {
+        Store.Save(new ApRunGraphLog { StartTime = 1 });
+        Store.Save(new ApRunGraphLog { StartTime = 2 });
+
+        Store.Delete(1);
+
+        Assert.Equal(new long[] { 2 }, Store.ListStartTimes());
+    }
+
+    [Fact]
+    public void ExportBundleKeepsTheRunHistoryWholeAndExportsAreNotListed()
+    {
+        var log = new ApRunGraphLog { StartTime = 7, SlotName = "Ironclad" };
+        log.Events.Add(Check(3, ApRunGraphItemType.Progression));
+        Store.Save(log);
+
+        var bundle = ApRunGraphStore.ExportBundle(log, """{ "win": true, "map_point_history": [[{ "unknown_field": 4 }]] }""");
+        string path = Store.WriteExport("7-ironclad.json", bundle);
+
+        var read = JsonNode.Parse(File.ReadAllText(path))!;
+        Assert.Equal(ApRunGraphStore.ExportFormat, read["format"]!.GetValue<string>());
+        Assert.Equal("Ironclad", read["ap"]!["slot_name"]!.GetValue<string>());
+        Assert.Equal("progression", read["ap"]!["events"]![0]!["classification"]!.GetValue<string>());
+        Assert.Equal(4, read["run"]!["map_point_history"]![0]![0]!["unknown_field"]!.GetValue<int>());
+        Assert.Equal(new long[] { 7 }, Store.ListStartTimes());
+    }
+
+    [Fact]
+    public void UnfinishedRunExportsWithNullHistory()
+    {
+        var bundle = ApRunGraphStore.ExportAllBundle(new[]
+        {
+            ApRunGraphStore.ExportBundle(new ApRunGraphLog { StartTime = 8 }, null),
+        });
+
+        var run = bundle["runs"]![0]!;
+        Assert.Equal(ApRunGraphStore.ExportAllFormat, bundle["format"]!.GetValue<string>());
+        Assert.Null(run["run"]);
+        Assert.Equal(8, run["ap"]!["start_time"]!.GetValue<long>());
     }
 
     private static ApRunGraphEvent Check(int floor, ApRunGraphItemType classification) => new()
