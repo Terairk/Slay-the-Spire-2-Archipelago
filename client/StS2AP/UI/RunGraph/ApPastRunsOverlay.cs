@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Godot;
 using MegaCrit.Sts2.Core.Saves;
 using StS2AP.Utils;
@@ -8,11 +9,17 @@ namespace StS2AP.UI.RunGraph;
 
 /// <summary>
 /// Main-menu list of every AP run with a graph log on this profile, newest first. Each row opens
-/// the same graph as the game-over screen, drawn from the game's saved run history.
+/// the same graph as the game-over screen, drawn from the game's saved run history, and can be
+/// exported or deleted.
 /// </summary>
 internal sealed partial class ApPastRunsOverlay : Control
 {
     private const string NodeName = "ApPastRunsOverlay";
+    private const string EmptyText =
+        "No AP runs recorded yet. Finish a run while connected to Archipelago and it will appear here.";
+
+    private readonly ApRunGraphStore _store = ApRunGraphRecorder.Store;
+    private VBoxContainer _list = null!;
 
     internal static void Show(Control host)
     {
@@ -56,6 +63,17 @@ internal sealed partial class ApPastRunsOverlay : Control
         titles.AddChild(Label("Past AP Runs", 34, Text, bold: true));
         titles.AddChild(Label("Every Archipelago run recorded on this profile, newest first", 18, TextMuted));
         header.AddChild(titles);
+        header.AddThemeConstantOverride("separation", 12);
+        var exportAll = CreateButton("Export all", Card, PanelBorder);
+        exportAll.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        exportAll.TooltipText = "Write every run below into one JSON file, for charts across runs.";
+        exportAll.Pressed += ExportAll;
+        header.AddChild(exportAll);
+        var openFolder = CreateButton("Open folder", Card, PanelBorder);
+        openFolder.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        openFolder.TooltipText = "Open the folder that holds the run logs and exports.";
+        openFolder.Pressed += () => OpenFolder(_store.RootDirectory);
+        header.AddChild(openFolder);
         var close = CreateButton("Close  (Esc)", Card, PanelBorder);
         close.SizeFlagsVertical = SizeFlags.ShrinkCenter;
         close.Shortcut = new Shortcut { Events = new Godot.Collections.Array { new InputEventAction { Action = "ui_cancel" } } };
@@ -68,38 +86,45 @@ internal sealed partial class ApPastRunsOverlay : Control
             SizeFlagsVertical = SizeFlags.ExpandFill,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
-        var list = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        list.AddThemeConstantOverride("separation", 10);
-        scroll.AddChild(list);
+        _list = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _list.AddThemeConstantOverride("separation", 10);
+        scroll.AddChild(_list);
         root.AddChild(scroll);
 
-        var store = ApRunGraphRecorder.Store;
         Control? firstFocus = null;
-        foreach (long startTime in store.ListStartTimes())
+        foreach (ApRunGraphLog log in LoadLogs())
         {
-            var log = store.Load(startTime, out string? error);
-            if (log == null)
-            {
-                if (error != null)
-                    LogUtility.Warn(error);
-                continue;
-            }
             var (row, open) = BuildRow(log);
-            list.AddChild(row);
+            _list.AddChild(row);
             if (!open.Disabled)
                 firstFocus ??= open;
         }
-
-        if (list.GetChildCount() == 0)
-        {
-            var empty = Label("No AP runs recorded yet. Finish a run while connected to Archipelago and it will appear here.", 20, TextMuted);
-            empty.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-            list.AddChild(empty);
-        }
+        ShowEmptyTextIfNoRuns();
 
         // Focus the first row, or Close, so a controller can use the list.
         Control focus = firstFocus ?? close;
         Ready += () => focus.GrabFocus();
+    }
+
+    private IEnumerable<ApRunGraphLog> LoadLogs()
+    {
+        foreach (long startTime in _store.ListStartTimes())
+        {
+            var log = _store.Load(startTime, out string? error);
+            if (log != null)
+                yield return log;
+            else if (error != null)
+                LogUtility.Warn(error);
+        }
+    }
+
+    private void ShowEmptyTextIfNoRuns()
+    {
+        if (_list.GetChildren().Any(child => !child.IsQueuedForDeletion()))
+            return;
+        var empty = Label(EmptyText, 20, TextMuted);
+        empty.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _list.AddChild(empty);
     }
 
     private (PanelContainer Row, Button Open) BuildRow(ApRunGraphLog log)
@@ -151,7 +176,138 @@ internal sealed partial class ApPastRunsOverlay : Control
             open.AddThemeStyleboxOverride("disabled", Box(Card, PanelBorder, 10, 8f));
         }
         line.AddChild(open);
+
+        var export = CreateButton("Export", Card, PanelBorder);
+        export.CustomMinimumSize = new Vector2(110f, 46f);
+        export.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        export.TooltipText = "Write this run's AP log and the game's history for it into one JSON file.";
+        export.Pressed += () => ExportRun(log);
+        line.AddChild(export);
+
+        line.AddChild(CreateDeleteButton(row, log));
         return (row, open);
+    }
+
+    /// <summary>
+    /// The first press arms the button and the second deletes, so a stray click cannot lose a
+    /// run. Only AP's log is deleted; the run stays in the game's own Run History.
+    /// </summary>
+    private Button CreateDeleteButton(PanelContainer row, ApRunGraphLog log)
+    {
+        const string idleText = "\u00D7";
+        var delete = CreateButton(idleText, Card, PanelBorder);
+        delete.CustomMinimumSize = new Vector2(56f, 46f);
+        delete.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        delete.TooltipText = "Delete this run's AP log. The game's own Run History keeps the run.";
+        var armedStyle = Box(Death.Darkened(0.35f), Death, 10, 8f);
+        bool armed = false;
+
+        void Disarm()
+        {
+            armed = false;
+            delete.Text = idleText;
+            delete.CustomMinimumSize = new Vector2(56f, 46f);
+            delete.RemoveThemeStyleboxOverride("normal");
+            delete.AddThemeStyleboxOverride("normal", Box(Card, PanelBorder, 10, 8f));
+        }
+
+        delete.Pressed += () =>
+        {
+            if (!armed)
+            {
+                armed = true;
+                delete.Text = "Delete?";
+                delete.CustomMinimumSize = new Vector2(110f, 46f);
+                delete.AddThemeStyleboxOverride("normal", armedStyle);
+                return;
+            }
+            try
+            {
+                _store.Delete(log.StartTime);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogUtility.Warn($"Could not delete run graph log {_store.PathFor(log.StartTime)}: {ex.Message}");
+                NotificationUtility.ShowRawText("Couldn't delete that run's log: " + ex.Message);
+                Disarm();
+                return;
+            }
+            row.QueueFree();
+            ShowEmptyTextIfNoRuns();
+        };
+        delete.FocusExited += Disarm;
+        delete.MouseExited += Disarm;
+        return delete;
+    }
+
+    private void ExportRun(ApRunGraphLog log)
+    {
+        string fileName = $"{log.StartTime}-{log.Character.ToLowerInvariant()}.json";
+        Export(fileName, () => ApRunGraphStore.ExportBundle(log, LoadRunHistoryJson(log.StartTime)));
+    }
+
+    private void ExportAll()
+    {
+        var logs = LoadLogs().ToList();
+        if (logs.Count == 0)
+        {
+            NotificationUtility.ShowRawText("There are no AP runs to export yet.");
+            return;
+        }
+        string fileName = $"all-runs-{DateTimeOffset.Now.ToUnixTimeSeconds()}.json";
+        Export(fileName, () => ApRunGraphStore.ExportAllBundle(
+            logs.Select(log => ApRunGraphStore.ExportBundle(log, LoadRunHistoryJson(log.StartTime)))));
+    }
+
+    private void Export(string fileName, Func<JsonObject> buildBundle)
+    {
+        string path;
+        try
+        {
+            path = _store.WriteExport(fileName, buildBundle());
+        }
+        catch (Exception ex)
+        {
+            LogUtility.Error($"Run graph export failed: {ex}");
+            NotificationUtility.ShowRawText("Export failed: " + ex.Message);
+            return;
+        }
+        LogUtility.Info($"Exported run graph data to {path}");
+        NotificationUtility.ShowRawText($"Exported to {path}", timeout: 8);
+        OpenFolder(path);
+    }
+
+    /// <summary>The game's history for a finished run, as the JSON it saves; null for an unfinished one.</summary>
+    private static string? LoadRunHistoryJson(long startTime)
+    {
+        var history = SaveManager.Instance.LoadRunHistory($"{startTime}.run");
+        return history.Success && history.SaveData != null
+            ? JsonSerializationUtility.ToJson(history.SaveData)
+            : null;
+    }
+
+    /// <summary>Shows a file in the platform's file manager, or opens a folder.</summary>
+    private static void OpenFolder(string path)
+    {
+        try
+        {
+            bool isFile = File.Exists(path);
+            if (!isFile)
+                Directory.CreateDirectory(path);
+            // Godot uses Explorer on Windows and the platform's file manager elsewhere.
+            Error opened = isFile
+                ? OS.ShellShowInFileManager(path, openFolder: false)
+                : OS.ShellOpen(path);
+            if (opened != Error.Ok && isFile)
+                opened = OS.ShellOpen(Path.GetDirectoryName(path)!);
+            if (opened != Error.Ok)
+                NotificationUtility.ShowRawText($"Couldn't open the folder automatically. It is at {path}", timeout: 8);
+        }
+        catch (Exception ex)
+        {
+            LogUtility.Warn("Could not open run graph folder: " + ex.Message);
+            NotificationUtility.ShowRawText($"Couldn't open the folder automatically. It is at {path}", timeout: 8);
+        }
     }
 
     private static VBoxContainer Figure(string value, string caption, Color accent)

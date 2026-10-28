@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace StS2AP.Persistence;
@@ -96,7 +97,17 @@ public sealed class ApRunGraphStore(string root)
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) },
     };
 
+    // Export bundle identifiers, for tools that read exported runs.
+    public const string ExportFormat = "sts2-ap-run";
+    public const string ExportAllFormat = "sts2-ap-runs";
+    public const int ExportVersion = 1;
+
+    public string RootDirectory => root;
+
     public string PathFor(long startTime) => Path.Combine(root, $"{startTime}.json");
+
+    /// <summary>Exports go in a subfolder, so <see cref="ListStartTimes"/> never sees them.</summary>
+    public string ExportsDirectory => Path.Combine(root, "exports");
 
     public bool Exists(long startTime) => File.Exists(PathFor(startTime));
 
@@ -136,6 +147,38 @@ public sealed class ApRunGraphStore(string root)
             error = $"Run graph log {path} could not be read: {ex.Message}";
             return null;
         }
+    }
+
+    /// <summary>Deletes the run's graph log. The game's own run history is left alone.</summary>
+    public void Delete(long startTime) => File.Delete(PathFor(startTime));
+
+    /// <summary>
+    /// One run as a self-contained export: the AP log plus the game's run history JSON, kept
+    /// whole so other tools can use fields the graph does not. The history is null for an
+    /// unfinished run, which the game has not saved yet.
+    /// </summary>
+    public static JsonObject ExportBundle(ApRunGraphLog log, string? runHistoryJson) => new()
+    {
+        ["format"] = ExportFormat,
+        ["version"] = ExportVersion,
+        ["ap"] = JsonSerializer.SerializeToNode(log, Options),
+        ["run"] = runHistoryJson == null ? null : JsonNode.Parse(runHistoryJson),
+    };
+
+    public static JsonObject ExportAllBundle(IEnumerable<JsonObject> runs) => new()
+    {
+        ["format"] = ExportAllFormat,
+        ["version"] = ExportVersion,
+        ["runs"] = new JsonArray(runs.Cast<JsonNode>().ToArray()),
+    };
+
+    /// <summary>Writes an export to <see cref="ExportsDirectory"/> and returns its full path.</summary>
+    public string WriteExport(string fileName, JsonObject bundle)
+    {
+        Directory.CreateDirectory(ExportsDirectory);
+        string path = Path.Combine(ExportsDirectory, fileName);
+        File.WriteAllText(path, bundle.ToJsonString(Options));
+        return path;
     }
 
     public void Save(ApRunGraphLog log)
