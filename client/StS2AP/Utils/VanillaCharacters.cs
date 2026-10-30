@@ -12,8 +12,6 @@ internal static class VanillaCharacters
 {
     private static readonly Assembly GameAssembly = typeof(CharacterModel).Assembly;
 
-    private static HashSet<CardPoolModel>? _cardPools;
-
     /// <summary>Whether the game itself defines this model, rather than a mod.</summary>
     public static bool IsVanilla(AbstractModel model) => model.GetType().Assembly == GameAssembly;
 
@@ -21,6 +19,14 @@ internal static class VanillaCharacters
     public static IEnumerable<CharacterModel> All =>
         ModelDb.AllCharacters.Where(character => character.IsPlayable && IsVanilla(character));
 
-    public static bool IsCharacterCardPool(CardPoolModel pool) =>
-        (_cardPools ??= All.Select(character => character.CardPool).ToHashSet()).Contains(pool);
+    /// <summary>
+    /// Lists every installed playable character with how it was classified, for the log, e.g.
+    /// "IRONCLAD (vanilla), HERMIT (modded: Hermit)".
+    /// </summary>
+    public static string DescribeInstalled() =>
+        string.Join(", ", ModelDb.AllCharacters
+            .Where(character => character.IsPlayable)
+            .Select(character => IsVanilla(character)
+                ? $"{character.Id.Entry} (vanilla)"
+                : $"{character.Id.Entry} (modded: {character.GetType().Assembly.GetName().Name})"));
 }

@@ -60,19 +60,19 @@ internal static class MissingCharacterFallback
     }
 
     /// <summary>
-    /// Lists vanilla characters that this game version lacks and the plan leaves out, e.g. a
-    /// beta-only character while playing on the main branch. Empty when there are none.
+    /// Returns the vanilla characters that this game version lacks and the plan leaves out, e.g.
+    /// a beta-only character while playing on the main branch.
     /// </summary>
-    public static string DescribeUnavailableVanillaCharacters(ArchipelagoSettings settings)
+    public static IReadOnlyList<CharacterConfig> GetUnavailableVanillaCharacters(ArchipelagoSettings settings)
     {
         MissingCharacterFallbackPlan plan = GetPlan(settings);
-        return string.Join(", ", settings.Characters.Values
+        return settings.Characters.Values
             .Where(config => config.ModNum == 0
                 && !plan.IsMissing(config.CharOffset)
                 && !ModelDb.AllCharacters.Any(character => string.Equals(
                     character.Id.Entry, config.OfficialName, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(config => config.CharOffset)
-            .Select(config => config.Name));
+            .ToList();
     }
 
     public static string DescribeBorrowedCharacter(ArchipelagoSettings settings)
