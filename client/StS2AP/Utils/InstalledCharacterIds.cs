@@ -9,18 +9,13 @@ namespace StS2AP.Utils;
 /// </summary>
 internal static class InstalledCharacterIds
 {
-    private static readonly HashSet<string> VanillaCharacterIds = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "IRONCLAD", "SILENT", "REGENT", "DEFECT", "NECROBINDER",
-    };
-
     public static string Status { get; private set; } =
         "Copies every installed modded character ID as a modded_characters YAML list.";
 
     /// <summary>Playable non-vanilla characters, in the game's registration order.</summary>
     public static IReadOnlyList<string> GetModdedIds() =>
         ModelDb.AllCharacters
-            .Where(character => character.IsPlayable && !VanillaCharacterIds.Contains(character.Id.Entry))
+            .Where(character => character.IsPlayable && !VanillaCharacters.IsVanilla(character))
             .Select(character => character.Id.Entry)
             .ToList();
 

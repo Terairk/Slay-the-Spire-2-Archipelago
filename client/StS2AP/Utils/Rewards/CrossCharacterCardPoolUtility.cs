@@ -13,9 +13,11 @@ namespace StS2AP.Utils;
 /// </summary>
 internal static class CrossCharacterCardPoolUtility
 {
-    // Preserve the base event's explicit color order. Keeping a fixed order also makes the
-    // event's RNG consumption deterministic when the same mods are installed on each client.
-    private static readonly string[] DefaultCharacterIds =
+    // Preserve the base event's explicit color order (Colourful Philosophers' CardPoolColorOrder).
+    // Built-in characters it does not list follow in the game's registration order. A fixed
+    // order also makes the event's RNG consumption deterministic when the same mods are
+    // installed on each client.
+    private static readonly string[] EventColorOrder =
     [
         "NECROBINDER",
         "IRONCLAD",
@@ -25,9 +27,9 @@ internal static class CrossCharacterCardPoolUtility
     ];
 
     /// <summary>
-    /// Returns all five built-in pools followed by installed modded pools selected by the
-    /// reward owner's AP slot. Returns <see langword="false"/> before slot settings are available so
-    /// callers can fail open to the base-game behavior.
+    /// Returns every built-in pool this game version has, followed by installed modded pools
+    /// selected by the reward owner's AP slot. Returns <see langword="false"/> before slot
+    /// settings are available so callers can fail open to the base-game behavior.
     /// </summary>
     public static bool TryGetPools(Player player, out IReadOnlyList<CardPoolModel> pools)
     {
@@ -44,16 +46,10 @@ internal static class CrossCharacterCardPoolUtility
             var result = new List<CardPoolModel>();
             var seenPoolIds = new HashSet<ModelId>();
 
-            foreach (var characterId in DefaultCharacterIds)
+            foreach (var character in VanillaCharacters.All.OrderBy(EventColorIndex))
             {
-                if (!AddCharacterPool(characterId, playableCharacters, result, seenPoolIds))
-                {
-                    LogUtility.Error(
-                        $"Could not resolve the built-in character pool for {characterId}; " +
-                        "using base-game pools."
-                    );
-                    return false;
-                }
+                if (seenPoolIds.Add(character.CardPool.Id))
+                    result.Add(character.CardPool);
             }
 
             foreach (var characterId in settings.Characters.Values
@@ -76,6 +72,13 @@ internal static class CrossCharacterCardPoolUtility
             );
             return false;
         }
+    }
+
+    private static int EventColorIndex(CharacterModel character)
+    {
+        int index = Array.FindIndex(EventColorOrder, id =>
+            string.Equals(id, character.Id.Entry, StringComparison.OrdinalIgnoreCase));
+        return index >= 0 ? index : EventColorOrder.Length;
     }
 
     private static bool AddCharacterPool(

@@ -1,66 +1,24 @@
+using System.Reflection;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Models.PotionPools;
 
 namespace StS2AP.Patches;
 
 /// <summary>Removes unlock filtering from the playable and shared potion pools.</summary>
+[HarmonyPatch]
 public static class Patches_UnlockAllPotions
 {
-    private static void Unlock(PotionPoolModel pool, ref IEnumerable<PotionModel> result) =>
-        result = pool.AllPotions;
+    // The base method returns every potion; the game's shared and per-character pools override
+    // it to apply epoch locks. Patching each game override, rather than naming the pools, also
+    // covers characters added in a newer game version. Mod pools are left alone.
+    [HarmonyTargetMethods]
+    private static IEnumerable<MethodBase> TargetMethods() =>
+        AccessTools.GetTypesFromAssembly(typeof(PotionPoolModel).Assembly)
+            .Where(type => type.IsSubclassOf(typeof(PotionPoolModel)) && !type.IsAbstract)
+            .Select(type => AccessTools.DeclaredMethod(type, nameof(PotionPoolModel.GetUnlockedPotions)))
+            .OfType<MethodBase>();
 
-    [HarmonyPatch(typeof(SharedPotionPool), nameof(PotionPoolModel.GetUnlockedPotions))]
-    private static class Shared
-    {
-        [HarmonyPostfix]
-        private static void Postfix(
-            SharedPotionPool __instance,
-            ref IEnumerable<PotionModel> __result) => Unlock(__instance, ref __result);
-    }
-
-    [HarmonyPatch(typeof(IroncladPotionPool), nameof(PotionPoolModel.GetUnlockedPotions))]
-    private static class Ironclad
-    {
-        [HarmonyPostfix]
-        private static void Postfix(
-            IroncladPotionPool __instance,
-            ref IEnumerable<PotionModel> __result) => Unlock(__instance, ref __result);
-    }
-
-    [HarmonyPatch(typeof(SilentPotionPool), nameof(PotionPoolModel.GetUnlockedPotions))]
-    private static class Silent
-    {
-        [HarmonyPostfix]
-        private static void Postfix(
-            SilentPotionPool __instance,
-            ref IEnumerable<PotionModel> __result) => Unlock(__instance, ref __result);
-    }
-
-    [HarmonyPatch(typeof(DefectPotionPool), nameof(PotionPoolModel.GetUnlockedPotions))]
-    private static class Defect
-    {
-        [HarmonyPostfix]
-        private static void Postfix(
-            DefectPotionPool __instance,
-            ref IEnumerable<PotionModel> __result) => Unlock(__instance, ref __result);
-    }
-
-    [HarmonyPatch(typeof(NecrobinderPotionPool), nameof(PotionPoolModel.GetUnlockedPotions))]
-    private static class Necrobinder
-    {
-        [HarmonyPostfix]
-        private static void Postfix(
-            NecrobinderPotionPool __instance,
-            ref IEnumerable<PotionModel> __result) => Unlock(__instance, ref __result);
-    }
-
-    [HarmonyPatch(typeof(RegentPotionPool), nameof(PotionPoolModel.GetUnlockedPotions))]
-    private static class Regent
-    {
-        [HarmonyPostfix]
-        private static void Postfix(
-            RegentPotionPool __instance,
-            ref IEnumerable<PotionModel> __result) => Unlock(__instance, ref __result);
-    }
+    [HarmonyPostfix]
+    private static void Postfix(PotionPoolModel __instance, ref IEnumerable<PotionModel> __result) =>
+        __result = __instance.AllPotions;
 }
