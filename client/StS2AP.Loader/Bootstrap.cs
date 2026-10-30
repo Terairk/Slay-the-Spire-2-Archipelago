@@ -88,9 +88,6 @@ public static class Bootstrap
         catch (Exception ex)
         {
             Log.Error($"[Archipelago.Loader] Compatibility load failed; Archipelago will not start: {ex}");
-            // The game marks the mod as failed, and shows its mod error notice, only when its
-            // initializer throws.
-            throw;
         }
     }
 

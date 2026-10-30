@@ -781,25 +781,15 @@ namespace StS2AP
                 Settings = preparedSettings;
                 OnConnected();
 
-                LogUtility.Info($"Installed characters: {VanillaCharacters.DescribeInstalled()}");
-                IReadOnlyList<CharacterConfig> unavailableCharacters =
-                    MissingCharacterFallback.GetUnavailableVanillaCharacters(preparedSettings);
-                if (unavailableCharacters.Count > 0)
+                string unavailableCharacters = MissingCharacterFallback.DescribeUnavailableVanillaCharacters(preparedSettings);
+                if (unavailableCharacters.Length > 0 && !wasAutomaticReconnect)
                 {
-                    LogUtility.Warn(
-                        "Vanilla AP characters not in this game version: "
-                            + string.Join(", ", unavailableCharacters.Select(config => config.OfficialName))
+                    NotificationUtility.ShowRawText(
+                        $"Not in this game version: {unavailableCharacters}. "
+                            + "Their checks can only be sent from a game branch that has them.",
+                        timeout: 8.0,
+                        priority: NotificationUtility.NotificationPriority.High
                     );
-                    if (!wasAutomaticReconnect)
-                    {
-                        var notice = new LocString("main_menu_ui", "UNAVAILABLE_CHARACTERS.body");
-                        notice.Add("characters", string.Join(", ", unavailableCharacters.Select(config => config.Name)));
-                        NotificationUtility.ShowRawText(
-                            notice.GetFormattedText(),
-                            timeout: 8.0,
-                            priority: NotificationUtility.NotificationPriority.High
-                        );
-                    }
                 }
             }
             else
