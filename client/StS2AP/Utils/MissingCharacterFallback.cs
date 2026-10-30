@@ -59,22 +59,6 @@ internal static class MissingCharacterFallback
         return string.Join(", ", plan.MissingCharacters.Select(missing => DisplayName(settings, missing)));
     }
 
-    /// <summary>
-    /// Lists vanilla characters that this game version lacks and the plan leaves out, e.g. a
-    /// beta-only character while playing on the main branch. Empty when there are none.
-    /// </summary>
-    public static string DescribeUnavailableVanillaCharacters(ArchipelagoSettings settings)
-    {
-        MissingCharacterFallbackPlan plan = GetPlan(settings);
-        return string.Join(", ", settings.Characters.Values
-            .Where(config => config.ModNum == 0
-                && !plan.IsMissing(config.CharOffset)
-                && !ModelDb.AllCharacters.Any(character => string.Equals(
-                    character.Id.Entry, config.OfficialName, StringComparison.OrdinalIgnoreCase)))
-            .OrderBy(config => config.CharOffset)
-            .Select(config => config.Name));
-    }
-
     public static string DescribeBorrowedCharacter(ArchipelagoSettings settings)
     {
         MissingCharacterFallbackPlan plan = GetPlan(settings);
@@ -98,18 +82,8 @@ internal static class MissingCharacterFallback
         var installedIds = ModelDb.AllCharacters
             .Select(character => character.Id.Entry)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        // A vanilla character this game version lacks, such as a beta-only character on the main
-        // branch, is simply unplayable here: its checks wait for a client on a branch that has it,
-        // instead of being earned by every other character. It only joins the plan when no
-        // configured character is installed, so the slot always has something to play.
-        IEnumerable<CharacterConfig> coveredConfigs = characters.Values;
-        if (characters.Values.Any(config => installedIds.Contains(config.OfficialName)))
-        {
-            coveredConfigs = coveredConfigs.Where(config =>
-                config.ModNum > 0 || installedIds.Contains(config.OfficialName));
-        }
         MissingCharacterFallbackPlan plan = MissingCharacterFallbackPlan.Create(
-            coveredConfigs.Select(config =>
+            characters.Values.Select(config =>
                 new MissingCharacterFallbackPlan.SlotCharacter(config.OfficialName, config.CharOffset)),
             installedIds.Contains,
             FallbackCharacterId);

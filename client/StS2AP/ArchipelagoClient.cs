@@ -780,17 +780,6 @@ namespace StS2AP
 
                 Settings = preparedSettings;
                 OnConnected();
-
-                string unavailableCharacters = MissingCharacterFallback.DescribeUnavailableVanillaCharacters(preparedSettings);
-                if (unavailableCharacters.Length > 0 && !wasAutomaticReconnect)
-                {
-                    NotificationUtility.ShowRawText(
-                        $"Not in this game version: {unavailableCharacters}. "
-                            + "Their checks can only be sent from a game branch that has them.",
-                        timeout: 8.0,
-                        priority: NotificationUtility.NotificationPriority.High
-                    );
-                }
             }
             else
             {
