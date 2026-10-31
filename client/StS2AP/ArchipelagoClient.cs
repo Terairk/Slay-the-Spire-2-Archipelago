@@ -149,29 +149,69 @@ namespace StS2AP
             var installedCharacterIds = ModelDb.AllCharacters
                 .Select(character => character.Id.Entry)
                 .ToHashSet(StringComparer.InvariantCultureIgnoreCase);
-            var missingCharacterIds = settings.Characters.Values
-                .Select(config => config.OfficialName)
-                .Where(characterId =>
-                    string.IsNullOrWhiteSpace(characterId)
-                    || !installedCharacterIds.Contains(characterId)
+            var missingConfigs = settings.Characters.Values
+                .Where(config =>
+                    string.IsNullOrWhiteSpace(config.OfficialName)
+                    || !installedCharacterIds.Contains(config.OfficialName)
                 )
+                .ToArray();
+
+            // A vanilla character can be missing because it is beta-only and this is the main
+            // branch. Its checks simply cannot be sent here, so connect without it. A missing
+            // modded character is more likely a mod the player forgot to enable.
+            var missingModdedIds = missingConfigs
+                .Where(config => config.ModNum > 0 || string.IsNullOrWhiteSpace(config.OfficialName))
+                .Select(config => config.OfficialName)
                 .Distinct(StringComparer.InvariantCultureIgnoreCase)
                 .Order(StringComparer.InvariantCultureIgnoreCase)
                 .ToArray();
 
-            if (missingCharacterIds.Length > 0)
+            if (missingModdedIds.Length > 0)
             {
                 reason = "The AP slot configures character model(s) that are not loaded: "
-                    + string.Join(", ", missingCharacterIds.Select(characterId =>
+                    + string.Join(", ", missingModdedIds.Select(characterId =>
                         string.IsNullOrWhiteSpace(characterId) ? "<missing id>" : characterId
                     ))
                     + ". Enable the matching character mod(s) and reconnect.";
                 return false;
             }
 
+            if (missingConfigs.Length == settings.Characters.Count)
+            {
+                reason = "None of this AP slot's characters exist in this game version: "
+                    + string.Join(", ", missingConfigs.Select(config => config.OfficialName))
+                    + ". Switch to the game branch the slot was generated for and reconnect.";
+                return false;
+            }
+
+            foreach (var config in missingConfigs)
+            {
+                LogUtility.Warn(
+                    $"Vanilla character '{config.OfficialName}' is not in this game version; "
+                        + "its checks cannot be sent from this client."
+                );
+            }
+
             reason = string.Empty;
             return true;
         }
+
+        /// <summary>
+        /// Vanilla characters configured for the slot that this game version does not have,
+        /// such as a character only on the beta branch while this is the main branch.
+        /// </summary>
+        internal static IReadOnlyList<string> GetUnavailableVanillaCharacterNames(ArchipelagoSettings settings) =>
+            settings.Characters.Values
+                .Where(config =>
+                    config.ModNum == 0
+                    && !ModelDb.AllCharacters.Any(character => string.Equals(
+                        character.Id.Entry,
+                        config.OfficialName,
+                        StringComparison.InvariantCultureIgnoreCase
+                    ))
+                )
+                .Select(config => config.Name)
+                .ToList();
 
         internal static void RebuildUnlockedCharactersFromSettings()
         {
@@ -761,6 +801,17 @@ namespace StS2AP
 
                 Settings = preparedSettings;
                 OnConnected();
+
+                var unavailableCharacters = GetUnavailableVanillaCharacterNames(preparedSettings);
+                if (unavailableCharacters.Count > 0 && !wasAutomaticReconnect)
+                {
+                    NotificationUtility.ShowRawText(
+                        $"Not in this game version: {string.Join(", ", unavailableCharacters)}. "
+                            + "Their checks can only be sent from a game branch that has them.",
+                        timeout: 8.0,
+                        priority: NotificationUtility.NotificationPriority.High
+                    );
+                }
             }
             else
             {
