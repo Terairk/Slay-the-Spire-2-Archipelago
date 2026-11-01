@@ -87,7 +87,8 @@ Slay the Spire II:
   #   ExtraAscendersBane - start each run with an extra Ascender's Bane; stacks with MountingBanes
   #   SlowStart          - draw 1 fewer card on the first turn of each combat, in every act
   #   FrailStart         - start each run with 10% less max HP
-  #   DangerousUnknowns  - ? rooms lean towards fights: combat 20% (+15%), elites 0% (+4%), chests 1% (+1%)
+  #   DangerousUnknowns  - ? rooms lean towards fights: combat 20% (+15%), elites 0% (+4%), chests 1% (+1%);
+  #                        no Juzu Bracelet
   # In multiplayer, the host's modifiers apply to the whole run.
   run_modifiers: []
 
