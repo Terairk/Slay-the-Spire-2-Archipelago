@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 import type { NavigationMenuItem } from "@nuxt/ui";
+import { publicAsset } from "../services/PublicAsset";
 
 const route = useRoute();
 
@@ -63,7 +64,11 @@ const navigationItems = computed(getNavigationItems);
 <template>
   <UHeader>
     <template #title>
-      <img src="/logo.webp" alt="Slay the Spire 2 Archipelago" class="h-14" />
+      <img
+        :src="publicAsset('/logo.webp')"
+        alt="Slay the Spire 2 Archipelago"
+        class="h-14"
+      />
     </template>
 
     <UNavigationMenu

@@ -1,4 +1,6 @@
 <script setup lang="ts" generic="ItemId extends string">
+import { publicAsset } from "../../../services/PublicAsset";
+
 const props = defineProps<{
   heading: string;
   items: readonly {
@@ -50,7 +52,7 @@ function getWeightBadgeColor(id: ItemId) {
         <UTooltip :text="`${item.name}: ${item.description}`">
           <div v-if="item.imageSource" class="filler-row__icon-frame">
             <img
-              :src="item.imageSource"
+              :src="publicAsset(item.imageSource)"
               :alt="`${item.name} icon`"
               class="filler-row__icon ml-0.5"
               :class="{

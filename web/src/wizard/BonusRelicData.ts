@@ -16,6 +16,7 @@
  */
 
 import relicsJson from "../generated/relics.json";
+import { publicAsset } from "../services/PublicAsset";
 import bonusRelicBlacklistJson from "@shared/bonus_relic_blacklist.json";
 import relicCustomPoolsJson from "@shared/relic_custom_pools.json";
 
@@ -228,7 +229,7 @@ function toRelicInfo(relic: GeneratedRelic): BonusRelicInfo {
     id: relic.id,
     name: relic.name,
     description: formatRelicDescription(relic.description),
-    imageUrl: relic.image_url,
+    imageUrl: publicAsset(relic.image_url),
     rarityKey: relic.rarity_key,
   };
 }
@@ -376,5 +377,5 @@ export function filterRelicsByName(
 
 /** Image URL for randomized Wax Relic rows, resolved from the relic data. */
 export function getRandomWaxRelicImageUrl(): string {
-  return randomWaxRelicSource!.image_url;
+  return publicAsset(randomWaxRelicSource!.image_url);
 }

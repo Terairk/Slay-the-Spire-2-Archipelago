@@ -26,6 +26,7 @@ import ModdedCharacterTable from "../bespoke/ModdedCharacterTable.vue";
 import WizardControl from "../core/WizardControl.vue";
 import WizardQuestion from "../core/WizardQuestion.vue";
 import { useWizardAnswers } from "../core/wizardAnswersContext";
+import { publicAsset } from "../../../services/PublicAsset";
 
 /**
  * Character Setup step: bespoke roster interfaces around declarative radio groups.
@@ -81,8 +82,7 @@ function getCharacterPortraitSource(character: string): string {
   // Normalize catalog display text to the repository's public asset naming convention.
   const assetName = character.toLowerCase().replaceAll(" ", "_");
 
-  // Return a root-relative public path so Vite preserves it for development and builds.
-  return `/icons/char_select_${assetName}.webp`;
+  return publicAsset(`/icons/char_select_${assetName}.webp`);
 }
 
 /**
@@ -540,7 +540,7 @@ watch(getRosterForReconciliation, applyRosterReconciliation, { deep: true });
           @click="toggleModdedCharacters"
         >
           <img
-            src="/icons/char_select_random.webp"
+            :src="publicAsset('/icons/char_select_random.webp')"
             alt=""
             class="character-portrait-image"
           />

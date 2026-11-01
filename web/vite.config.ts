@@ -68,6 +68,9 @@ function syncDocs() {
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Path the site is served under, e.g. "/Slay-the-Spire-2-Archipelago" on a
+  // GitHub Pages project site; empty or unset serves from the domain root.
+  base: `${process.env.SITE_BASE_PATH?.replace(/\/$/, "") ?? ""}/`,
   resolve: {
     alias: {
       // Shared JSON data (relic blacklist, custom pools) lives at the repo root.

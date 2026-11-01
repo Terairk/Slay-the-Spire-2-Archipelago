@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reactive } from "vue";
+import { publicAsset } from "../services/PublicAsset";
 
 const items = reactive([
   {
@@ -39,7 +40,11 @@ function formatDescription(text: string): string {
   <UPageBody>
     <!-- Logo -->
     <div class="flex flex-col items-center justify-center gap-4">
-      <img src="/logo.webp" alt="Slay the Spire 2 Archipelago" class="h-64" />
+      <img
+        :src="publicAsset('/logo.webp')"
+        alt="Slay the Spire 2 Archipelago"
+        class="h-64"
+      />
     </div>
 
     <!-- Dashboard Cards -->

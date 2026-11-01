@@ -1,4 +1,5 @@
 import { MarkdownDocument } from "../models/MarkdownDocument";
+import { publicAsset } from "./PublicAsset";
 
 /**
  * Fetches and builds a Markdown Document from a given path.
@@ -9,7 +10,7 @@ export async function getMarkdownDocument(
   loc: string,
 ): Promise<MarkdownDocument> {
   // Fetch the Markdown file from the public directory
-  const response = await fetch(loc);
+  const response = await fetch(publicAsset(loc));
 
   // Grab the raw text content
   const text = await response.text();
