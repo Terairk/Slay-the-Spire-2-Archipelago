@@ -391,7 +391,7 @@ class HiddenPiles(Range):
     default = 0
 
 class HiddenMap(Range):
-    """Harder: the map only shows the rooms you can move to next. Rooms further ahead show "?" until you can reach them.
+    """Harder: the map only shows the rooms you can move to next. Rooms further ahead show a closed eye until you can reach them.
     The value is how many Map Sight items are added to the item pool, and 0 turns it off. Finding any one of them
     shows the whole map again for every character, so a second copy makes it easier to find. Does not change logic.
     Easiest to set up in the YAML Builder: https://sts2ap.net/#/builder

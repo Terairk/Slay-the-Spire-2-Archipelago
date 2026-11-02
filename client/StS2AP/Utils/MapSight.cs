@@ -11,8 +11,8 @@ namespace StS2AP.Utils;
 internal static class MapSight
 {
     /// <summary>
-    /// Whether a room shows as unknown. Rooms the player has visited or can move to next always
-    /// show what they are, so each step is still a choice between known rooms.
+    /// Whether a room shows the hidden room icon. Rooms the player has visited or can move to next
+    /// always show what they are, so each step is still a choice between known rooms.
     /// </summary>
     internal static bool IsHidden(NNormalMapPoint point) =>
         point.State is not (MapPointState.Travelable or MapPointState.Traveled)
