@@ -80,7 +80,7 @@ Slay the Spire II:
   # is how many Pile Sight items the slot gets; 0 is off, and any one of them shows the piles again.
   hidden_piles: 0
 
-  # Harder: the map only shows the rooms you can move to next; rooms further ahead show "?". The value (0-2) is
+  # Harder: the map only shows the rooms you can move to next; rooms further ahead show a closed eye. The value (0-2) is
   # how many Map Sight items the slot gets; 0 is off, and any one of them shows the whole map again.
   hidden_map: 0
 
