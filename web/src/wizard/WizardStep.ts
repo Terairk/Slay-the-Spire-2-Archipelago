@@ -490,7 +490,7 @@ export const challengeSetupStep: WizardStep = {
       isVisible: usesChallenges,
       title: "Should the map be hidden?",
       description:
-        'Hidden Map only shows the rooms you can move to next. Rooms further ahead show "?" until a Map Sight is found. Finding one shows the whole map again, for every character.',
+        "Hidden Map only shows the rooms you can move to next. Rooms further ahead show a closed eye until a Map Sight is found. Finding one shows the whole map again, for every character.",
       control: {
         kind: "radio",
         field: "hiddenMap",

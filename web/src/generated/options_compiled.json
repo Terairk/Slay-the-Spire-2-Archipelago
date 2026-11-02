@@ -12,7 +12,7 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "ec5ef1559778be3b8cf063e89725f90707a2fba1f29761b7ef598ed3aa57237a"
+      "sha256": "5b61b1b3087d3fcc2876ffbf3726fdbec1dbf859566217242decbce7550da024"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
@@ -3261,7 +3261,7 @@
       "module": "worlds.spire2.options",
       "kind": "range",
       "display_name": "Hidden Map",
-      "description": "Harder: the map only shows the rooms you can move to next. Rooms further ahead show \"?\" until you can reach them.\nThe value is how many Map Sight items are added to the item pool, and 0 turns it off. Finding any one of them\nshows the whole map again for every character, so a second copy makes it easier to find. Does not change logic.\nEasiest to set up in the YAML Builder: https://sts2ap.net/#/builder",
+      "description": "Harder: the map only shows the rooms you can move to next. Rooms further ahead show a closed eye until you can reach them.\nThe value is how many Map Sight items are added to the item pool, and 0 turns it off. Finding any one of them\nshows the whole map again for every character, so a second copy makes it easier to find. Does not change logic.\nEasiest to set up in the YAML Builder: https://sts2ap.net/#/builder",
       "default": 0,
       "raw_default": 0,
       "visibility": {
