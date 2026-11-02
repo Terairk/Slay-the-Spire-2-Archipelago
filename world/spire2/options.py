@@ -380,6 +380,31 @@ class HiddenHealth(Range):
     range_end = 2
     default = 0
 
+class HiddenPiles(Range):
+    """Harder: your combat piles are hidden. The draw, discard and exhaust piles show "?" instead of a card count
+    and can't be opened. The value is how many Pile Sight items are added to the item pool, and 0 turns it off.
+    Finding any one of them shows the piles again for every character, so a second copy makes it easier to find.
+    Does not change logic.
+    Easiest to set up in the YAML Builder: https://sts2ap.net/#/builder
+    """
+    display_name = "Hidden Piles"
+    visibility = Visibility.template | Visibility.spoiler
+    range_start = 0
+    range_end = 2
+    default = 0
+
+class HiddenMap(Range):
+    """Harder: the map only shows the rooms you can move to next. Rooms further ahead show "?" until you can reach them.
+    The value is how many Map Sight items are added to the item pool, and 0 turns it off. Finding any one of them
+    shows the whole map again for every character, so a second copy makes it easier to find. Does not change logic.
+    Easiest to set up in the YAML Builder: https://sts2ap.net/#/builder
+    """
+    display_name = "Hidden Map"
+    visibility = Visibility.template | Visibility.spoiler
+    range_start = 0
+    range_end = 2
+    default = 0
+
 class SeededRun(Toggle):
     """Whether each character should have a fixed seed to climb the spire with or not."""
     display_name = "Seeded Run"
@@ -869,6 +894,8 @@ class Spire2Options(PerGameCommonOptions):
     strict_card_rewards: StrictCardRewards
     hidden_intents: HiddenIntents
     hidden_health: HiddenHealth
+    hidden_piles: HiddenPiles
+    hidden_map: HiddenMap
 
     # Bonus items
     bonus_items: BonusItems
