@@ -10,6 +10,7 @@ using StS2AP.Data;
 using StS2AP.Utils;
 using System.Collections.Concurrent;
 using StS2AP.Extensions;
+using StS2AP.Utils.Combat;
 using static StS2AP.Data.ItemTable;
 
 namespace StS2AP.Patches 
@@ -119,10 +120,14 @@ namespace StS2AP.Patches
             }
             var item = indexedInfo.Item;
             var index = indexedInfo.Index;
-            // Log the item
-            LogUtility.Success(
-                $"Received: {item.ItemName} from {item.Player.Name} (ID: {item.ItemId} / LocID: {item.LocationId} / Index: {index})"
-            );
+            // Checkpoint loads replay the whole AP history, which was already logged as it
+            // arrived, so those repeats go to the debug log only.
+            string receivedMessage =
+                $"Received: {item.ItemName} from {item.Player.Name} (ID: {item.ItemId} / LocID: {item.LocationId} / Index: {index})";
+            if (liveDelivery)
+                LogUtility.Success(receivedMessage);
+            else
+                LogUtility.Debug(receivedMessage);
 
             /// Universal items (IDs < 10000) are character-agnostic and handled separately.
             /// The 10k ID gap ensures universal IDs never collide with character-specific IDs,
@@ -395,6 +400,15 @@ namespace StS2AP.Patches
                 case APItem.BonusWaxRelic:
                     ArchipelagoClient.Progress.Items.RegisterReceived(receipt);
                     break;
+                case APItem.IntentSight:
+                    // A permanent unlock with nothing to claim. The ledger keeps the copy count.
+                    ArchipelagoClient.Progress.Items.RegisterConsumed(receipt);
+                    IntentSight.RefreshVisibleIntents();
+                    break;
+                case APItem.HealthSight:
+                    ArchipelagoClient.Progress.Items.RegisterConsumed(receipt);
+                    HealthSight.RefreshVisibleHealth();
+                    break;
                 case APItem.WeakTrap:
                 case APItem.FrailTrap:
                 case APItem.VulnerableTrap:
@@ -528,6 +542,7 @@ namespace StS2AP.Patches
                     ProcessItem(new IndexedItemInfo(info, i + 1), false);
                     LastIndexHandled = i + 1;
                 }
+                LogUtility.Info($"Rebuilt AP progress from {LastIndexHandled} received item(s)");
             }
             finally
             {

@@ -149,29 +149,69 @@ namespace StS2AP
             var installedCharacterIds = ModelDb.AllCharacters
                 .Select(character => character.Id.Entry)
                 .ToHashSet(StringComparer.InvariantCultureIgnoreCase);
-            var missingCharacterIds = settings.Characters.Values
-                .Select(config => config.OfficialName)
-                .Where(characterId =>
-                    string.IsNullOrWhiteSpace(characterId)
-                    || !installedCharacterIds.Contains(characterId)
+            var missingConfigs = settings.Characters.Values
+                .Where(config =>
+                    string.IsNullOrWhiteSpace(config.OfficialName)
+                    || !installedCharacterIds.Contains(config.OfficialName)
                 )
+                .ToArray();
+
+            // A vanilla character can be missing because it is beta-only and this is the main
+            // branch. Its checks simply cannot be sent here, so connect without it. A missing
+            // modded character is more likely a mod the player forgot to enable.
+            var missingModdedIds = missingConfigs
+                .Where(config => config.ModNum > 0 || string.IsNullOrWhiteSpace(config.OfficialName))
+                .Select(config => config.OfficialName)
                 .Distinct(StringComparer.InvariantCultureIgnoreCase)
                 .Order(StringComparer.InvariantCultureIgnoreCase)
                 .ToArray();
 
-            if (missingCharacterIds.Length > 0)
+            if (missingModdedIds.Length > 0)
             {
                 reason = "The AP slot configures character model(s) that are not loaded: "
-                    + string.Join(", ", missingCharacterIds.Select(characterId =>
+                    + string.Join(", ", missingModdedIds.Select(characterId =>
                         string.IsNullOrWhiteSpace(characterId) ? "<missing id>" : characterId
                     ))
                     + ". Enable the matching character mod(s) and reconnect.";
                 return false;
             }
 
+            if (missingConfigs.Length == settings.Characters.Count)
+            {
+                reason = "None of this AP slot's characters exist in this game version: "
+                    + string.Join(", ", missingConfigs.Select(config => config.OfficialName))
+                    + ". Switch to the game branch the slot was generated for and reconnect.";
+                return false;
+            }
+
+            foreach (var config in missingConfigs)
+            {
+                LogUtility.Warn(
+                    $"Vanilla character '{config.OfficialName}' is not in this game version; "
+                        + "its checks cannot be sent from this client."
+                );
+            }
+
             reason = string.Empty;
             return true;
         }
+
+        /// <summary>
+        /// Vanilla characters configured for the slot that this game version does not have,
+        /// such as a character only on the beta branch while this is the main branch.
+        /// </summary>
+        internal static IReadOnlyList<string> GetUnavailableVanillaCharacterNames(ArchipelagoSettings settings) =>
+            settings.Characters.Values
+                .Where(config =>
+                    config.ModNum == 0
+                    && !ModelDb.AllCharacters.Any(character => string.Equals(
+                        character.Id.Entry,
+                        config.OfficialName,
+                        StringComparison.InvariantCultureIgnoreCase
+                    ))
+                )
+                .Select(config => config.Name)
+                .ToList();
 
         internal static void RebuildUnlockedCharactersFromSettings()
         {
@@ -226,7 +266,7 @@ namespace StS2AP
         /// Archipelago Item Locations that we've already found so far, collected by their Location ID
         /// </summary>
         // The SDK may publish its initial checked locations before login preparation runs.
-        public static List<long> CheckedLocations { get; set; } = new();
+        public static HashSet<long> CheckedLocations { get; set; } = new();
 
         /// <summary>
         /// Location IDs belonging to the authenticated AP slot. Unlike scouting data, this
@@ -761,6 +801,17 @@ namespace StS2AP
 
                 Settings = preparedSettings;
                 OnConnected();
+
+                var unavailableCharacters = GetUnavailableVanillaCharacterNames(preparedSettings);
+                if (unavailableCharacters.Count > 0 && !wasAutomaticReconnect)
+                {
+                    NotificationUtility.ShowRawText(
+                        $"Not in this game version: {string.Join(", ", unavailableCharacters)}. "
+                            + "Their checks can only be sent from a game branch that has them.",
+                        timeout: 8.0,
+                        priority: NotificationUtility.NotificationPriority.High
+                    );
+                }
             }
             else
             {
@@ -1022,7 +1073,7 @@ namespace StS2AP
             PendingCheckUtility.BindAuthenticatedSession(session, ServerAddress, Seed);
 
             // Restore checked locations from server so "Claimed" state survives restarts
-            CheckedLocations = session.Locations.AllLocationsChecked.ToList();
+            CheckedLocations = session.Locations.AllLocationsChecked.ToHashSet();
             LogUtility.Info(
                 $"Restored {CheckedLocations.Count} previously checked location(s) from server."
             );
@@ -1438,9 +1489,7 @@ namespace StS2AP
                 long[] ids = locations.ToArray();
                 RunForSession(_session, () =>
                 {
-                    foreach (long id in ids)
-                        if (!CheckedLocations.Contains(id))
-                            CheckedLocations.Add(id);
+                    CheckedLocations.UnionWith(ids);
                     // This SDK event also includes optimistic local checks. Do not use it
                     // to acknowledge durable outbox entries; fresh login still owns that.
                     int previousCampfireCount = Progress.CheckedCampfireLocationIds.Count;
@@ -1515,6 +1564,15 @@ namespace StS2AP
                 settings.IsDeathLinkEnabled = Convert.ToBoolean(slotData["death_link"]);
             if (slotData.ContainsKey("shuffle_all_cards"))
                 settings.ShouldShuffleAllCards = Convert.ToBoolean(slotData["shuffle_all_cards"]);
+            // Older APWorlds omit this key; their slots keep free card reward browsing.
+            if (slotData.ContainsKey("strict_card_rewards"))
+                settings.StrictCardRewards = Convert.ToBoolean(slotData["strict_card_rewards"]);
+            // Older APWorlds omit these keys; their slots show intents and health. The values are
+            // Sight copies in the pool, and 0 turns the challenge off.
+            if (slotData.ContainsKey("hidden_intents"))
+                settings.HiddenIntents = Convert.ToInt32(slotData["hidden_intents"]) > 0;
+            if (slotData.ContainsKey("hidden_health"))
+                settings.HiddenHealth = Convert.ToInt32(slotData["hidden_health"]) > 0;
             if (slotData.ContainsKey("lock_characters"))
                 settings.NoCharactersLocked = Convert.ToInt32(slotData["lock_characters"]) == 0;
             if (slotData.ContainsKey("enable_death_fragments"))
@@ -1580,6 +1638,17 @@ namespace StS2AP
                 settings.BonusItems = BonusItemDefinition.ParseAll(bonusItemsValue);
                 LogUtility.Info($"SLOT - Bonus Items configured: {settings.BonusItems.Count}");
             }
+
+            if (slotData.TryGetValue("run_modifiers", out object? runModifiersValue)
+                && runModifiersValue is Newtonsoft.Json.Linq.JArray runModifiers)
+            {
+                settings.RunModifiers = runModifiers.Select(token => token.ToString()).ToList();
+                LogUtility.Info($"SLOT - Run Modifiers: [{string.Join(",", settings.RunModifiers)}]");
+            }
+            if (slotData.ContainsKey("enemy_hp_scaling"))
+                settings.EnemyHpScaling = Convert.ToInt32(slotData["enemy_hp_scaling"]);
+            if (slotData.ContainsKey("enemy_damage_scaling"))
+                settings.EnemyDamageScaling = Convert.ToInt32(slotData["enemy_damage_scaling"]);
 
             if (slotData.ContainsKey("campfire_sanity"))
                 settings.CampfireSanity = Convert.ToInt32(slotData["campfire_sanity"]) != 0;

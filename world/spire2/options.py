@@ -20,7 +20,7 @@ class UseNewLogic(DefaultOnToggle):
     no longer requires this as 'Power' can be made up with extra cards/relics. Similar cases for ancients/smiths/rests.
 
     Old logic is used automatically (regardless of this option) when floor, gold, and potion checks
-     are all disabled to reduce failed generations.
+    are all disabled and this is the only world in the generation, to reduce failed generations.
     """
     display_name = "Use New Logic"
 
@@ -316,7 +316,7 @@ class ShopSanityCosts(Choice):
     Discount Tiered: 50 percent of the calculated baseline.
     Tiered: the full calculated baseline.
 
-    Generation logic does not account for these prices."""
+    Somewhat accounted for in logic."""
     display_name = "Shop Sanity Costs"
     option_Fixed = 0
     option_Super_Discount_Tiered = 1
@@ -325,7 +325,8 @@ class ShopSanityCosts(Choice):
     default = 2
 
 class GoldSanity(Toggle):
-    """Whether to replace combat, elite, and boss gold rewards with AP locations. Adds 22 locations per character."""
+    """Whether to replace combat, elite, and boss gold rewards with AP locations. Adds 22 locations per character.
+    """
     display_name = "Gold Sanity"
     default = 0
 
@@ -339,6 +340,46 @@ class CardReward(Toggle):
     """
     display_name = "Shuffle All Card Rewards"
     default = False
+
+class StrictCardRewards(Toggle):
+    """Harder: you can no longer look through every Card Reward in the AP Menu before picking.
+    Opening one reveals its cards and locks the other Card Rewards until you take a card or Discard it,
+    like a card reward after a fight. Skip, the map, the deck and closing the menu keep the revealed
+    reward for later. With Pael's Wing, its Sacrifice replaces Discard.
+    In singleplayer, a Card Reward you have not opened yet depends on what you took from the ones before it,
+    so loading a checkpoint and picking differently changes it.
+    Does not change logic. The mod's settings can override this.
+    Easiest to set up in the YAML Builder: https://sts2ap.net/#/builder
+    """
+    display_name = "Strict Card Rewards"
+    visibility = Visibility.template | Visibility.spoiler
+    default = 0
+
+class HiddenIntents(Range):
+    """Harder: enemy intents are hidden, like Runic Dome in the first game, and so is the Intent Graph mod's overlay.
+    The value is how many Intent Sight items are added to the item pool, and 0 turns it off. Finding
+    any one of them shows intents again for every character, with their numbers and the Intent Graph overlay, so
+    a second copy makes it easier to find. Does not change logic.
+    Easiest to set up in the YAML Builder: https://sts2ap.net/#/builder
+    """
+    display_name = "Hidden Intents"
+    visibility = Visibility.template | Visibility.spoiler
+    range_start = 0
+    range_end = 2
+    default = 0
+
+class HiddenHealth(Range):
+    """Harder: health is hidden. Health bars stay full and show no numbers, the top bar shows no HP, and the
+    poison and doom previews on health bars are hidden. Block is still shown. The value is how many Health Sight
+    items are added to the item pool, and 0 turns it off. Finding any one of them shows everyone's health again
+    for every character, so a second copy makes it easier to find. Does not change logic.
+    Easiest to set up in the YAML Builder: https://sts2ap.net/#/builder
+    """
+    display_name = "Hidden Health"
+    visibility = Visibility.template | Visibility.spoiler
+    range_start = 0
+    range_end = 2
+    default = 0
 
 class SeededRun(Toggle):
     """Whether each character should have a fixed seed to climb the spire with or not."""
@@ -484,6 +525,71 @@ class AscensionDown(OptionSet):
     valid_keys_casefold = False
     valid_keys = { *[str(i) for i in range(1,11)], *ASCENSIONS.keys() }
     default = list()
+
+
+class RunModifiers(OptionSet):
+    """Extra difficulty modifiers for every run, on top of Ascension. Logic does not account for them.
+    Most leave Act 1 as it is and grow harder in Acts 2 and 3. Names are case-sensitive. In
+    multiplayer, the host's modifiers apply to the whole run.
+
+    - 'RisingStrength': Elites and bosses start each combat with 1 Strength in Act 2 and 2 in Act 3.
+    - 'EscalatingBuffs': Enemies start combat with one random buff in Act 2 and two different ones in
+      Act 3, from 1 Strength, 4 Plating, 2 Thorns, 1 Artifact, 3 Regen, 4 Curl Up, 4 Vigor and
+      1 Slippery.
+    - 'ShrinkingRests': Resting heals 25% of max HP in Act 2 and 20% in Act 3, instead of 30%.
+    - 'MountingCurses': Gain a random curse at the start of Act 2 and of Act 3.
+    - 'MountingBanes': Gain an Ascender's Bane, which cannot be removed, at the start of Act 2 and
+      of Act 3.
+    - 'CursedRun': Gain a random curse at the start of every act, including Act 1 (the base game's
+      Cursed Run). Stacks with 'MountingCurses'.
+    - 'ExtraAscendersBane': Start each run with an extra Ascender's Bane. Stacks with
+      'MountingBanes'.
+    - 'SlowStart': Draw 1 fewer card on the first turn of each combat, in every act.
+    - 'FrailStart': Start each run with 10% less max HP.
+    - 'DangerousUnknowns': ? rooms lean towards fights. Combat starts at 20% and rises 15% each
+      time a ? room is not a fight; elites start at 0% and rise 4%; chests start and rise at 1%.
+      Shops are unchanged. The chances reset each act, with no cap. Juzu Bracelet never appears.
+      The extra fights and elites reach combat and relic checks sooner than logic expects.
+
+    Easiest to set up in the YAML Builder: https://sts2ap.net/#/builder"""
+    display_name = "Run Modifiers"
+    visibility = Visibility.template | Visibility.spoiler
+    valid_keys_casefold = False
+    valid_keys = {
+        "RisingStrength",
+        "EscalatingBuffs",
+        "ShrinkingRests",
+        "MountingCurses",
+        "MountingBanes",
+        "CursedRun",
+        "ExtraAscendersBane",
+        "SlowStart",
+        "FrailStart",
+        "DangerousUnknowns",
+    }
+    default = frozenset()
+
+
+class EnemyHpScaling(Range):
+    """Extra max HP for every enemy in Acts 2 and 3, as a percentage. Act 1 is unchanged. Stacks with
+    Ascension. Logic does not account for it. In multiplayer, the host's value applies to the whole
+    run. Easiest to set up in the YAML Builder: https://sts2ap.net/#/builder"""
+    display_name = "Enemy HP Scaling"
+    visibility = Visibility.template | Visibility.spoiler
+    range_start = 0
+    range_end = 15
+    default = 0
+
+
+class EnemyDamageScaling(Range):
+    """Extra damage from every enemy in Acts 2 and 3, as a percentage. Act 1 is unchanged. Stacks with
+    Ascension. Logic does not account for it. In multiplayer, the host's value applies to the whole
+    run. Easiest to set up in the YAML Builder: https://sts2ap.net/#/builder"""
+    display_name = "Enemy Damage Scaling"
+    visibility = Visibility.template | Visibility.spoiler
+    range_start = 0
+    range_end = 15
+    default = 0
 
 # Death Link Options
 
@@ -816,3 +922,11 @@ class Spire2Options(PerGameCommonOptions):
     confused_trap_weight: ConfusedTrapWeight
     sloth_trap_weight: SlothTrapWeight
     dazed_trap_weight: DazedTrapWeight
+
+    # Challenges
+    run_modifiers: RunModifiers
+    enemy_hp_scaling: EnemyHpScaling
+    enemy_damage_scaling: EnemyDamageScaling
+    hidden_intents: HiddenIntents
+    hidden_health: HiddenHealth
+    strict_card_rewards: StrictCardRewards

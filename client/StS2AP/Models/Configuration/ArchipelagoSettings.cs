@@ -67,6 +67,26 @@ namespace StS2AP.Models
         /// </summary>
         public int RelicRewardsAvailableAnytime { get; set; } = 10;
 
+        /// <summary>
+        /// Whether opening an AP menu card reward locks the other card rewards until a card is
+        /// taken or the revealed reward is discarded.
+        /// </summary>
+        public bool StrictCardRewards { get; set; }
+
+        /// <summary>
+        /// Whether the slot enabled the Hidden Intents challenge. When it is off, intents are never
+        /// hidden. When it is on, <see cref="StS2AP.Utils.IntentSight"/> works out what is visible
+        /// from the Intent Sight items received so far.
+        /// </summary>
+        public bool HiddenIntents { get; set; }
+
+        /// <summary>
+        /// Whether the slot enabled the Hidden Health challenge. When it is off, health is never
+        /// hidden. When it is on, <see cref="StS2AP.Utils.Combat.HealthSight"/> works out what is visible
+        /// from the Health Sight items received so far.
+        /// </summary>
+        public bool HiddenHealth { get; set; }
+
         /// <summary>Whether a victory releases the winning character's remaining checks.</summary>
         public bool ReleaseOnVictory { get; set; } = true;
 
@@ -97,6 +117,18 @@ namespace StS2AP.Models
             _bonusItemsByCategory.TryGetValue(category, out List<BonusItemDefinition>? definitions)
                 ? definitions
                 : Array.Empty<BonusItemDefinition>();
+
+        /// <summary>
+        /// Run Modifiers names from the YAML (for example "EliteStrength"). A new run adds the
+        /// matching AP modifiers; see <see cref="ApRunModifiers"/>.
+        /// </summary>
+        public List<string> RunModifiers { get; set; } = new();
+
+        /// <summary>Extra enemy max HP in Acts 2 and 3, in percent (0-15).</summary>
+        public int EnemyHpScaling { get; set; }
+
+        /// <summary>Extra enemy damage in Acts 2 and 3, in percent (0-15).</summary>
+        public int EnemyDamageScaling { get; set; }
 
         public bool CampfireSanity { get; set; }
         public bool GoldSanity { get; set; }
