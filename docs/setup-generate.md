@@ -15,7 +15,7 @@ To install the Archipelago Launcher, [download the latest version from Archipela
 
 An `.apworld` file provides support for games that are not officially supported by Archipelago yet.
 
-Download `spire2.apworld` from [our latest release](https://github.com/dlueben1/Slay-the-Spire-2-Archipelago/releases/latest/); it's near the bottom of the page. Then install it in the Archipelago Launcher with **Install APWorld**. On Windows, you can also double-click the file to open it in the Launcher. Archipelago's own guide covers this under [Playing with custom worlds](https://archipelago.gg/tutorial/Archipelago/setup/en#playing-with-custom-worlds).
+Download `spire2.apworld` from [our latest release](https://github.com/Terairk/Slay-the-Spire-2-Archipelago/releases/latest/); it's near the bottom of the page. Then install it in the Archipelago Launcher with **Install APWorld**. On Windows, you can also double-click the file to open it in the Launcher. Archipelago's own guide covers this under [Playing with custom worlds](https://archipelago.gg/tutorial/Archipelago/setup/en#playing-with-custom-worlds).
 
 ## YAML Files for each Participant
 
