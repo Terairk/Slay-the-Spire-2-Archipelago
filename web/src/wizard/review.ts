@@ -359,6 +359,7 @@ export function hasActiveChallenges(answers: ChallengeAnswers): boolean {
       answers.hiddenHealth !== "off" ||
       answers.hiddenPiles !== "off" ||
       answers.hiddenMap !== "off" ||
+      answers.hiddenCards !== "off" ||
       answers.strictCardRewards)
   );
 }
@@ -430,6 +431,12 @@ export function summarizeChallengeAnswers(answers: ChallengeAnswers): string {
   if (answers.hiddenMap !== "off") {
     sentences.push(
       `Rooms beyond your next move are hidden until ${describeSightItems(answers.hiddenMap, "Map Sight")} is found.`,
+    );
+  }
+
+  if (answers.hiddenCards !== "off") {
+    sentences.push(
+      `Cards are unknown until ${describeSightItems(answers.hiddenCards, "Card Sight")} is found.`,
     );
   }
 
