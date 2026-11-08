@@ -256,7 +256,7 @@ class CampfireSanity(Toggle):
     """Whether to shuffle being able to rest and smith at each campsite per act.  Also adds
     new locations at campsites per act."""
     display_name = "Campfire Sanity"
-    default = 0
+    default = 1
 
 class ShopSanity(Toggle):
     """Move the configured shop slots to a separate AP shop page as purchasable location checks and
@@ -265,7 +265,7 @@ class ShopSanity(Toggle):
     display_name = "Shop Sanity"
     option_true = 1
     option_false = 0
-    default = 0
+    default = 1
 
 class ShopCardSlots(Range):
     """When shop_sanity is enabled, the number of colored card slots to shuffle."""
@@ -319,16 +319,58 @@ class ShopSanityCosts(Choice):
     option_Tiered = 3
     default = 2
 
+class RandomShopCards(Toggle):
+    """Each of the shop's 7 card slots holds a random kind of card, picked with the weights below,
+    instead of 2 Attacks, 2 Skills, a Power and 2 colorless cards. Any of the 7 can be on sale.
+    If every weight is none, the shop keeps its usual cards. Does not change logic."""
+    display_name = "Random Shop Cards"
+    default = 0
+
+class ShopCardWeight(Choice):
+    option_none = 0
+    option_low = 1
+    option_medium = 3
+    option_high = 5
+    default = option_medium
+
+class ShopAttackWeight(ShopCardWeight):
+    """How often a random shop card slot holds an Attack."""
+    display_name = "Shop Attack Weight"
+
+class ShopSkillWeight(ShopCardWeight):
+    """How often a random shop card slot holds a Skill."""
+    display_name = "Shop Skill Weight"
+
+class ShopPowerWeight(ShopCardWeight):
+    """How often a random shop card slot holds a Power."""
+    display_name = "Shop Power Weight"
+
+class ShopCommonWeight(ShopCardWeight):
+    """How often a random shop card slot holds a Common card."""
+    display_name = "Shop Common Weight"
+
+class ShopUncommonWeight(ShopCardWeight):
+    """How often a random shop card slot holds an Uncommon card."""
+    display_name = "Shop Uncommon Weight"
+
+class ShopRareWeight(ShopCardWeight):
+    """How often a random shop card slot holds a Rare card."""
+    display_name = "Shop Rare Weight"
+
+class ShopColorlessWeight(ShopCardWeight):
+    """How often a random shop card slot holds a colorless card, Uncommon or Rare."""
+    display_name = "Shop Colorless Weight"
+
 class GoldSanity(Toggle):
     """Whether to replace combat, elite, and boss gold rewards with AP locations. Adds 22 locations per character.
     """
     display_name = "Gold Sanity"
-    default = 0
+    default = 1
 
 class PotionSanity(Toggle):
     """Whether to replace potion rewards with AP locations. Adds 9 locations per character."""
     display_name = "Potion Sanity"
-    default = 0
+    default = 1
 
 class CardReward(Toggle):
     """Whether every card reward is shuffled.  If false, then every other card reward is shuffled
@@ -389,6 +431,17 @@ class HiddenMap(Range):
     shows the whole map again for every character, so a second copy makes it easier to find. Does not change logic.
     """
     display_name = "Hidden Map"
+    range_start = 0
+    range_end = 2
+    default = 0
+
+class HiddenCards(Range):
+    """Cards are unknown: their name, text and energy cost are hidden, their art is blurred and they
+    show no tooltips.
+    The value is how many Card Sight items are added to the item pool, and 0 turns it off. Finding any one of them
+    shows cards again for every character, so a second copy makes it easier to find. Does not change logic.
+    """
+    display_name = "Hidden Cards"
     range_start = 0
     range_end = 2
     default = 0
@@ -891,6 +944,16 @@ class Spire2Options(PerGameCommonOptions):
     shop_remove_slots: ShopRemoveSlots
     shop_sanity_costs: ShopSanityCosts
 
+    # Shop cards
+    random_shop_cards: RandomShopCards
+    shop_attack_weight: ShopAttackWeight
+    shop_skill_weight: ShopSkillWeight
+    shop_power_weight: ShopPowerWeight
+    shop_common_weight: ShopCommonWeight
+    shop_uncommon_weight: ShopUncommonWeight
+    shop_rare_weight: ShopRareWeight
+    shop_colorless_weight: ShopColorlessWeight
+
     # Death Link
     death_link: DeathLink
     enable_death_fragments: EnableDeathFragments
@@ -940,4 +1003,5 @@ class Spire2Options(PerGameCommonOptions):
     hidden_health: HiddenHealth
     hidden_piles: HiddenPiles
     hidden_map: HiddenMap
+    hidden_cards: HiddenCards
     strict_card_rewards: StrictCardRewards

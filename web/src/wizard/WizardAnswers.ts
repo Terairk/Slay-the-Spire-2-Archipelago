@@ -15,6 +15,7 @@ import {
   type AscensionLevel,
 } from "./AscensionModifier";
 import { getOrderedRunModifiers } from "./RunModifier";
+import { createDefaultShopCardWeights } from "./ShopCardKind";
 import {
   CHALLENGE_OPTION_KEYS,
   CHECK_OPTION_KEYS,
@@ -23,6 +24,7 @@ import {
   OP_RELIC_CATEGORY_KEYS,
   PROGRESSION_OPTION_KEYS,
   RUN_OPTION_KEYS,
+  SHOP_CARD_OPTION_KEY,
   SHOP_OPTION_KEYS,
   STARTING_EQUIPMENT_OPTION_KEYS,
 } from "./WizardOptionKey";
@@ -127,6 +129,10 @@ export interface OpRelicRemovalAnswers {
   rare: boolean;
 }
 
+/** Kinds of card a Random Shop Cards slot can hold, in option order. */
+export type ShopCardKindId =
+  "attack" | "skill" | "power" | "common" | "uncommon" | "rare" | "colorless";
+
 export interface RunAnswers {
   relicRewardsAvailableAnytime: number;
   removeOpRelics: OpRelicRemovalAnswers;
@@ -156,6 +162,7 @@ export interface ChallengeAnswers {
   hiddenHealth: SightCopies;
   hiddenPiles: SightCopies;
   hiddenMap: SightCopies;
+  hiddenCards: SightCopies;
   strictCardRewards: boolean;
 }
 
@@ -195,11 +202,19 @@ export interface ShopAnswers {
   costs: ShopCostMode;
 }
 
+/** Random Shop Cards, which works with or without Shop Sanity. */
+export interface ShopCardAnswers {
+  enabled: boolean;
+  /** Same four levels as filler weights: none, low, medium, high. */
+  weights: Record<ShopCardKindId, FillerWeightLevel>;
+}
+
 export interface ChecksAndRewardsAnswers {
   startingEquipment: StartingEquipmentAnswers;
   ancients: AncientAnswers;
   checks: CheckAnswers;
   shop: ShopAnswers;
+  shopCards: ShopCardAnswers;
   bonusItems: BonusItemAnswer[];
   filler: FillerAnswers;
   traps: TrapAnswers;
@@ -479,6 +494,10 @@ export function createDefaultWizardAnswers(
         catalog,
         CHALLENGE_OPTION_KEYS.hiddenMap,
       ),
+      hiddenCards: getSightCopiesDefault(
+        catalog,
+        CHALLENGE_OPTION_KEYS.hiddenCards,
+      ),
       strictCardRewards: getBooleanDefault(
         catalog,
         CHALLENGE_OPTION_KEYS.strictCardRewards,
@@ -543,6 +562,10 @@ export function createDefaultWizardAnswers(
           "Discount_Tiered",
           "Tiered",
         ]),
+      },
+      shopCards: {
+        enabled: getBooleanDefault(catalog, SHOP_CARD_OPTION_KEY),
+        weights: createDefaultShopCardWeights(catalog),
       },
       // Bonus Items start empty; each one is added deliberately through the table UI.
       bonusItems: [],

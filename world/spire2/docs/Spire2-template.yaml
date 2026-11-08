@@ -85,6 +85,10 @@ Slay the Spire II:
   # The value (0-2) is how many Map Sight items the slot gets; 0 is off, and any one of them shows the whole map again.
   hidden_map: 0
 
+  # Cards are unknown: name, text, energy cost and tooltips are hidden and the art is blurred.
+  # The value (0-2) is how many Card Sight items the slot gets; 0 is off, and any one of them shows cards again.
+  hidden_cards: 0
+
   # Extra difficulty modifiers for every run, on top of Ascension; logic ignores them. Most leave Act 1
   # as it is and grow harder in Acts 2 and 3. Names (case-sensitive):
   #   RisingStrength, EscalatingBuffs, ShrinkingRests, MountingCurses,
@@ -178,6 +182,22 @@ Slay the Spire II:
   #   discount_tiered        - 50% of a vanilla-style price
   #   tiered                 - the full vanilla-style price
   shop_sanity_costs: "discount_tiered"
+
+  ##############
+  # Shop Cards #
+  ##############
+
+  # Each of the shop's 7 card slots holds a random kind of card instead of the usual
+  # 2 Attacks, 2 Skills, a Power and 2 colorless cards. Any of the 7 can be on sale.
+  random_shop_cards: false
+  # How often a slot holds each kind: none, low, medium or high
+  shop_attack_weight: "medium"     # Attack, any rarity
+  shop_skill_weight: "medium"      # Skill, any rarity
+  shop_power_weight: "medium"      # Power, any rarity
+  shop_common_weight: "medium"     # Common, any type
+  shop_uncommon_weight: "medium"   # Uncommon, any type
+  shop_rare_weight: "medium"       # Rare, any type
+  shop_colorless_weight: "medium"  # Colorless, Uncommon or Rare
 
   ##############
   # Death Link #

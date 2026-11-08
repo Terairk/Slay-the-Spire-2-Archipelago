@@ -498,6 +498,18 @@ export const challengeSetupStep: WizardStep = {
       },
     },
     {
+      id: "hidden-cards",
+      isVisible: usesChallenges,
+      title: "Should cards be hidden?",
+      description:
+        "Hidden Cards makes every card unknown: its name, text and energy cost are hidden, its art is blurred and it shows no tooltips, until a Card Sight is found. Finding one shows cards again, for every character.",
+      control: {
+        kind: "radio",
+        field: "hiddenCards",
+        choices: sightCopyChoices("Card Sight", "Cards are shown as normal."),
+      },
+    },
+    {
       id: "strict-card-rewards",
       isVisible: usesChallenges,
       title: "Should Card Rewards in the AP Menu be picked one at a time?",
@@ -728,6 +740,25 @@ export const checkSetupStep: WizardStep = {
           },
         ],
       },
+    },
+    {
+      id: "random-shop-cards",
+      title: "Should shops sell random kinds of cards?",
+      description:
+        "A shop normally sells 2 Attacks, 2 Skills, a Power and 2 colorless cards.",
+      help: "Works with or without Shop Slots. Does not change logic.",
+      control: {
+        kind: "checkbox",
+        field: "shopCards.enabled",
+        label: "Random Shop Cards",
+        description:
+          "Each of the 7 card slots holds a random kind of card, picked with the weights below. Any of the 7 can be on sale.",
+      },
+    },
+    {
+      id: "shop-card-weights",
+      title: "How often should a shop card slot hold each kind of card?",
+      isVisible: (answers) => answers.checksAndRewards.shopCards.enabled,
     },
     {
       id: "bonus-items",

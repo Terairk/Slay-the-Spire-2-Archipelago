@@ -100,6 +100,12 @@ namespace StS2AP.Models
         /// </summary>
         public bool HiddenMap { get; set; }
 
+        /// <summary>
+        /// Whether the slot enabled the Hidden Cards challenge. When it is on, cards look unseen
+        /// until <see cref="StS2AP.Utils.Combat.CardSight"/> sees a Card Sight item.
+        /// </summary>
+        public bool HiddenCards { get; set; }
+
         /// <summary>Whether a victory releases the winning character's remaining checks.</summary>
         public bool ReleaseOnVictory { get; set; } = true;
 
@@ -184,6 +190,12 @@ namespace StS2AP.Models
         public int ShopPotionSlots { get; set; }
         public bool ShopRemoveSlots { get; set; }
         public int ShopSanityCosts { get; set; }
+
+        /// <summary>
+        /// Random Shop Cards weights by kind name ("attack", "skill", "power", "common",
+        /// "uncommon", "rare", "colorless"). Empty keeps the vanilla shop card layout.
+        /// </summary>
+        public Dictionary<string, int> ShopCardWeights { get; set; } = new();
 
         /// <summary>
         /// Total number of generic Shop Slot locations generated per character. Enabling card
