@@ -2,7 +2,7 @@ from math import ceil, floor
 from typing import TYPE_CHECKING, List
 
 from BaseClasses import Region
-from .logic_table import ELITES_PER_ACT, RELIC_REGIONS
+from .logic_table import ELITES_PER_ACT, ELITE_GOLD_REGIONS, RELIC_REGIONS
 
 if TYPE_CHECKING:
     from worlds.spire2.world import SlayTheSpire2World
@@ -34,9 +34,13 @@ def _create_regions(world: 'SlayTheSpire2World', player: int, config: 'Character
     # Old logic has no elite track, so it keeps the relic checks in their original path regions.
     is_new_logic = world.effective_logic == "new"
     relic_regions = RELIC_REGIONS if is_new_logic else LEGACY_RELIC_REGIONS
+    elite_gold_regions = ELITE_GOLD_REGIONS if is_new_logic else LEGACY_ELITE_GOLD_REGIONS
 
     def relics(region: str) -> List[str]:
         return [f"Relic {number}" for number, name in relic_regions.items() if name == region]
+
+    def elite_gold(region: str) -> List[str]:
+        return [f"Elite Gold {number}" for number, name in elite_gold_regions.items() if name == region]
 
     def elite_track_entrances(act: int) -> List[str]:
         """Elite track regions entered from an act's Mid region: its chest and its first elite."""
@@ -56,7 +60,8 @@ def _create_regions(world: 'SlayTheSpire2World', player: int, config: 'Character
         for number in range(1, elites + 1):
             elite = f"Act {act} Elite {number}"
             exits = [f"Act {act} Elite {number + 1}"] if number < elites else []
-            multiworld.regions.append(world.create_region(player, prefix, elite, config, relics(elite), exits))
+            multiworld.regions.append(world.create_region(player, prefix, elite, config,
+                                                          [*relics(elite), *elite_gold(elite)], exits))
 
     # IMPORTANT: Keep these location ranges at the canonical singleplayer counts. Multiplayer
     # has one fewer physical floor per act and fewer associated reward opportunities; the client
@@ -108,6 +113,7 @@ def _create_regions(world: 'SlayTheSpire2World', player: int, config: 'Character
     multiworld.regions.append(world.create_region(player, prefix, 'Mid Act 1', config,
                                                   [
                                                       *relics('Mid Act 1'),
+                                                      *elite_gold('Mid Act 1'),
                                                       "Potion Drop 2",
                                                       *first_campfire(1, "Mid"),
                                                       "Act 1 Campfire 2",
@@ -119,6 +125,7 @@ def _create_regions(world: 'SlayTheSpire2World', player: int, config: 'Character
     multiworld.regions.append(world.create_region(player, prefix, 'Late Act 1', config,
                                                   [
                                                       *relics('Late Act 1'),
+                                                      *elite_gold('Late Act 1'),
                                                       "Potion Drop 3",
                                                       *_create_floor_check(12, 16),
                                                       *_create_combat_check(7, act_1_fights),
@@ -150,6 +157,7 @@ def _create_regions(world: 'SlayTheSpire2World', player: int, config: 'Character
     multiworld.regions.append(world.create_region(player, prefix, 'Mid Act 2', config,
                                                   [
                                                       *relics('Mid Act 2'),
+                                                      *elite_gold('Mid Act 2'),
                                                       "Potion Drop 5",
                                                       *first_campfire(2, "Mid"),
                                                       "Act 2 Campfire 2",
@@ -161,6 +169,7 @@ def _create_regions(world: 'SlayTheSpire2World', player: int, config: 'Character
     multiworld.regions.append(world.create_region(player, prefix, 'Late Act 2', config,
                                                   [
                                                       *relics('Late Act 2'),
+                                                      *elite_gold('Late Act 2'),
                                                       "Potion Drop 6",
                                                       *_create_floor_check(28, 32),
                                                       *_create_combat_check(13, 14),
@@ -225,6 +234,7 @@ LEGACY_RELIC_REGIONS = {
     4: "Mid Act 2", 5: "Mid Act 2", 6: "Late Act 2",
     7: "Mid Act 3", 8: "Mid Act 3", 9: "Late Act 3", 10: "Late Act 3",
 }
+LEGACY_ELITE_GOLD_REGIONS = {1: "Mid Act 1", 2: "Late Act 1", 3: "Late Act 1", 4: "Mid Act 2", 5: "Late Act 2"}
 
 
 def _create_floor_check(start: int, end: int) -> List[str]:

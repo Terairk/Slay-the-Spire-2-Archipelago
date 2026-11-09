@@ -61,6 +61,7 @@ def create_location_data() -> typing.List[LocationData]:
             [LocationData(f"Relic {j}", j + 26, LocationType.Relic) for j in range(1, 11)] +
             [LocationData(f"Shop Slot {j}", j + 36, LocationType.Shop) for j in range(1, 17)] +
             [LocationData(f"Combat Gold {j}", j + 53, LocationType.Gold) for j in range(1, 21)] +
+            [LocationData(f"Elite Gold {j}", j + 153, LocationType.Gold) for j in range(1, 6)] +
             [LocationData(f"Potion Drop {j}", j + 78, LocationType.Potion) for j in range(1, 10)] +
             [LocationData('Press Start', 88, LocationType.Start),
              LocationData('Act 1 Campfire 1', 89, LocationType.Campfire),

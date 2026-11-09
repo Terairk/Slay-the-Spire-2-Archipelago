@@ -21,6 +21,9 @@ public sealed class ApReplicaConstructionState
     [JsonPropertyName("gold_rewards_attempted")]
     public int GoldRewardsAttempted { get; set; }
 
+    [JsonPropertyName("elite_gold_rewards_attempted")]
+    public int EliteGoldRewardsAttempted { get; set; }
+
     [JsonPropertyName("potion_rewards_attempted")]
     public int PotionRewardsAttempted { get; set; }
 
@@ -35,6 +38,7 @@ public sealed class ApReplicaConstructionState
         int cardRewardsAttempted,
         int rareCardRewardsAttempted,
         int goldRewardsAttempted,
+        int eliteGoldRewardsAttempted,
         int potionRewardsAttempted,
         IEnumerable<int> multiplayerBossCompensatedActs)
     {
@@ -44,6 +48,7 @@ public sealed class ApReplicaConstructionState
         CardRewardsAttempted = cardRewardsAttempted;
         RareCardRewardsAttempted = rareCardRewardsAttempted;
         GoldRewardsAttempted = goldRewardsAttempted;
+        EliteGoldRewardsAttempted = eliteGoldRewardsAttempted;
         PotionRewardsAttempted = potionRewardsAttempted;
         MultiplayerBossCompensatedActs = new HashSet<int>(multiplayerBossCompensatedActs);
         Initialized = true;
@@ -55,6 +60,8 @@ public sealed class ApReplicaConstructionState
     public int IncrementRareCardRewards() => ++RareCardRewardsAttempted;
 
     public int IncrementGoldRewards() => ++GoldRewardsAttempted;
+
+    public int IncrementEliteGoldRewards() => ++EliteGoldRewardsAttempted;
 
     public int IncrementPotionRewards() => ++PotionRewardsAttempted;
 

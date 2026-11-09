@@ -30,6 +30,8 @@ public sealed class ApRunProgressState
     public Dictionary<long, List<int>> RelicReceiptIndexesByCharacter { get; set; } = new();
     [JsonPropertyName("gold_rewards_attempted")]
     public int GoldRewardsAttempted { get; set; }
+    [JsonPropertyName("elite_gold_rewards_attempted")]
+    public int EliteGoldRewardsAttempted { get; set; }
     [JsonPropertyName("potion_rewards_attempted")]
     public int PotionRewardsAttempted { get; set; }
     [JsonPropertyName("boss_rewards_distributed")]

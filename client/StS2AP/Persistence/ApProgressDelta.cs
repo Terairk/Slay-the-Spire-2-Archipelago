@@ -25,6 +25,8 @@ public sealed class ApProgressDelta
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? GoldRewardsAttempted { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? EliteGoldRewardsAttempted { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? PotionRewardsAttempted { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? BossRewardsDistributed { get; set; }
@@ -73,6 +75,7 @@ public sealed class ApProgressDelta
         || RelicRewardsAvailableAnytimeForRun.HasValue
         || RelicReceiptIndexesByCharacter != null
         || GoldRewardsAttempted.HasValue
+        || EliteGoldRewardsAttempted.HasValue
         || PotionRewardsAttempted.HasValue
         || BossRewardsDistributed.HasValue
         || GoldRedeemed.HasValue
@@ -122,6 +125,7 @@ public sealed class ApProgressDelta
                 ? null
                 : CloneRelicReceiptMap(after.RelicReceiptIndexesByCharacter),
             GoldRewardsAttempted = Changed(before.GoldRewardsAttempted, after.GoldRewardsAttempted),
+            EliteGoldRewardsAttempted = Changed(before.EliteGoldRewardsAttempted, after.EliteGoldRewardsAttempted),
             PotionRewardsAttempted = Changed(before.PotionRewardsAttempted, after.PotionRewardsAttempted),
             BossRewardsDistributed = Changed(before.BossRewardsDistributed, after.BossRewardsDistributed),
             GoldRedeemed = Changed(before.GoldRedeemed, after.GoldRedeemed),
@@ -228,6 +232,7 @@ public sealed class ApProgressDelta
         if (RelicReceiptIndexesByCharacter != null)
             result.RelicReceiptIndexesByCharacter = CloneRelicReceiptMap(RelicReceiptIndexesByCharacter);
         Apply(GoldRewardsAttempted, value => result.GoldRewardsAttempted = value);
+        Apply(EliteGoldRewardsAttempted, value => result.EliteGoldRewardsAttempted = value);
         Apply(PotionRewardsAttempted, value => result.PotionRewardsAttempted = value);
         Apply(BossRewardsDistributed, value => result.BossRewardsDistributed = value);
         Apply(GoldRedeemed, value => result.GoldRedeemed = value);
@@ -287,6 +292,7 @@ public sealed class ApProgressDelta
         RelicRewardsAvailableAnytimeForRun = source.RelicRewardsAvailableAnytimeForRun,
         RelicReceiptIndexesByCharacter = CloneRelicReceiptMap(source.RelicReceiptIndexesByCharacter),
         GoldRewardsAttempted = source.GoldRewardsAttempted,
+        EliteGoldRewardsAttempted = source.EliteGoldRewardsAttempted,
         PotionRewardsAttempted = source.PotionRewardsAttempted,
         BossRewardsDistributed = source.BossRewardsDistributed,
         RelicChoiceAssignments = source.RelicChoiceAssignments.ToDictionary(

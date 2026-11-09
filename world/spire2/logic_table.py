@@ -156,6 +156,16 @@ assert ({region for region in REGIONS if " Elite " in region}
     "REGIONS needs exactly one elite row per elite in ELITES_PER_ACT"
 
 
+# Each of a run's first five elites also sends a bonus Elite Gold check, on top of the Combat Gold
+# check its gold reward already is. They stop at Act 2's elites: runs tend to dodge Act 3's, so
+# anything placed there would often wait until the player's goal.
+ELITE_GOLD_REGIONS = dict(enumerate(
+    (f"Act {act} Elite {number}" for act in (1, 2) for number in range(1, ELITES_PER_ACT[act - 1] + 1)),
+    start=1,
+))
+assert len(ELITE_GOLD_REGIONS) == 5, "the client counts five Elite Gold checks"
+
+
 def last_elite(act: int) -> str:
     """The elite track region of an act's last expected elite."""
     return f"Act {act} Elite {ELITES_PER_ACT[act - 1]}"
@@ -304,9 +314,9 @@ SHOP_GOLD_BY_COST_MODE = (
 # A shop turns gold into power. With Gold Sanity, whose checks replace vanilla fight gold, shop
 # choices count only as far as a run's gold reaches a normal run's by that act's Late region,
 # walking around elites. A run counts its starting and chest gold, Elite and Boss Gold, and every
-# Combat Gold: those are small and plentiful, and counting them would make 13 more items per
+# Combat Gold: those are small and plentiful, and counting them would make 16 more items per
 # character progression in worlds without Shop Sanity.
-COMBAT_GOLD_ITEMS = 13  # in a Gold Sanity item pool
+COMBAT_GOLD_ITEMS = 16  # in a Gold Sanity item pool
 
 
 def normal_run_gold(act: int) -> int:

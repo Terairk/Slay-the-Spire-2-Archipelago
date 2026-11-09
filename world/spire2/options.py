@@ -320,7 +320,7 @@ class ShopSanityCosts(Choice):
     default = 2
 
 class GoldSanity(Toggle):
-    """Whether to replace combat, elite, and boss gold rewards with AP locations. Adds 22 locations per character.
+    """Whether to replace combat, elite, and boss gold rewards with AP locations. Adds 27 locations per character.
     """
     display_name = "Gold Sanity"
     default = 0

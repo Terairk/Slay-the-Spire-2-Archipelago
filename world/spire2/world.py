@@ -25,7 +25,7 @@ from .locations import location_table, MAX_CARD_REWARDS, loc_ids_to_data, Locati
 from .options import Spire2Options
 
 COMBAT_GOLD_ITEM_COUNT = COMBAT_GOLD_ITEMS
-ELITE_GOLD_ITEM_COUNT = 7
+ELITE_GOLD_ITEM_COUNT = 9
 BOSS_GOLD_ITEM_COUNT = 2
 
 SPARSE_SHOP_ITEM_TYPES = {ItemType.SHOP_CARD, ItemType.SHOP_NEUTRAL, ItemType.SHOP_RELIC, ItemType.SHOP_POTION,

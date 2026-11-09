@@ -680,6 +680,7 @@ public static class ApRunData
             baseline.CardRewardsAttempted,
             baseline.RareCardRewardsAttempted,
             baseline.GoldRewardsAttempted,
+            baseline.EliteGoldRewardsAttempted,
             baseline.PotionRewardsAttempted,
             baseline.MultiplayerBossCompensatedActs
         );

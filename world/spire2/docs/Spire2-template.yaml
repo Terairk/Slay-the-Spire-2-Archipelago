@@ -157,7 +157,7 @@ Slay the Spire II:
   # Shuffles the ability to rest and smith in each act, and adds campfire locations.
   campfire_sanity: true
 
-  # Replaces combat, elite and boss gold rewards with locations (22 per character).
+  # Replaces combat, elite and boss gold rewards with locations (27 per character).
   gold_sanity: true
 
   # Replaces potion rewards with locations (9 per character).

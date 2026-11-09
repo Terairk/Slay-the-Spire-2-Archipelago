@@ -137,7 +137,7 @@ class LogicTests(unittest.TestCase):
         items = (("Card Reward", 25), ("Rare Card Reward", 4), ("Relic", 13),
                  ("Progressive Starter Card", 3), ("Progressive Starter Relic", 3),
                  ("Progressive Rest", 4), ("Progressive Smith", 4), ("Progressive Shop Remove", 4),
-                 ("Progressive Ancient", 4), ("Elite Gold", 8), ("Boss Gold", 3),
+                 ("Progressive Ancient", 4), ("Elite Gold", 10), ("Boss Gold", 3),
                  *((item, len(values) + 1) for item, values in SHOP_SLOT_VALUES))
         rng = random.Random(2026)
         failures = []

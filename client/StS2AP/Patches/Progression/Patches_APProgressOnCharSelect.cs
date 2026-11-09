@@ -100,7 +100,8 @@ namespace StS2AP.Patches
                     SetCheckedLocation(
                         ArchipelagoCharTrackerUI.GoldsanityChecks,
                         goldLocations,
-                        ArchipelagoProgress._maxGoldRewards + ArchipelagoProgress._maxBossGoldRewards
+                        ArchipelagoProgress._maxGoldRewards + ArchipelagoProgress._maxEliteGoldRewards
+                            + ArchipelagoProgress._maxBossGoldRewards
                     );
                 }
 

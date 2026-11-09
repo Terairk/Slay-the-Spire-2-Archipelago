@@ -73,6 +73,9 @@ public static class MultiplayerLocationChecks
     public static int IncrementGoldRewards(Player player) =>
         IncrementCounter(player, Counter.Gold);
 
+    public static int IncrementEliteGoldRewards(Player player) =>
+        IncrementCounter(player, Counter.EliteGold);
+
     public static int IncrementPotionRewards(Player player) =>
         IncrementCounter(player, Counter.Potion);
 
@@ -115,6 +118,7 @@ public static class MultiplayerLocationChecks
                 Counter.Card => ++ArchipelagoClient.Progress.CardRewardsAttempted,
                 Counter.RareCard => ++ArchipelagoClient.Progress.RareCardRewardsAttempted,
                 Counter.Gold => ++ArchipelagoClient.Progress.GoldRewardsAttempted,
+                Counter.EliteGold => ++ArchipelagoClient.Progress.EliteGoldRewardsAttempted,
                 Counter.Potion => ++ArchipelagoClient.Progress.PotionRewardsAttempted,
                 _ => throw new ArgumentOutOfRangeException(nameof(counter)),
             };
@@ -129,6 +133,7 @@ public static class MultiplayerLocationChecks
             Counter.Card => construction.IncrementCardRewards(),
             Counter.RareCard => construction.IncrementRareCardRewards(),
             Counter.Gold => construction.IncrementGoldRewards(),
+            Counter.EliteGold => construction.IncrementEliteGoldRewards(),
             Counter.Potion => construction.IncrementPotionRewards(),
             _ => throw new ArgumentOutOfRangeException(nameof(counter)),
         };
@@ -145,6 +150,9 @@ public static class MultiplayerLocationChecks
                     break;
                 case Counter.Gold:
                     ArchipelagoClient.Progress.GoldRewardsAttempted = result;
+                    break;
+                case Counter.EliteGold:
+                    ArchipelagoClient.Progress.EliteGoldRewardsAttempted = result;
                     break;
                 case Counter.Potion:
                     ArchipelagoClient.Progress.PotionRewardsAttempted = result;
@@ -272,6 +280,7 @@ public static class MultiplayerLocationChecks
         Card,
         RareCard,
         Gold,
+        EliteGold,
         Potion,
     }
 }

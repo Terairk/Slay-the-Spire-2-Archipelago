@@ -94,6 +94,9 @@ namespace StS2AP.Data
         internal static long GetBossGoldLocation(Player player, int act) =>
             GetLocationForPlayer(player, act is >= 1 and <= ArchipelagoProgress._maxBossGoldRewards ? 98 + act : -1);
 
+        internal static long GetEliteGoldLocation(Player player, int rewardNumber) =>
+            GetLocationForPlayer(player, rewardNumber is >= 1 and <= ArchipelagoProgress._maxEliteGoldRewards ? 153 + rewardNumber : -1);
+
         internal static long GetPotionDropLocation(Player player, int rewardNumber) =>
             GetLocationForPlayer(player, rewardNumber is >= 1 and <= ArchipelagoProgress._maxPotionRewards ? 78 + rewardNumber : -1);
 
@@ -183,13 +186,14 @@ namespace StS2AP.Data
         }
 
         /// <summary>
-        /// Returns all location IDs for Goldsanity for a given character: its Combat Gold and Boss Gold locations.
+        /// Returns all location IDs for Goldsanity for a given character: its Combat Gold, Elite Gold and Boss Gold locations.
         /// </summary>
         /// <param name="character">The character to get Goldsanity locations for.</param>
         /// <returns>A list of location IDs for the specified character's gold rewards.</returns>
         public static List<long> GetGoldsanityLocations(CharacterModel character)
         {
             var locations = GetLocationsByPattern($"{character.APName()} Combat Gold #", ArchipelagoProgress._maxGoldRewards);
+            locations.AddRange(GetLocationsByPattern($"{character.APName()} Elite Gold #", ArchipelagoProgress._maxEliteGoldRewards));
             locations.AddRange(GetLocationsByPattern($"{character.APName()} Boss Gold #", ArchipelagoProgress._maxBossGoldRewards));
             return locations;
         }

@@ -50,6 +50,12 @@ namespace StS2AP.Models
         public const int _maxBossGoldRewards = 2;
 
         /// <summary>
+        /// Bonus Elite Gold locations: each of a run's first five elites sends one on top of its
+        /// numbered Combat Gold location. Matches the APWorld's 5 locations per character.
+        /// </summary>
+        public const int _maxEliteGoldRewards = 5;
+
+        /// <summary>
         /// The maximum possible number of Potion Rewards that a player could have replaced with AP locations.
         /// Only used if PotionSanity is on. Matches the APWorld's 9 locations per character.
         /// </summary>
@@ -115,6 +121,12 @@ namespace StS2AP.Models
         /// It's only used if the player has GoldSanity on.
         /// </summary>
         public int GoldRewardsAttempted { get; set; } = 0;
+
+        /// <summary>
+        /// Keeps track of how many Elite gold rewards this run has offered a bonus Elite Gold location for.
+        /// It's only used if the player has GoldSanity on.
+        /// </summary>
+        public int EliteGoldRewardsAttempted { get; set; } = 0;
 
         /// <summary>
         /// Keeps track of the number of times the game has tried to provide a Potion Reward.
@@ -383,6 +395,7 @@ namespace StS2AP.Models
             BankedRelicRewards = 0;
             RelicRewardsAvailableAnytimeForRun = RelicRewardUtility.EffectiveAvailableAnytime;
             GoldRewardsAttempted = 0;
+            EliteGoldRewardsAttempted = 0;
             PotionRewardsAttempted = 0;
             MultiplayerBossCompensatedActs.Clear();
             CheckedCampfireLocationIds.Clear();
@@ -688,6 +701,7 @@ namespace StS2AP.Models
                 RelicRewardsAvailableAnytimeForRun = RelicRewardsAvailableAnytimeForRun,
                 RelicReceiptIndexesByCharacter = GetRelicReceiptIndexSnapshot(),
                 GoldRewardsAttempted = GoldRewardsAttempted,
+                EliteGoldRewardsAttempted = EliteGoldRewardsAttempted,
                 PotionRewardsAttempted = PotionRewardsAttempted,
                 BossRewardsDistributed = BossRewardsDistributed,
                 MultiplayerBossCompensatedActs = new HashSet<int>(
@@ -801,6 +815,7 @@ namespace StS2AP.Models
                 BankedRelicRewards = saveData.BankedRelicRewards,
                 RelicRewardsAvailableAnytimeForRun = saveData.RelicRewardsAvailableAnytimeForRun,
                 GoldRewardsAttempted = saveData.GoldRewardsAttempted,
+                EliteGoldRewardsAttempted = saveData.EliteGoldRewardsAttempted,
                 PotionRewardsAttempted = saveData.PotionRewardsAttempted,
                 BossRewardsDistributed = saveData.BossRewardsDistributed,
                 MultiplayerBossCompensatedActs = new HashSet<int>(

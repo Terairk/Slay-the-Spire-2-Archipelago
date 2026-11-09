@@ -60,6 +60,7 @@ class TestCharacterRegistry(unittest.TestCase):
                              (character_registry[block].name, character_registry[block].internal_id))
             self.assertEqual(block * CHAR_OFFSET + 4, item_table[f"{name} Progressive Ancient"].code)
             self.assertEqual((block - 1) * CHAR_OFFSET + 79, location_table[f"{name} Potion Drop 1"])
+            self.assertEqual((block - 1) * CHAR_OFFSET + 154, location_table[f"{name} Elite Gold 1"])
 
     def test_new_vanilla_character_does_not_renumber_existing_tables(self):
         future = CharacterDefinition("Future Vanilla", "FUTURE_VANILLA", DEFAULT_STARTER_POWER)

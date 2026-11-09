@@ -159,6 +159,21 @@ namespace StS2AP.Patches
                                 ));
                             }
                         }
+
+                        // An elite's gold also pays a bonus check, whether or not the numbered
+                        // reward above has run out.
+                        if (room.RoomType == RoomType.Elite)
+                        {
+                            int eliteGoldNumber = MultiplayerLocationChecks.IncrementEliteGoldRewards(player);
+                            if (eliteGoldNumber <= ArchipelagoProgress._maxEliteGoldRewards)
+                            {
+                                __result.Add(new ArchipelagoReward(
+                                    player,
+                                    LocationData.GetEliteGoldLocation(player, eliteGoldNumber),
+                                    $"{name} Elite Gold {eliteGoldNumber}"
+                                ));
+                            }
+                        }
                     }
                     var potionReward = __result.FirstOrDefault(r => r is PotionReward);
                     if (potionReward != null && settings.PotionSanity)
