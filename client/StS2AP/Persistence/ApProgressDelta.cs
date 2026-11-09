@@ -17,6 +17,10 @@ public sealed class ApProgressDelta
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? RelicRewardsAttempted { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ChestRelicRewardsAttempted { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? EliteRelicRewardsAttempted { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? BankedRelicRewards { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? RelicRewardsAvailableAnytimeForRun { get; set; }
@@ -71,6 +75,8 @@ public sealed class ApProgressDelta
         || CardRewardsAttempted.HasValue
         || RareCardRewardsAttempted.HasValue
         || RelicRewardsAttempted.HasValue
+        || ChestRelicRewardsAttempted.HasValue
+        || EliteRelicRewardsAttempted.HasValue
         || BankedRelicRewards.HasValue
         || RelicRewardsAvailableAnytimeForRun.HasValue
         || RelicReceiptIndexesByCharacter != null
@@ -113,6 +119,8 @@ public sealed class ApProgressDelta
             CardRewardsAttempted = Changed(before.CardRewardsAttempted, after.CardRewardsAttempted),
             RareCardRewardsAttempted = Changed(before.RareCardRewardsAttempted, after.RareCardRewardsAttempted),
             RelicRewardsAttempted = Changed(before.RelicRewardsAttempted, after.RelicRewardsAttempted),
+            ChestRelicRewardsAttempted = Changed(before.ChestRelicRewardsAttempted, after.ChestRelicRewardsAttempted),
+            EliteRelicRewardsAttempted = Changed(before.EliteRelicRewardsAttempted, after.EliteRelicRewardsAttempted),
             BankedRelicRewards = Changed(before.BankedRelicRewards, after.BankedRelicRewards),
             RelicRewardsAvailableAnytimeForRun = Changed(
                 before.RelicRewardsAvailableAnytimeForRun,
@@ -227,6 +235,8 @@ public sealed class ApProgressDelta
         Apply(CardRewardsAttempted, value => result.CardRewardsAttempted = value);
         Apply(RareCardRewardsAttempted, value => result.RareCardRewardsAttempted = value);
         Apply(RelicRewardsAttempted, value => result.RelicRewardsAttempted = value);
+        Apply(ChestRelicRewardsAttempted, value => result.ChestRelicRewardsAttempted = value);
+        Apply(EliteRelicRewardsAttempted, value => result.EliteRelicRewardsAttempted = value);
         Apply(BankedRelicRewards, value => result.BankedRelicRewards = value);
         Apply(RelicRewardsAvailableAnytimeForRun, value => result.RelicRewardsAvailableAnytimeForRun = value);
         if (RelicReceiptIndexesByCharacter != null)
@@ -285,6 +295,8 @@ public sealed class ApProgressDelta
         CardRewardsAttempted = source.CardRewardsAttempted,
         RareCardRewardsAttempted = source.RareCardRewardsAttempted,
         RelicRewardsAttempted = source.RelicRewardsAttempted,
+        ChestRelicRewardsAttempted = source.ChestRelicRewardsAttempted,
+        EliteRelicRewardsAttempted = source.EliteRelicRewardsAttempted,
         CombatsSinceLastWaxMelt = source.CombatsSinceLastWaxMelt,
         BonusRelicAssignments = new(source.BonusRelicAssignments),
         BankedRelicRewards = source.BankedRelicRewards,

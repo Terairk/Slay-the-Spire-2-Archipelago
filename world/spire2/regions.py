@@ -2,7 +2,7 @@ from math import ceil, floor
 from typing import TYPE_CHECKING, List
 
 from BaseClasses import Region
-from .logic_table import ELITES_PER_ACT, ELITE_GOLD_REGIONS, RELIC_REGIONS
+from .logic_table import ELITES_PER_ACT, ELITE_GOLD_REGIONS, RELIC_LOCATIONS
 
 if TYPE_CHECKING:
     from worlds.spire2.world import SlayTheSpire2World
@@ -33,11 +33,11 @@ def _create_regions(world: 'SlayTheSpire2World', player: int, config: 'Character
     ascension_mod = 1 if 'DoubleBoss'.lower() in config.ascension and 'DoubleBoss'.lower() not in config.ascension_down else 0
     # Old logic has no elite track, so it keeps the relic checks in their original path regions.
     is_new_logic = world.effective_logic == "new"
-    relic_regions = RELIC_REGIONS if is_new_logic else LEGACY_RELIC_REGIONS
+    relic_locations = RELIC_LOCATIONS if is_new_logic else LEGACY_RELIC_LOCATIONS
     elite_gold_regions = ELITE_GOLD_REGIONS if is_new_logic else LEGACY_ELITE_GOLD_REGIONS
 
     def relics(region: str) -> List[str]:
-        return [f"Relic {number}" for number, name in relic_regions.items() if name == region]
+        return [location for location, name in relic_locations.items() if name == region]
 
     def elite_gold(region: str) -> List[str]:
         return [f"Elite Gold {number}" for number, name in elite_gold_regions.items() if name == region]
@@ -202,6 +202,7 @@ def _create_regions(world: 'SlayTheSpire2World', player: int, config: 'Character
     multiworld.regions.append(world.create_region(player, prefix, 'Mid Act 3', config,
                                                   [
                                                       *relics('Mid Act 3'),
+                                                      *elite_gold('Mid Act 3'),
                                                       "Potion Drop 8",
                                                       *first_campfire(3, "Mid"),
                                                       "Act 3 Campfire 2",
@@ -229,12 +230,13 @@ def _create_regions(world: 'SlayTheSpire2World', player: int, config: 'Character
                                                   ]))
 
 # Relic placement before the elite track. Old logic gates these path regions by power alone.
-LEGACY_RELIC_REGIONS = {
-    1: "Mid Act 1", 2: "Mid Act 1", 3: "Late Act 1",
-    4: "Mid Act 2", 5: "Mid Act 2", 6: "Late Act 2",
-    7: "Mid Act 3", 8: "Mid Act 3", 9: "Late Act 3", 10: "Late Act 3",
+LEGACY_RELIC_LOCATIONS = {
+    "Chest Relic 1": "Mid Act 1", "Chest Relic 2": "Mid Act 2", "Chest Relic 3": "Mid Act 3",
+    "Elite Relic 1": "Mid Act 1", "Elite Relic 2": "Late Act 1",
+    "Elite Relic 3": "Mid Act 2", "Elite Relic 4": "Late Act 2",
+    "Elite Relic 5": "Mid Act 3", "Elite Relic 6": "Late Act 3", "Elite Relic 7": "Late Act 3",
 }
-LEGACY_ELITE_GOLD_REGIONS = {1: "Mid Act 1", 2: "Late Act 1", 3: "Late Act 1", 4: "Mid Act 2", 5: "Late Act 2"}
+LEGACY_ELITE_GOLD_REGIONS = {number: LEGACY_RELIC_LOCATIONS[f"Elite Relic {number}"] for number in range(1, 6)}
 
 
 def _create_floor_check(start: int, end: int) -> List[str]:

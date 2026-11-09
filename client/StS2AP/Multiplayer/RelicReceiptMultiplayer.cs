@@ -204,10 +204,10 @@ public static class RelicReceiptMultiplayer
                 decision = new() { RoomKey = roomKey };
                 foreach (Player player in run.Players)
                 {
-                    int number = MultiplayerLocationChecks.GetRelicRewardsAttempted(player) + 1;
+                    int number = MultiplayerLocationChecks.GetChestRelicRewardsAttempted(player) + 1;
                     bool generates = Hook.ShouldGenerateTreasure(run, player);
                     bool gated = generates && MultiplayerLocationChecks.TryGetCheckSettings(player, out _)
-                        && number <= ArchipelagoProgress._maxRelicRewards;
+                        && number <= ArchipelagoProgress._maxChestRelicRewards;
                     decision.Candidates.Add(new()
                     {
                         PlayerNetId = player.NetId, GeneratesRelic = generates, ApGated = gated,

@@ -496,11 +496,10 @@ def _set_rules(world: 'SlayTheSpire2World', config: CharacterConfig) -> None:
 
     seeded = bool(world.options.seeded)
     region_rules: dict[str, Rule] = {region: region_power(offset, prefix, region, seeded) for region in REGIONS}
-    # Relic counts on the elite track assume every earlier elite was fought: each later elite is
-    # entered from the one before, and each act's chest and first elite need the previous act's last.
+    # Elite Relic and Elite Gold N are the run's Nth elite, so each later elite is entered from the
+    # one before, and each act's first elite needs the previous act's last. Chests count separately.
     for act in (2, 3):
-        for region in (f"Act {act} Chest", f"Act {act} Elite 1"):
-            region_rules[region] &= CanReachRegion(f"{prefix} {last_elite(act - 1)}")
+        region_rules[f"Act {act} Elite 1"] &= CanReachRegion(f"{prefix} {last_elite(act - 1)}")
     # Item gates that extra power cannot replace.
     for act in (2, 3):
         region_rules[f"Early Act {act}"] &= Has(f"{prefix} Progressive Ancient", count=act - 1 + neow_tier,

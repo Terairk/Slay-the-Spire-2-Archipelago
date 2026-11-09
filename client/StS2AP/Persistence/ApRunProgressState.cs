@@ -22,6 +22,13 @@ public sealed class ApRunProgressState
     public int RareCardRewardsAttempted { get; set; }
     [JsonPropertyName("relic_rewards_attempted")]
     public int RelicRewardsAttempted { get; set; }
+    [JsonPropertyName("chest_relic_rewards_attempted")]
+    public int ChestRelicRewardsAttempted { get; set; }
+    [JsonPropertyName("elite_relic_rewards_attempted")]
+    public int EliteRelicRewardsAttempted { get; set; }
+
+    public const int MaxChestRelicRewards = 3;
+    public const int MaxEliteRelicRewards = 7;
     [JsonPropertyName("banked_relic_rewards")]
     public int BankedRelicRewards { get; set; }
     [JsonPropertyName("relic_rewards_available_anytime_for_run")]

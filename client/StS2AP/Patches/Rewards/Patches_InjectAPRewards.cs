@@ -34,13 +34,13 @@ namespace StS2AP.Patches
             Player player
         )
         {
-            if (!RelicRewardUtility.RecordEligibleReward(player, out var rewardNumber))
+            if (!RelicRewardUtility.RecordEligibleReward(player, RelicRewardSource.Elite, out var rewardNumber))
                 return;
 
             rewards.Add(new ArchipelagoReward(
                 player,
-                LocationData.GetRelicLocation(player, rewardNumber),
-                $"{player.APName()} Relic {rewardNumber}"
+                LocationData.GetEliteRelicLocation(player, rewardNumber),
+                $"{player.APName()} Elite Relic {rewardNumber}"
             ));
 
             // The native reward already exists. A receipt decides whether it survives beside the check.
@@ -246,8 +246,8 @@ namespace StS2AP.Patches
                     if (!candidate.ApGated) return;
                     MultiplayerLocationChecks.QueueCheck(
                         player,
-                        $"{player.APName()} Relic {candidate.RewardNumber}",
-                        LocationData.GetRelicLocation(player, candidate.RewardNumber));
+                        $"{player.APName()} Chest Relic {candidate.RewardNumber}",
+                        LocationData.GetChestRelicLocation(player, candidate.RewardNumber));
                     if (candidate.ReceiptIndex is int receiptIndex)
                     {
                         if (!RelicRewardUtility.TryConsumeWaitingReceiptForNaturalReward(player, receiptIndex))
@@ -271,7 +271,7 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                if (!RelicRewardUtility.RecordEligibleReward(player, out var rewardNumber))
+                if (!RelicRewardUtility.RecordEligibleReward(player, RelicRewardSource.Chest, out var rewardNumber))
                     return;
 
                 // Opening the chest is the interaction that earns this check. Sending it here
@@ -282,8 +282,8 @@ namespace StS2AP.Patches
                 // things out so what's 3 more.
                 MultiplayerLocationChecks.QueueCheck(
                     player,
-                    $"{player.APName()} Relic {rewardNumber}",
-                    LocationData.GetRelicLocation(player, rewardNumber)
+                    $"{player.APName()} Chest Relic {rewardNumber}",
+                    LocationData.GetChestRelicLocation(player, rewardNumber)
                 );
 
                 var relicPicker = RunManager.Instance.TreasureRoomRelicSynchronizer;
@@ -363,8 +363,8 @@ namespace StS2AP.Patches
                 var player = GameUtility.CurrentPlayer;
                 if (player == null
                     || !MultiplayerLocationChecks.TryGetCheckSettings(player, out _)
-                    || ArchipelagoClient.Progress.RelicRewardsAttempted
-                        >= ArchipelagoProgress._maxRelicRewards
+                    || ArchipelagoClient.Progress.ChestRelicRewardsAttempted
+                        >= ArchipelagoProgress._maxChestRelicRewards
                     || RelicRewardUtility.HasWaitingReceiptForNaturalReward(player))
                 {
                     return true;

@@ -124,9 +124,9 @@ REGIONS: dict[str, PowerCheck] = {
     "Act 3 Boss Arena": PowerCheck(3, 30.0,  21,  7.0, rest=True, smith=SMITHS_BOSS, remove=True, shop=True),
 }
 
-# Relic N is the run's Nth elite, chest or Black Star reward. Relic 1 is the Act 1 chest on the
-# path. Elite-ready runs are expected to fight three elites in Act 1 and two in Acts 2 and 3:
-# Act 1's elites give relics 2-4, Act 2's chest and elites give 5-7, and Act 3's give 8-10.
+# Chests and elites count separately: Chest Relic N is the run's Nth chest, and Elite Relic N its
+# Nth elite or Black Star reward. Elite-ready runs are expected to fight three elites in Act 1 and
+# two in Acts 2 and 3, which makes the seven Elite Relic checks.
 # A strong run takes extra Act 1 elites easily, while Act 3 is the final act, where losing costs
 # the whole run, so runs tend to dodge its elites. A port of the game's map generator, with the
 # Swarming Elites that the relic checks assume, finds a path past three elites in 98%, 96% and
@@ -139,7 +139,8 @@ ELITES_PER_ACT = (3, 2, 2)
 # until you get strong enough to where you can fight elites. In practice this has worked pretty well
 # especially with relic 2 and relic 3 which felt too hard at times to logically get
 def _relic_regions() -> dict[int, str]:
-    """Each Relic N's region: Act 1's chest, then each act's elites, after the Act 2 and 3 chests."""
+    """Each relic reward of an elite-ready run, in the order it takes them: Act 1's chest, then
+    each act's elites, after the Act 2 and 3 chests. Claimable relics count along this order."""
     regions = ["Mid Act 1"]
     for act, elites in enumerate(ELITES_PER_ACT, start=1):
         if act > 1:
@@ -150,6 +151,21 @@ def _relic_regions() -> dict[int, str]:
 
 RELIC_REGIONS = _relic_regions()
 RELIC_NUMBERS = {region: number for number, region in RELIC_REGIONS.items()}
+
+
+def _relic_locations() -> dict[str, str]:
+    """Each Chest Relic and Elite Relic location's region."""
+    locations = {}
+    counts = {"Chest": 0, "Elite": 0}
+    for region in RELIC_REGIONS.values():
+        kind = "Elite" if " Elite " in region else "Chest"
+        counts[kind] += 1
+        locations[f"{kind} Relic {counts[kind]}"] = region
+    assert counts == {"Chest": 3, "Elite": 7}, "the client counts three chest and seven elite relic rewards"
+    return locations
+
+
+RELIC_LOCATIONS = _relic_locations()
 assert len(RELIC_REGIONS) == 10, "the client counts ten relic rewards"
 assert ({region for region in REGIONS if " Elite " in region}
         == {region for region in RELIC_REGIONS.values() if " Elite " in region}), \
@@ -178,7 +194,9 @@ PATH_RELIC_REWARDS = {
     "Act 1 Hallway": 0, "Mid Act 1": 1, "Late Act 1": 1, "Act 1 Boss Arena": 1,
     "Early Act 2": 1, "Mid Act 2": 2, "Late Act 2": 2, "Act 2 Boss Arena": 2,
     "Early Act 3": 2, "Mid Act 3": 3, "Late Act 3": 3, "Act 3 Boss Arena": 3,
-    **{region: number - 1 for number, region in RELIC_REGIONS.items() if number > 1},
+    # A chest counts the chests before it. Fighting earlier elites adds to that (ELITE_RELIC_REWARDS).
+    "Act 2 Chest": 1, "Act 3 Chest": 2,
+    **{region: number - 1 for number, region in RELIC_REGIONS.items() if " Elite " in region},
 }
 # Relic rewards taken by a region after also fighting an earlier act's elites, up to its second
 # elite or a later one. Helper table to better handle relics available anytime. Two elites an act
@@ -193,8 +211,12 @@ def _elite_relic_rewards() -> dict[str, dict[str, int]]:
     passed since."""
     rewards = {}
     for act in (1, 2, 3):
-        for stage, passed_own_chest in (("Early", False), ("Mid", True), ("Late", True), ("Boss", True)):
-            region = f"Act {act} Boss Arena" if stage == "Boss" else f"{stage} Act {act}"
+        for stage, passed_own_chest in (("Early", False), ("Chest", False), ("Mid", True), ("Late", True),
+                                        ("Boss", True)):
+            if stage == "Chest" and act == 1:
+                continue
+            region = (f"Act {act} Boss Arena" if stage == "Boss"
+                      else f"Act {act} Chest" if stage == "Chest" else f"{stage} Act {act}")
             last_elite_act = act if stage in ("Late", "Boss") else act - 1
             alternatives = {}
             for elite_act in range(1, last_elite_act + 1):

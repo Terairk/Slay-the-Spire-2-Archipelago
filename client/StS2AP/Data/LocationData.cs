@@ -79,8 +79,11 @@ namespace StS2AP.Data
             return id;
         }
 
-        internal static long GetRelicLocation(Player player, int rewardNumber) =>
-            GetLocationForPlayer(player, rewardNumber is >= 1 and <= 10 ? 26 + rewardNumber : -1);
+        internal static long GetChestRelicLocation(Player player, int rewardNumber) =>
+            GetLocationForPlayer(player, rewardNumber is >= 1 and <= ArchipelagoProgress._maxChestRelicRewards ? 158 + rewardNumber : -1);
+
+        internal static long GetEliteRelicLocation(Player player, int rewardNumber) =>
+            GetLocationForPlayer(player, rewardNumber is >= 1 and <= ArchipelagoProgress._maxEliteRelicRewards ? 161 + rewardNumber : -1);
 
         internal static long GetCardRewardLocation(Player player, int rewardNumber) =>
             GetLocationForPlayer(player, rewardNumber is >= 1 and <= ArchipelagoProgress._maxCardRewards ? rewardNumber : -1);
@@ -165,7 +168,9 @@ namespace StS2AP.Data
         /// <returns>A list of location IDs for the specified character's Relic Rewards.</returns>
         public static List<long> GetRelicRewardLocations(CharacterModel character)
         {
-            return GetLocationsByPattern($"{character.APName()} Relic #", ArchipelagoProgress._maxRelicRewards);
+            var locations = GetLocationsByPattern($"{character.APName()} Chest Relic #", ArchipelagoProgress._maxChestRelicRewards);
+            locations.AddRange(GetLocationsByPattern($"{character.APName()} Elite Relic #", ArchipelagoProgress._maxEliteRelicRewards));
+            return locations;
         }
 
         /// <summary>

@@ -104,7 +104,7 @@ namespace StS2AP.Patches
         {
             // IMPORTANT: The APWorld intentionally retains the singleplayer location counts.
             // Multiplayer automatically contributes missing card, combat-gold, and potion checks
-            // at the Act 1/2 bosses, plus Relic 10 at the Act 3 boss, so every replica advances
+            // at the Act 1/2 bosses, plus the last Elite Relic at the Act 3 boss, so every replica advances
             // the same numbered cursors at deterministic boundaries.
             if (act is 1 or 2)
             {
@@ -147,8 +147,8 @@ namespace StS2AP.Patches
                 // RelicRewardsAttempted or BankedRelicRewards.
                 MultiplayerLocationChecks.QueueCheck(
                     player,
-                    $"{player.APName()} Relic {ArchipelagoProgress._maxRelicRewards}",
-                    LocationData.GetRelicLocation(player, ArchipelagoProgress._maxRelicRewards)
+                    $"{player.APName()} Elite Relic {ArchipelagoProgress._maxEliteRelicRewards}",
+                    LocationData.GetEliteRelicLocation(player, ArchipelagoProgress._maxEliteRelicRewards)
                 );
             }
         }

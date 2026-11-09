@@ -100,12 +100,12 @@ public static class MultiplayerLocationChecks
         return true;
     }
 
-    public static int GetRelicRewardsAttempted(Player player)
+    public static int GetChestRelicRewardsAttempted(Player player)
     {
         if (!MultiplayerSupport.IsRealMultiplayerRun || IsLocalProgressOwner(player))
-            return ArchipelagoClient.Progress.RelicRewardsAttempted;
+            return ArchipelagoClient.Progress.ChestRelicRewardsAttempted;
         return TryGetRemoteProgress(player, out ApRunProgressState progress)
-            ? progress.RelicRewardsAttempted
+            ? progress.ChestRelicRewardsAttempted
             : int.MaxValue;
     }
 

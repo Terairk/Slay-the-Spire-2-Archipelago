@@ -58,7 +58,10 @@ def create_location_data() -> typing.List[LocationData]:
     return (
 
             [LocationData(f"Card Reward {j}", j, LocationType.Card_Reward) for j in range(1, MAX_CARD_REWARDS + 1)] +
-            [LocationData(f"Relic {j}", j + 26, LocationType.Relic) for j in range(1, 11)] +
+            # IDs 27-36 were the shared Relic 1-10 checks. They stay retired so old seeds never
+            # read as the split ones.
+            [LocationData(f"Chest Relic {j}", j + 158, LocationType.Relic) for j in range(1, 4)] +
+            [LocationData(f"Elite Relic {j}", j + 161, LocationType.Relic) for j in range(1, 8)] +
             [LocationData(f"Shop Slot {j}", j + 36, LocationType.Shop) for j in range(1, 17)] +
             [LocationData(f"Combat Gold {j}", j + 53, LocationType.Gold) for j in range(1, 21)] +
             [LocationData(f"Elite Gold {j}", j + 153, LocationType.Gold) for j in range(1, 6)] +

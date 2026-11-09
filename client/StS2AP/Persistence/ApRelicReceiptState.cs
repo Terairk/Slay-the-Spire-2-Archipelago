@@ -127,8 +127,11 @@ public sealed class ApRelicReceiptState
     public void ReconcileProgress(ulong player, ApRunProgressState progress, IEnumerable<int> gatedIndexes)
     {
         foreach (var chest in Chests.Values.Where(c => c.SettledPlayers.Contains(player)))
-            progress.RelicRewardsAttempted = Math.Max(progress.RelicRewardsAttempted,
+            progress.ChestRelicRewardsAttempted = Math.Max(progress.ChestRelicRewardsAttempted,
                 chest.Candidates.Single(c => c.PlayerNetId == player).RewardNumber);
+        progress.RelicRewardsAttempted = Math.Max(progress.RelicRewardsAttempted,
+            Math.Min(progress.ChestRelicRewardsAttempted, ApRunProgressState.MaxChestRelicRewards)
+            + Math.Min(progress.EliteRelicRewardsAttempted, ApRunProgressState.MaxEliteRelicRewards));
         var gated = gatedIndexes.ToHashSet();
         if (Claims.TryGetValue(player, out var claims))
         {
@@ -146,7 +149,7 @@ public sealed class ApRelicReceiptState
         }
         int paired = gated.Count(index => progress.UsedItems.Contains(index)
             || progress.RelicChoiceAssignments.ContainsKey(index));
-        progress.BankedRelicRewards = Math.Max(0, Math.Min(progress.RelicRewardsAttempted, 10) - paired);
+        progress.BankedRelicRewards = Math.Max(0, progress.RelicRewardsAttempted - paired);
     }
 
     private static (ulong, bool, bool, int, int?) Key(Candidate c) =>

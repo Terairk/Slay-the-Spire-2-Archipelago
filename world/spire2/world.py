@@ -72,7 +72,7 @@ class SlayTheSpire2World(World):
     options_dataclass = Spire2Options
     options: Spire2Options
     # Named modded characters use ID blocks from 200, so IDs can reach 1,000,000 and above.
-    compat_flag = 3
+    compat_flag = 4
     origin_region_name = "Neow's Room"
 
     # Build the final Item Table

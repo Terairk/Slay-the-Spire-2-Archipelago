@@ -114,6 +114,18 @@ public sealed class RelicReceiptTests
         Assert.True(progress.UsedItems.SequenceEqual(new[] { 100 }));
     }
 
+    [Fact(DisplayName = "A settled chest adds to the shared claim pool on top of elite rewards")]
+    public void ASettledChestAddsToTheSharedClaimPoolOnTopOfEliteRewards()
+    {
+        var state = NewChest();
+        state.Chests["chest:0:7"].SettledPlayers.Add(22);
+        var progress = new ApRunProgressState { RelicRewardsAttempted = 2, EliteRelicRewardsAttempted = 2 };
+        state.ReconcileProgress(22, progress, Array.Empty<int>());
+        state.ReconcileProgress(22, progress, Array.Empty<int>());
+        Assert.Equal((1, 2, 3, 3), (progress.ChestRelicRewardsAttempted, progress.EliteRelicRewardsAttempted,
+            progress.RelicRewardsAttempted, progress.BankedRelicRewards));
+    }
+
     [Fact(DisplayName = "An unfunded chest preserves its bank for a late receipt")]
     public void AnUnfundedChestPreservesItsBankForALateReceipt()
     {

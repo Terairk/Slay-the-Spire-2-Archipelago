@@ -35,7 +35,18 @@ namespace StS2AP.Models
         /// <summary>
         /// The maximum possible number of Relic Rewards that a player could have replaced with AP locations, regardless of settings.
         /// </summary>
-        public const int _maxRelicRewards = 10;
+        public const int _maxRelicRewards = _maxChestRelicRewards + _maxEliteRelicRewards;
+
+        /// <summary>
+        /// Chest Relic locations: the first chests of a run that send a check and earn a claim.
+        /// </summary>
+        public const int _maxChestRelicRewards = ApRunProgressState.MaxChestRelicRewards;
+
+        /// <summary>
+        /// Elite Relic locations: the first Elite and Black Star rewards of a run that send a
+        /// check and earn a claim.
+        /// </summary>
+        public const int _maxEliteRelicRewards = ApRunProgressState.MaxEliteRelicRewards;
 
         /// <summary>
         /// The maximum possible number of Gold Rewards that a player could have replaced with AP locations.
@@ -99,10 +110,22 @@ namespace StS2AP.Models
         public int RareCardRewardsAttempted { get; set; } = 0;
 
         /// <summary>
-        /// Eligible Elite, chest, and Black Star rewards encountered this run. Attempts after ten
-        /// are still counted so we can give 'natural relics'.
+        /// Elite, chest, and Black Star rewards this run that earned a claim on an AP Relic item.
+        /// All of them share this one pool, however they were earned.
         /// </summary>
         public int RelicRewardsAttempted { get; set; } = 0;
+
+        /// <summary>
+        /// Chests with a relic opened this run, including those past the Chest Relic locations,
+        /// which keep their natural relic.
+        /// </summary>
+        public int ChestRelicRewardsAttempted { get; set; } = 0;
+
+        /// <summary>
+        /// Elite and Black Star relic rewards this run, including those past the Elite Relic
+        /// locations, which keep their natural relic.
+        /// </summary>
+        public int EliteRelicRewardsAttempted { get; set; } = 0;
 
         /// <summary>
         /// Earned relic rewards not yet paired with a received Relic item. A bank is spent when
@@ -390,6 +413,8 @@ namespace StS2AP.Models
             RareCardRewardsAttempted = 0;
             BossRewardsDistributed = 0;
             RelicRewardsAttempted = 0;
+            ChestRelicRewardsAttempted = 0;
+            EliteRelicRewardsAttempted = 0;
             CombatsSinceLastWaxMelt = 0;
             BonusRelicAssignments.Clear();
             BankedRelicRewards = 0;
@@ -695,6 +720,8 @@ namespace StS2AP.Models
                 CardRewardsAttempted = CardRewardsAttempted,
                 RareCardRewardsAttempted = RareCardRewardsAttempted,
                 RelicRewardsAttempted = RelicRewardsAttempted,
+                ChestRelicRewardsAttempted = ChestRelicRewardsAttempted,
+                EliteRelicRewardsAttempted = EliteRelicRewardsAttempted,
                 CombatsSinceLastWaxMelt = CombatsSinceLastWaxMelt,
                 BonusRelicAssignments = new(BonusRelicAssignments),
                 BankedRelicRewards = BankedRelicRewards,
@@ -810,6 +837,8 @@ namespace StS2AP.Models
                 CardRewardsAttempted = saveData.CardRewardsAttempted,
                 RareCardRewardsAttempted = saveData.RareCardRewardsAttempted,
                 RelicRewardsAttempted = saveData.RelicRewardsAttempted,
+                ChestRelicRewardsAttempted = saveData.ChestRelicRewardsAttempted,
+                EliteRelicRewardsAttempted = saveData.EliteRelicRewardsAttempted,
                 CombatsSinceLastWaxMelt = saveData.CombatsSinceLastWaxMelt,
                 BonusRelicAssignments = new(saveData.BonusRelicAssignments),
                 BankedRelicRewards = saveData.BankedRelicRewards,

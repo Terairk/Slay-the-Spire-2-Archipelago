@@ -6,9 +6,21 @@ using StS2AP.Utils.RunGraph;
 namespace StS2AP.Utils
 {
     /// <summary>
-    /// Coordinates AP Relic receipts with the first ten eligible Elite, treasure, and Black Star
-    /// rewards in a run. The first configured receipts are available immediately; later receipts
-    /// must be paired with an earned natural relic reward.
+    /// Which numbered relic locations a natural relic reward counts toward.
+    /// </summary>
+    public enum RelicRewardSource
+    {
+        /// <summary>An opened chest with a relic.</summary>
+        Chest,
+
+        /// <summary>An Elite's relic reward, or the extra one Black Star adds.</summary>
+        Elite,
+    }
+
+    /// <summary>
+    /// Coordinates AP Relic receipts with a run's Chest Relic and Elite Relic rewards. The first
+    /// configured receipts are available immediately; later receipts must be paired with an earned
+    /// natural relic reward, from either source.
     /// </summary>
     public static class RelicRewardUtility
     {
@@ -32,10 +44,11 @@ namespace StS2AP.Utils
         }
 
         /// <summary>
-        /// Records one eligible natural relic source. Every attempt is counted, but only the first
-        /// ten create an AP check and a bank that can be paired with a Relic receipt.
+        /// Records one eligible natural relic source. Every attempt is counted, but only those
+        /// within its source's locations create an AP check and a bank that can be paired with a
+        /// Relic receipt. Returns the reward's number within its source.
         /// </summary>
-        public static bool RecordEligibleReward(Player player, out int rewardNumber)
+        public static bool RecordEligibleReward(Player player, RelicRewardSource source, out int rewardNumber)
         {
             bool localOwner = MultiplayerLocationChecks.IsLocalProgressOwner(player);
             ApRunProgressState? replicated = null;
@@ -47,20 +60,39 @@ namespace StS2AP.Utils
                 return false;
             }
 
-            rewardNumber = localOwner || !MultiplayerSupport.IsRealMultiplayerRun
-                ? ++ArchipelagoClient.Progress.RelicRewardsAttempted
-                : ++replicated!.RelicRewardsAttempted;
+            bool usesLocalProgress = localOwner || !MultiplayerSupport.IsRealMultiplayerRun;
+            if (usesLocalProgress)
+            {
+                rewardNumber = source == RelicRewardSource.Chest
+                    ? ++ArchipelagoClient.Progress.ChestRelicRewardsAttempted
+                    : ++ArchipelagoClient.Progress.EliteRelicRewardsAttempted;
+            }
+            else
+            {
+                rewardNumber = source == RelicRewardSource.Chest
+                    ? ++replicated!.ChestRelicRewardsAttempted
+                    : ++replicated!.EliteRelicRewardsAttempted;
+            }
 
-            if (rewardNumber > ArchipelagoProgress._maxRelicRewards)
+            int locationCount = source == RelicRewardSource.Chest
+                ? ArchipelagoProgress._maxChestRelicRewards
+                : ArchipelagoProgress._maxEliteRelicRewards;
+            if (rewardNumber > locationCount)
             {
                 MultiplayerLocationChecks.PublishLocalProgress(player);
                 return false;
             }
 
-            if (localOwner || !MultiplayerSupport.IsRealMultiplayerRun)
+            if (usesLocalProgress)
+            {
+                ArchipelagoClient.Progress.RelicRewardsAttempted++;
                 ArchipelagoClient.Progress.BankedRelicRewards++;
+            }
             else
-                replicated!.BankedRelicRewards++;
+            {
+                replicated!.RelicRewardsAttempted++;
+                replicated.BankedRelicRewards++;
+            }
             if (localOwner)
                 RelicCoupons.RefreshCounter(player);
             MultiplayerLocationChecks.PublishLocalProgress(player);
@@ -342,19 +374,25 @@ namespace StS2AP.Utils
             if (local)
             {
                 var progress = ArchipelagoClient.Progress;
-                progress.BankedRelicRewards += Math.Max(0, Math.Min(rewardNumber, 10)
-                    - Math.Min(progress.RelicRewardsAttempted, 10));
-                progress.RelicRewardsAttempted = Math.Max(progress.RelicRewardsAttempted, rewardNumber);
+                int earned = NewlyEarnedChestRewards(rewardNumber, progress.ChestRelicRewardsAttempted);
+                progress.BankedRelicRewards += earned;
+                progress.RelicRewardsAttempted += earned;
+                progress.ChestRelicRewardsAttempted = Math.Max(progress.ChestRelicRewardsAttempted, rewardNumber);
                 RelicCoupons.RefreshCounter(player);
             }
             else if (MultiplayerLocationChecks.TryGetRemoteProgress(player, out var progress))
             {
-                progress.BankedRelicRewards += Math.Max(0, Math.Min(rewardNumber, 10)
-                    - Math.Min(progress.RelicRewardsAttempted, 10));
-                progress.RelicRewardsAttempted = Math.Max(progress.RelicRewardsAttempted, rewardNumber);
+                int earned = NewlyEarnedChestRewards(rewardNumber, progress.ChestRelicRewardsAttempted);
+                progress.BankedRelicRewards += earned;
+                progress.RelicRewardsAttempted += earned;
+                progress.ChestRelicRewardsAttempted = Math.Max(progress.ChestRelicRewardsAttempted, rewardNumber);
             }
             MultiplayerLocationChecks.PublishLocalProgress(player);
         }
+
+        private static int NewlyEarnedChestRewards(int rewardNumber, int chestsAlreadyCounted) =>
+            Math.Max(0, Math.Min(rewardNumber, ArchipelagoProgress._maxChestRelicRewards)
+                - Math.Min(chestsAlreadyCounted, ArchipelagoProgress._maxChestRelicRewards));
 
         private static bool IsAnytimeReceipt(IndexedItemInfo receipt, Player player)
         {
