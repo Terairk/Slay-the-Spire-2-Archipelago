@@ -12,6 +12,26 @@
       router.ts. count.js skips localhost, so dev servers are not counted.
     -->
     <script>
+      // Loading the site with #toggle-goatcounter turns counting off or on for this
+      // browser. count.js has the same toggle, but it loads asynchronously and the
+      // router may have rewritten the hash to #/toggle-goatcounter by then, so the
+      // toggle is done here, before the router starts. Clearing the hash stops
+      // count.js from toggling it back.
+      if (location.hash === "#toggle-goatcounter" || location.hash === "#/toggle-goatcounter") {
+        try {
+          if (localStorage.getItem("skipgc") === "t") {
+            localStorage.removeItem("skipgc");
+            alert("GoatCounter now counts your visits in this browser.");
+          } else {
+            localStorage.setItem("skipgc", "t");
+            alert("GoatCounter no longer counts your visits in this browser. Load this address again to undo.");
+          }
+        } catch (e) {
+          // Storage is blocked (private mode or site data disabled); nothing to toggle.
+        }
+        history.replaceState(null, "", location.pathname + location.search + "#/");
+      }
+
       window.goatcounter = {
         path: function () {
           return location.pathname + location.hash.split("?")[0];
