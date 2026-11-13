@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory } from "vue-router";
+import { createRouter, createWebHashHistory, START_LOCATION } from "vue-router";
 
 import HomeView from "./views/HomeView.vue";
 import GuideHostView from "./views/GuideHostView.vue";
@@ -29,6 +29,13 @@ const router = createRouter({
       component: GuideClientView,
     },
   ],
+});
+
+// GoatCounter (loaded in index.html) counts the first page on load. Hash-history
+// navigation uses pushState, which fires no hashchange, so count later routes here.
+router.afterEach((_to, from) => {
+  if (from === START_LOCATION) return;
+  window.goatcounter?.count?.();
 });
 
 export default router;

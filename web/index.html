@@ -5,6 +5,24 @@
     <link rel="icon" type="image/svg+xml" href="/icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StS II Archipelago</title>
+    <!--
+      GoatCounter visitor counts for the beta site (no cookies, no personal data).
+      Routes live in the URL hash (#/builder), which GoatCounter ignores by default,
+      so report the hash as part of the path. Later route changes are counted in
+      router.ts. count.js skips localhost, so dev servers are not counted.
+    -->
+    <script>
+      window.goatcounter = {
+        path: function () {
+          return location.pathname + location.hash.split("?")[0];
+        },
+      };
+    </script>
+    <script
+      data-goatcounter="https://sts2ap.goatcounter.com/count"
+      async
+      src="https://gc.zgo.at/count.js"
+    ></script>
   </head>
   <body>
     <div id="app" class="isolate"></div>
