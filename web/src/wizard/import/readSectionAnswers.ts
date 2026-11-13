@@ -97,6 +97,7 @@ export function readRunAnswers(options: CompiledOptions): RunAnswers {
     },
     releaseOnVictory: options[RUN_OPTION_KEYS.releaseOnVictory] as boolean,
     seeded: options[RUN_OPTION_KEYS.seeded] as boolean,
+    blitzMerchantChance: options[RUN_OPTION_KEYS.blitzMerchantChance] as number,
   };
 }
 
@@ -398,6 +399,7 @@ export function readChallengeAnswers(
     enemyDamageScaling: options[
       CHALLENGE_OPTION_KEYS.enemyDamageScaling
     ] as number,
+    dreadMode: options[CHALLENGE_OPTION_KEYS.dreadMode] as boolean,
     hiddenIntents: readSightCopies(
       options[CHALLENGE_OPTION_KEYS.hiddenIntents],
     ),

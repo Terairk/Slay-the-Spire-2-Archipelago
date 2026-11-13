@@ -38,6 +38,7 @@ import {
   getConfiguredCharacterNames,
   getSelectedBetaOnlyCharacters,
 } from "./CharacterRoster";
+import { getActiveBetaOnlyChallenges } from "./betaOnlyOptions";
 import { RUN_MODIFIERS } from "./RunModifier";
 
 export interface WizardReviewSection {
@@ -422,7 +423,11 @@ export function summarizeRunAnswers(answers: RunAnswers): string {
     ? "Each character uses a fixed seed."
     : "Runs are not assigned fixed seeds.";
 
-  return `${immediateRelics} ${opRelics} ${victoryRelease} ${seeded}`;
+  const blitzMerchants = answers.blitzMerchantChance
+    ? ` ${answers.blitzMerchantChance}% of shops are Blitz merchants, which needs the game's beta branch.`
+    : "";
+
+  return `${immediateRelics} ${opRelics} ${victoryRelease} ${seeded}${blitzMerchants}`;
 }
 
 /**
@@ -437,6 +442,7 @@ export function hasActiveChallenges(answers: ChallengeAnswers): boolean {
     (answers.runModifiers.length > 0 ||
       answers.enemyHpScaling > 0 ||
       answers.enemyDamageScaling > 0 ||
+      answers.dreadMode ||
       answers.hiddenIntents !== "off" ||
       answers.hiddenHealth !== "off" ||
       answers.hiddenPiles !== "off" ||
@@ -444,6 +450,35 @@ export function hasActiveChallenges(answers: ChallengeAnswers): boolean {
       answers.hiddenCards !== "off" ||
       answers.strictCardRewards)
   );
+}
+
+/**
+ * Builds the cautions shown with the Challenges summary.
+ *
+ * @param answers - Current Challenges answers.
+ * @returns The warning text, or nothing while no challenge is on.
+ */
+export function describeChallengeWarnings(
+  answers: ChallengeAnswers,
+): string | undefined {
+  if (!hasActiveChallenges(answers)) {
+    return undefined;
+  }
+
+  const warnings = [
+    "Challenges are on. Logic doesn't account for them, so a seed can get stuck if runs become too hard to win.",
+  ];
+  const betaOnly = getActiveBetaOnlyChallenges(answers);
+
+  if (betaOnly.length) {
+    const verb = betaOnly.length === 1 ? "is" : "are";
+    const pronoun = betaOnly.length === 1 ? "it" : "them";
+    warnings.push(
+      `${joinNames(betaOnly)} ${verb} only in the game's beta branch. On the main branch the slot plays without ${pronoun}.`,
+    );
+  }
+
+  return warnings.join(" ");
 }
 
 /**
@@ -489,6 +524,12 @@ export function summarizeChallengeAnswers(answers: ChallengeAnswers): string {
   if (answers.enemyDamageScaling > 0) {
     sentences.push(
       `Enemies deal ${answers.enemyDamageScaling}% more damage in Acts 2 and 3.`,
+    );
+  }
+
+  if (answers.dreadMode) {
+    sentences.push(
+      "Runs are Dread runs, with every Ascension on and no Ascension Down items.",
     );
   }
 
@@ -810,9 +851,7 @@ export function buildWizardReviewSections(
     {
       title: "Challenges",
       summary: summarizeChallengeAnswers(answers.challenges),
-      warning: hasActiveChallenges(answers.challenges)
-        ? "Challenges are on. Logic doesn't account for them, so a seed can get stuck if runs become too hard to win."
-        : undefined,
+      warning: describeChallengeWarnings(answers.challenges),
     },
     {
       title: "Progression",

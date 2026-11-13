@@ -149,6 +149,18 @@ namespace StS2AP.Models
         /// <summary>Extra enemy damage in Acts 2 and 3, in percent (0-15).</summary>
         public int EnemyDamageScaling { get; set; }
 
+        /// <summary>
+        /// Whether the slot's runs are Dread runs. In multiplayer, the host's value applies to
+        /// the whole run. Only game versions with <see cref="GameFeatures.Dread"/> can honour it.
+        /// </summary>
+        public bool DreadMode { get; set; }
+
+        /// <summary>
+        /// Chance, in percent, for each shop of a singleplayer run to be a Blitz merchant. See
+        /// <see cref="BlitzMerchantVisits"/>.
+        /// </summary>
+        public int BlitzMerchantChance { get; set; }
+
         public bool CampfireSanity { get; set; }
         public bool GoldSanity { get; set; }
         public bool PotionSanity { get; set; }

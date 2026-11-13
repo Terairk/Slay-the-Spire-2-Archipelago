@@ -105,6 +105,8 @@ class SlayTheSpire2World(World):
         if hasattr(self.multiworld, 're_gen_passthrough'):
             self._setup_ut(self.multiworld.re_gen_passthrough[self.game])
             return
+        if self.options.dread_mode:
+            self._apply_dread_ascensions()
         if self.options.use_advanced_characters.value == 0:
             self._handle_basic_chars()
         else:
@@ -263,6 +265,14 @@ class SlayTheSpire2World(World):
                 generic_num += 1
                 block = GENERIC_CHARACTER_BLOCKS[generic_num - 1]
             yield option_name, character_registry[block].name, block, mod_num
+
+    def _apply_dread_ascensions(self) -> None:
+        """Replaces the slot's Ascension settings: the game only plays Dread with every Ascension on."""
+        self.options.ascension.value = set(ASCENSION_LIST)
+        self.options.ascension_down.value = set()
+        for character_options in self.options.advanced_characters.value.values():
+            character_options["ascension"] = list(ASCENSION_LIST)
+            character_options["ascension_down"] = []
 
     def _handle_basic_chars(self) -> None:
         char_options = unique_character_ids(
@@ -727,6 +737,7 @@ class SlayTheSpire2World(World):
             # Keep the wire key for clients; Archipelago loads world_version from archipelago.json.
             "mod_compat_version": self.world_version.as_simple_string(),
             "CompatFlag": self.compat_flag,
+            "required_game_features": self.required_game_features(),
         }
         slot_data.update(self.options.as_dict(
             "use_new_logic",
@@ -735,6 +746,8 @@ class SlayTheSpire2World(World):
             "run_modifiers",
             "enemy_hp_scaling",
             "enemy_damage_scaling",
+            "dread_mode",
+            "blitz_merchant_chance",
             "num_chars_goal",
             "shuffle_all_cards",
             "strict_card_rewards",
@@ -762,6 +775,21 @@ class SlayTheSpire2World(World):
             "death_link_damage_percent",
         ))
         return slot_data
+
+    def required_game_features(self) -> list[str]:
+        """Game features this slot's settings need that only some supported game versions have.
+
+        A client whose game build lacks one still connects, plays without that setting and
+        tells the player. An option names its
+        feature in a required_game_feature attribute, and counts while its value is set.
+        """
+        features = set()
+        for option_name in self.options_dataclass.type_hints:
+            option = getattr(self.options, option_name)
+            feature = getattr(option, "required_game_feature", None)
+            if feature and option.value:
+                features.add(feature)
+        return sorted(features)
 
     def shop_card_weights(self) -> dict[str, int]:
         """Weights for the kinds of card a random shop slot can hold."""

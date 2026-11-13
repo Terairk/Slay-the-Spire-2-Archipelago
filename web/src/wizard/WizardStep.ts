@@ -9,6 +9,7 @@
  * translation, and numeric bounds arrive through semantic names in `optionRanges.ts`.
  */
 
+import { isBetaOnlyOption } from "./betaOnlyOptions";
 import { MAX_GENERIC_CHARACTERS } from "./CharacterRoster";
 import { includeFloorChecksTransition } from "./checksTransitions";
 import {
@@ -23,6 +24,7 @@ import type {
   WizardControlDescriptor,
 } from "./QuestionControl";
 import type { SightCopies, WizardAnswers } from "./WizardAnswers";
+import { CHALLENGE_OPTION_KEYS } from "./WizardOptionKey";
 
 export interface WizardQuestion {
   id: string;
@@ -350,8 +352,33 @@ export const runSetupStep: WizardStep = {
         ],
       },
     },
+    {
+      id: "blitz-merchant-chance",
+      title: "How many shops should be Blitz merchants?",
+      description:
+        "A Blitz merchant replaces a shop's stock with six offers and three free picks. It comes from the base game's Blitz mode. Shop Sanity checks are still sold there. Singleplayer only for now, and logic doesn't account for it.",
+      help: "0% leaves every shop normal. Beta branch only: on the game's main branch every shop stays normal.",
+      control: {
+        kind: "slider",
+        field: "blitzMerchantChance",
+        range: generatedRange("blitzMerchantChance"),
+        unit: "%",
+        ariaLabel: "Blitz merchant chance percent",
+      },
+    },
   ],
 };
+
+/**
+ * Explains Dread Mode's game-branch requirement while the APWorld still marks it beta-only.
+ *
+ * @returns The note for the question's help area, or nothing once every branch has Dread.
+ */
+function describeDreadModeRequirements(): string | null {
+  return isBetaOnlyOption(CHALLENGE_OPTION_KEYS.dreadMode)
+    ? "Beta branch only. On the game's main branch the mod says so when connecting, and runs are standard runs with all ten Ascensions."
+    : null;
+}
 
 /**
  * Checks whether the player opted in to challenges.
@@ -447,6 +474,21 @@ export const challengeSetupStep: WizardStep = {
         range: generatedRange("enemyDamageScaling"),
         unit: "%",
         ariaLabel: "Enemy damage scaling percent",
+      },
+    },
+    {
+      id: "dread-mode",
+      isVisible: usesChallenges,
+      title: "Should runs be Dread runs?",
+      description:
+        "Dread is a harder game mode from the base game. Each act has a Dominion, an extra combat rule set by that act's boss. Bosses are stronger, and you gain an Ascender's Bane at the start of Act 2 and of Act 3. In multiplayer, the host's setting applies to the whole run.",
+      help: describeDreadModeRequirements,
+      control: {
+        kind: "checkbox",
+        field: "dreadMode",
+        label: "Dread Mode",
+        description:
+          "Replaces the Ascension settings from Character Setup: all ten Ascensions are on and there are no Ascension Down items.",
       },
     },
     {

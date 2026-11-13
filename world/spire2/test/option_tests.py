@@ -6,6 +6,7 @@ from Utils import restricted_dumps
 from test.general import setup_multiworld, setup_solo_multiworld
 from worlds.AutoWorld import call_all
 from worlds.spire2 import SlayTheSpire2World
+from worlds.spire2.constants import ASCENSION_LIST
 from worlds.spire2.options import UnlockedCharacter, filler_item_options
 from worlds.spire2.test import Spire2TestBase
 
@@ -280,3 +281,89 @@ class TestEnsureShopWithNoGoldWorks(Spire2TestBase):
         "shop_sanity": True,
         "gold_sanity": False,
     }
+
+
+class TestDreadModeOff(Spire2TestBase):
+    options = {
+        "ascension": ["3"],
+        "ascension_down": ["2"],
+    }
+
+    def test_slot_needs_no_game_features(self):
+        slot_data = self.world.fill_slot_data()
+        self.assertEqual(0, slot_data["dread_mode"])
+        self.assertEqual([], slot_data["required_game_features"])
+
+    def test_ascension_options_are_kept(self):
+        for config in self.world.characters:
+            self.assertEqual(3, len(config.ascension))
+            self.assertEqual(2, len(config.ascension_down))
+
+
+class TestDreadModeOn(Spire2TestBase):
+    options = {
+        "dread_mode": True,
+        "ascension": ["3"],
+        "ascension_down": ["2"],
+    }
+
+    def test_slot_requires_the_dread_game_feature(self):
+        slot_data = self.world.fill_slot_data()
+        self.assertEqual(1, slot_data["dread_mode"])
+        self.assertEqual(["dread"], slot_data["required_game_features"])
+
+    def test_every_ascension_is_on_without_downs(self):
+        for config in self.world.characters:
+            self.assertEqual({name.lower() for name in ASCENSION_LIST}, set(config.ascension))
+            self.assertEqual(set(), set(config.ascension_down))
+        downs = self.world.item_name_groups["Ascension Downs"]
+        self.assertFalse([item.name for item in self.multiworld.get_items() if item.name in downs])
+
+
+class TestDreadModeWithAdvancedCharacters(Spire2TestBase):
+    options = {
+        "dread_mode": True,
+        "use_advanced_characters": True,
+        "advanced_characters": {
+            "Ironclad": {"ascension": [1], "ascension_down": [1]},
+            "Silent": {"ascension": [], "ascension_down": []},
+        },
+    }
+
+    def test_every_character_has_every_ascension_without_downs(self):
+        self.assertEqual(2, len(self.world.characters))
+        for config in self.world.characters:
+            self.assertEqual({name.lower() for name in ASCENSION_LIST}, set(config.ascension))
+            self.assertEqual(set(), set(config.ascension_down))
+
+
+class TestBlitzMerchantChanceOff(Spire2TestBase):
+    def test_slot_needs_no_game_features(self):
+        slot_data = self.world.fill_slot_data()
+        self.assertEqual(0, slot_data["blitz_merchant_chance"])
+        self.assertEqual([], slot_data["required_game_features"])
+
+
+class TestBlitzMerchantChance(Spire2TestBase):
+    options = {
+        "blitz_merchant_chance": 100,
+        "shop_sanity": False,
+    }
+
+    def test_slot_requires_the_blitz_merchant_game_feature(self):
+        slot_data = self.world.fill_slot_data()
+        self.assertEqual(100, slot_data["blitz_merchant_chance"])
+        self.assertEqual(["blitz_merchant"], slot_data["required_game_features"])
+
+
+class TestBlitzMerchantChanceWithShopSanity(Spire2TestBase):
+    options = {
+        "blitz_merchant_chance": 100,
+        "shop_sanity": True,
+        "dread_mode": True,
+    }
+
+    def test_shop_sanity_does_not_limit_the_chance(self):
+        slot_data = self.world.fill_slot_data()
+        self.assertEqual(100, slot_data["blitz_merchant_chance"])
+        self.assertEqual(["blitz_merchant", "dread"], slot_data["required_game_features"])

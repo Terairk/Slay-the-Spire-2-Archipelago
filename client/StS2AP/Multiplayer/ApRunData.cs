@@ -804,6 +804,7 @@ public static class ApRunData
                 hostSettings?.RunModifiers ?? [])
             && existing.HostSettings?.EnemyHpScaling == hostSettings?.EnemyHpScaling
             && existing.HostSettings?.EnemyDamageScaling == hostSettings?.EnemyDamageScaling
+            && existing.HostSettings?.DreadMode == hostSettings?.DreadMode
             && existing.AscensionStateInitialized == ascensionStateInitialized
             && existing.HostCharacterOffset == (ascensionStateInitialized
                 ? hostCharacterOffset
@@ -918,6 +919,10 @@ public static class ApRunData
                 ? shared.HostSettings
                 : null;
         }
+        // The lobby is a standard one, so the host's Dread Mode is applied here, the first point
+        // where guests know the host's settings.
+        if (evt.IsMultiplayer)
+            DreadRuns.ApplyHostSetting(evt.RunState, modifierSettings);
         ApRunModifiers.AddToNewRun(evt.RunState, modifierSettings);
 
         if (evt.IsMultiplayer

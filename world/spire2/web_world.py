@@ -20,6 +20,7 @@ from .options import (
     DexterityFillerWeight, StrengthFillerWeight, PlatingFillerWeight,
     FriendshipFillerWeight, PostCombatCardUpgradeFillerWeight, PostCombatCardRemovalFillerWeight,
     AdditionalCardRewardFillerWeight, BufferFillerWeight, VigorFillerWeight, ThornsFillerWeight, ArtifactFillerWeight,
+    DreadMode, BlitzMerchantChance,
 )
 
 # The info needed for the Archipelago Website, not the actual `apworld`
@@ -57,6 +58,7 @@ class SlayTheSpire2Web(WebWorld):
             ProgressiveStarterCard,
             ProgressiveStarterRelic,
             CardReward,
+            BlitzMerchantChance,
         ]),
         OptionGroup("Sanities", [
             IncludeFloorChecks,
@@ -149,6 +151,7 @@ class SlayTheSpire2Web(WebWorld):
             RunModifiers,
             EnemyHpScaling,
             EnemyDamageScaling,
+            DreadMode,
             HiddenIntents,
             HiddenHealth,
             HiddenPiles,

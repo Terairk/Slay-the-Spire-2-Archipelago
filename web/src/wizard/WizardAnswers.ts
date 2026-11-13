@@ -153,6 +153,8 @@ export interface RunAnswers {
   removeOpRelics: OpRelicRemovalAnswers;
   releaseOnVictory: boolean;
   seeded: boolean;
+  /** Percent of shops that are Blitz merchants. Only the game's beta branch has them. */
+  blitzMerchantChance: number;
 }
 
 /** How many Sight items a hidden-information challenge adds; `off` leaves it off. */
@@ -173,6 +175,8 @@ export interface ChallengeAnswers {
   runModifiers: string[];
   enemyHpScaling: number;
   enemyDamageScaling: number;
+  /** Runs use the game's Dread mode, which only its beta branch has. */
+  dreadMode: boolean;
   hiddenIntents: SightCopies;
   hiddenHealth: SightCopies;
   hiddenPiles: SightCopies;
@@ -487,6 +491,10 @@ export function createDefaultWizardAnswers(
         RUN_OPTION_KEYS.releaseOnVictory,
       ),
       seeded: getBooleanDefault(catalog, RUN_OPTION_KEYS.seeded),
+      blitzMerchantChance: getNumberDefault(
+        catalog,
+        RUN_OPTION_KEYS.blitzMerchantChance,
+      ),
     },
     challenges: {
       // Challenges are opt-in regardless of their generated defaults.
@@ -502,6 +510,7 @@ export function createDefaultWizardAnswers(
         catalog,
         CHALLENGE_OPTION_KEYS.enemyDamageScaling,
       ),
+      dreadMode: getBooleanDefault(catalog, CHALLENGE_OPTION_KEYS.dreadMode),
       hiddenIntents: getSightCopiesDefault(
         catalog,
         CHALLENGE_OPTION_KEYS.hiddenIntents,

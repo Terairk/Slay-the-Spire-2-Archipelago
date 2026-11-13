@@ -30,6 +30,7 @@ export const RUN_OPTION_KEYS = {
   removeOpRelics: "remove_op_relics",
   releaseOnVictory: "release_on_victory",
   seeded: "seeded",
+  blitzMerchantChance: "blitz_merchant_chance",
 } as const;
 
 /** Generated `remove_op_relics` category names keyed by their Run Settings answer field. */
@@ -43,6 +44,7 @@ export const CHALLENGE_OPTION_KEYS = {
   runModifiers: "run_modifiers",
   enemyHpScaling: "enemy_hp_scaling",
   enemyDamageScaling: "enemy_damage_scaling",
+  dreadMode: "dread_mode",
   hiddenIntents: "hidden_intents",
   hiddenHealth: "hidden_health",
   hiddenPiles: "hidden_piles",

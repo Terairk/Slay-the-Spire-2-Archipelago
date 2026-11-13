@@ -12,11 +12,11 @@
     },
     "options": {
       "path": "world/spire2/options.py",
-      "sha256": "b0fa754ae0e945b1660d3600d28365de0327e92069df0af6e8d1ab367baf690a"
+      "sha256": "93da519fa1ba5e93be98970d82b8d42d526c2278328c7bbb0565cbed8eaad7ef"
     },
     "web_world": {
       "path": "world/spire2/web_world.py",
-      "sha256": "e40f501a70da20db5c46f8142f5cddbf8d2055a81d91ee20f4379021a332309a"
+      "sha256": "bdd0493f789b2de6543a49ced36e9e9759e892c4f5ab57728a3e218c95d4bca4"
     }
   },
   "characters": {
@@ -218,6 +218,8 @@
     "run_modifiers",
     "enemy_hp_scaling",
     "enemy_damage_scaling",
+    "dread_mode",
+    "blitz_merchant_chance",
     "hidden_intents",
     "hidden_health",
     "hidden_piles",
@@ -253,7 +255,8 @@
         "remove_op_relics",
         "progressive_starter_card",
         "progressive_starter_relic",
-        "shuffle_all_cards"
+        "shuffle_all_cards",
+        "blitz_merchant_chance"
       ],
       "start_collapsed": false,
       "source": "web_world"
@@ -395,6 +398,7 @@
         "run_modifiers",
         "enemy_hp_scaling",
         "enemy_damage_scaling",
+        "dread_mode",
         "hidden_intents",
         "hidden_health",
         "hidden_piles",
@@ -4234,6 +4238,70 @@
       "maximum": 15,
       "supports_weighting": true,
       "group": "Challenges"
+    },
+    "dread_mode": {
+      "key": "dread_mode",
+      "class_name": "DreadMode",
+      "module": "worlds.spire2.options",
+      "kind": "toggle",
+      "display_name": "Dread Mode",
+      "description": "Every run is a Dread run, the game's Dread mode. Each act has a Dominion, an extra combat rule\nset by that act's boss. Bosses are stronger, and you gain an Ascender's Bane at the start of Act 2\nand of Act 3. Dread replaces your Ascension settings: all ten Ascensions are on and there are no\nAscension Down items, and the Ascension and Ascension Down options are ignored. Needs the game's\nbeta branch; on the main branch runs are standard runs with those Ascensions. Logic does not\naccount for it. In multiplayer, the host's setting applies to the whole run.",
+      "default": false,
+      "raw_default": 0,
+      "visibility": {
+        "name": "all",
+        "value": 15,
+        "flags": [
+          "template",
+          "simple_ui",
+          "complex_ui",
+          "spoiler",
+          "all"
+        ]
+      },
+      "source": "game",
+      "choices": [
+        {
+          "name": "false",
+          "display_name": "False",
+          "value": 0
+        },
+        {
+          "name": "true",
+          "display_name": "True",
+          "value": 1
+        }
+      ],
+      "required_game_feature": "dread",
+      "supports_weighting": true,
+      "group": "Challenges"
+    },
+    "blitz_merchant_chance": {
+      "key": "blitz_merchant_chance",
+      "class_name": "BlitzMerchantChance",
+      "module": "worlds.spire2.options",
+      "kind": "range",
+      "display_name": "Blitz Merchant Chance",
+      "description": "Chance, in percent, for each shop to be a Blitz merchant instead: six offers and three free\npicks in place of a shop's stock. Shop Sanity checks are still sold there. 0 turns it off.\nSingleplayer only for now. Needs the game's beta branch; on the main branch every shop is\nnormal. Logic does not account for it.",
+      "default": 0,
+      "raw_default": 0,
+      "visibility": {
+        "name": "all",
+        "value": 15,
+        "flags": [
+          "template",
+          "simple_ui",
+          "complex_ui",
+          "spoiler",
+          "all"
+        ]
+      },
+      "source": "game",
+      "minimum": 0,
+      "maximum": 100,
+      "required_game_feature": "blitz_merchant",
+      "supports_weighting": true,
+      "group": "Game Options"
     },
     "hidden_intents": {
       "key": "hidden_intents",

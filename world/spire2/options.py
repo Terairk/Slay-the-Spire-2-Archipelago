@@ -716,6 +716,34 @@ class EnemyDamageScaling(Range):
     range_end = 15
     default = 0
 
+class DreadMode(Toggle):
+    """Every run is a Dread run, the game's Dread mode. Each act has a Dominion, an extra combat rule
+    set by that act's boss. Bosses are stronger, and you gain an Ascender's Bane at the start of Act 2
+    and of Act 3. Dread replaces your Ascension settings: all ten Ascensions are on and there are no
+    Ascension Down items, and the Ascension and Ascension Down options are ignored. Needs the game's
+    beta branch; on the main branch runs are standard runs with those Ascensions. Logic does not
+    account for it. In multiplayer, the host's setting applies to the whole run.
+    """
+    display_name = "Dread Mode"
+    default = 0
+    # Only some supported game versions have Dread. A set option sends this name in the slot's
+    # required_game_features. A client without the feature plays without the setting and says
+    # so when connecting, and the builder labels the option.
+    required_game_feature = "dread"
+
+class BlitzMerchantChance(Range):
+    """Chance, in percent, for each shop to be a Blitz merchant instead: six offers and three free
+    picks in place of a shop's stock. Shop Sanity checks are still sold there. 0 turns it off.
+    Singleplayer only for now. Needs the game's beta branch; on the main branch every shop is
+    normal. Logic does not account for it.
+    """
+    display_name = "Blitz Merchant Chance"
+    range_start = 0
+    range_end = 100
+    default = 0
+    # Needed whenever the option is above 0; see DreadMode.required_game_feature.
+    required_game_feature = "blitz_merchant"
+
 # Death Link Options
 
 class DeathLink(ArchipelagoDeathLink):
@@ -1080,6 +1108,8 @@ class Spire2Options(PerGameCommonOptions):
     run_modifiers: RunModifiers
     enemy_hp_scaling: EnemyHpScaling
     enemy_damage_scaling: EnemyDamageScaling
+    dread_mode: DreadMode
+    blitz_merchant_chance: BlitzMerchantChance
     hidden_intents: HiddenIntents
     hidden_health: HiddenHealth
     hidden_piles: HiddenPiles
