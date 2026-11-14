@@ -2,7 +2,7 @@ namespace StS2AP.Models
 {
     /// <summary>
     /// Categories selected by the APWorld's remove_op_relics option. Slot data carries only
-    /// these names; <c>OpRelicPolicy</c> decides which relics each category removes, so the
+    /// these names; <c>RelicRules</c> decides which relics each category removes, so the
     /// exact relics follow the installed client version.
     /// </summary>
     [Flags]

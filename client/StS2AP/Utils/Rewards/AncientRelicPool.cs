@@ -18,23 +18,9 @@ namespace StS2AP.Utils
 
         private const string ChoiceSeedDomain = "sts2ap-ancient-choice-v1";
 
-        /// <summary>Relics that must never appear in AP-built Ancient choice pools.</summary>
-        private static readonly Type[] BlacklistedRelicTypes =
-        [
-            typeof(Driftwood),
-        ];
-
-        private static bool IsBlacklisted(RelicModel relic) =>
-            BlacklistedRelicTypes.Any(type => type.IsInstanceOfType(relic));
-
+        // Which relics an AP Ancient choice may not offer lives in RelicRules.
         private static bool IsExcluded(RelicModel relic, Player player, ArchipelagoSettings? settings, int? startOfActIndex) =>
-            IsBlacklisted(relic)
-            // Golden Compass regenerates the current map on pickup. Only offer it at the
-            // Act 2 Ancient, never in an Anytime reward or at the start of another act.
-            || (relic is GoldenCompass && startOfActIndex != 1)
-            // remove_op_relics' Ancient category applies only to Anytime rewards (no start act).
-            || (startOfActIndex == null && OpRelicPolicy.IsRemovedFromAnytimeAncients(relic, player, settings))
-            || ProgressiveStarterUtility.ShouldExcludeAncientRelic(relic, player, settings);
+            RelicRules.IsExcludedFromAncientChoices(relic, player, settings, startOfActIndex);
 
         /// <summary>
         /// Selects a stable set of three relics for a reward key without consuming the game's RNG.
@@ -133,10 +119,10 @@ namespace StS2AP.Utils
                 .GroupBy(ancient => ancient.Id)
                 .Select(group => group.First());
 
-            // A sorted list so that the same RNG roll means the same relic on every replica.
+            // A sorted list so that the same RNG roll means the same relic on every replica. A shop
+            // slot counts as an Anytime reward for the Ancient choice rules.
             var candidates = CollectCandidateRelics(player, allAncients, ownedOrOnSale, logFailures: true, settings)
                 .Values
-                .Where(relic => !OpRelicPolicy.IsRemovedFromAnytimeAncients(relic, player, settings))
                 .OrderBy(relic => relic.Id.Entry, StringComparer.Ordinal)
                 .ToList();
 

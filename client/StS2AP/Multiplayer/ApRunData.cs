@@ -841,6 +841,9 @@ public static class ApRunData
         && (left.SlotSettings == null) == (right.SlotSettings == null)
         && left.SlotSettings?.AncientRelicLocation == right.SlotSettings?.AncientRelicLocation
         && left.SlotSettings?.AncientRelicPool == right.SlotSettings?.AncientRelicPool
+        // RelicRules reads these from every player's staged settings.
+        && left.SlotSettings?.RemovedOpRelics == right.SlotSettings?.RemovedOpRelics
+        && left.SlotSettings?.ShopSanity == right.SlotSettings?.ShopSanity
         && RelicReceiptMapsEqual(
             left.InitialRelicReceiptIndexesByCharacter,
             right.InitialRelicReceiptIndexesByCharacter)
