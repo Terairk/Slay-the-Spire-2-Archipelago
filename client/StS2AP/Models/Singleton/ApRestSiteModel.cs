@@ -11,7 +11,9 @@ namespace StS2AP.Models.Singleton;
 
 /// <summary>
 /// Adds AP Campfire checks and progressive Rest/Smith locks through the base game's run-model
-/// hook. RestSiteSynchronizer remains the sole owner of multiplayer selection semantics.
+/// hook. RestSiteSynchronizer remains the sole owner of multiplayer selection semantics; in
+/// multiplayer the inputs come from <see cref="RoomInputsMultiplayer"/>, so every replica builds the
+/// same list for each player.
 /// </summary>
 [RegisterSingleton]
 public sealed class ApRestSiteModel : HookedSingletonModel
@@ -137,21 +139,14 @@ public sealed class ApRestSiteModel : HookedSingletonModel
             return true;
         }
 
-        restLevel = 0;
-        smithLevel = 0;
-        checkedLocations = new HashSet<long>();
-        if (!ApPlayerContextResolver.TryGetRewardProgress(
-                player,
-                out var progress,
-                out reason
-            ))
-        {
-            return false;
-        }
-
-        progress.ProgressiveRests.TryGetValue(characterOffset, out restLevel);
-        progress.ProgressiveSmiths.TryGetValue(characterOffset, out smithLevel);
-        checkedLocations = progress.CheckedCampfireLocationIds;
-        return true;
+        // Live multiplayer progress reaches each replica at a different time. Use the inputs the
+        // host queued ahead of this campfire so every replica builds the same option list.
+        return RoomInputsMultiplayer.TryGetCampfireInputs(
+            player,
+            out restLevel,
+            out smithLevel,
+            out checkedLocations,
+            out reason
+        );
     }
 }
