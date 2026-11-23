@@ -151,6 +151,12 @@ public static class RoomInputsMultiplayer
         return true;
     }
 
+    /// <summary>
+    /// Host only. Snapshots the host's view of every AP player's progress and queues it as a
+    /// managed action. Called from inside RequestEnqueue for the move or vote that triggered it,
+    /// so the snapshot takes the action ID just before that action and runs first on every
+    /// replica. The host stores it only when the action executes, like everyone else.
+    /// </summary>
     private static void RequestInputs(RunState runState, string reason)
     {
         if (!ApRunData.TryGetSharedState(runState, out ApRunSharedState shared))
