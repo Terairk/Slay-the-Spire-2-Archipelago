@@ -992,6 +992,7 @@ public static class MultiplayerSupport
         ProgressiveStarterMultiplayer.EndRun();
         AscensionMultiplayer.EndRun();
         AncientMultiplayer.EndRun();
+        RoomInputsMultiplayer.EndRun();
         DeathLinkMultiplayer.EndRun();
     }
 

@@ -45,6 +45,7 @@ namespace StS2AP
             RelicReceiptMultiplayer.Initialize();
             ProgressiveStarterMultiplayer.Initialize();
             AscensionMultiplayer.Initialize();
+            RoomInputsMultiplayer.Initialize();
             DeathLinkUtility.Initialize();
             BuffUtility.Initialize();
 

@@ -4,19 +4,15 @@ using MegaCrit.Sts2.Core.Runs;
 namespace StS2AP.Utils;
 
 /// <summary>
-/// Supplies the host-confirmed, per-Net-ID AP inputs used when MegaCrit constructs one mutable
-/// Ancient event per player on every replica. MegaCrit continues to own option-index and relic
-/// synchronization; this class only makes the deterministic option transform owner-correct.
+/// Supplies the per-Net-ID AP inputs used when MegaCrit constructs one mutable Ancient event per
+/// player on every replica. MegaCrit continues to own option-index and relic synchronization; this
+/// class only makes the deterministic option transform owner-correct. The counts come from
+/// <see cref="RoomInputsMultiplayer"/>, which every replica updates at the same point in the
+/// action queue.
 /// </summary>
 public static class AncientMultiplayer
 {
-    private sealed record ConfirmedProgress(
-        long Revision,
-        IReadOnlyDictionary<long, int> ProgressiveAncients
-    );
-
-    private static readonly Dictionary<ulong, ConfirmedProgress> ConfirmedByOwner = new();
-    private static readonly Dictionary<ulong, ConfirmedProgress> FrozenByOwner = new();
+    private static readonly Dictionary<ulong, IReadOnlyDictionary<long, int>> FrozenByOwner = new();
     private static RunState? _runState;
     private static bool _encounterFrozen;
 
@@ -27,44 +23,18 @@ public static class AncientMultiplayer
             return;
 
         _runState = runState;
-        foreach (Player player in runState.Players)
-        {
-            if (!ApPlayerContextResolver.TryGetRewardProgressSource(
-                    player,
-                    out ApPlayerRunState source,
-                    out _
-                ))
-            {
-                continue;
-            }
-
-            var counts = source.Progress.Initialized
-                ? new Dictionary<long, int>(source.Progress.ProgressiveAncients)
-                : new Dictionary<long, int>();
-            foreach ((long characterOffset, int initialCount) in
-                source.InitialProgressiveAncientsByCharacter)
-            {
-                counts.TryGetValue(characterOffset, out int checkpointCount);
-                counts[characterOffset] = Math.Max(checkpointCount, initialCount);
-            }
-            ConfirmedByOwner[player.NetId] = new ConfirmedProgress(
-                source.ProgressRevision,
-                counts
-            );
-        }
     }
 
     public static void EndRun()
     {
         _runState = null;
         _encounterFrozen = false;
-        ConfirmedByOwner.Clear();
         FrozenByOwner.Clear();
     }
 
     /// <summary>
-    /// Freezes the latest host-confirmed thresholds at the native encounter boundary. A receipt
-    /// confirmed after this point deliberately applies to the next applicable Ancient encounter.
+    /// Freezes the agreed Progressive Ancient counts at the native encounter boundary, so the
+    /// whole event uses one set even if new room inputs arrive while it is open.
     /// </summary>
     public static void BeginEncounter(RunState runState, bool isAncient)
     {
@@ -79,48 +49,17 @@ public static class AncientMultiplayer
             return;
         }
 
-        foreach ((ulong owner, ConfirmedProgress progress) in ConfirmedByOwner)
+        foreach (Player player in runState.Players)
         {
-            FrozenByOwner[owner] = new ConfirmedProgress(
-                progress.Revision,
-                new Dictionary<long, int>(progress.ProgressiveAncients)
-            );
+            if (RoomInputsMultiplayer.TryGetProgressiveAncients(
+                    player.NetId,
+                    out Dictionary<long, int> counts
+                ))
+            {
+                FrozenByOwner[player.NetId] = counts;
+            }
         }
         _encounterFrozen = true;
-    }
-
-    /// <summary>
-    /// Installs a progress revision only after the fixed host has accepted it. The caller is the
-    /// unified progress transport, so no second Ancient-specific network protocol is required.
-    /// </summary>
-    // called a lot, maybe this should be replaced elsewhere but for now its freezing what people's progressive ancients
-    // are when they enter the Ancients room so everyone's view of the room is consistent. Honestly probably should
-    // disable this in start_of_act mode because of checkpoints. You can easily miss it.
-    // Also this is quite a generic thing and it should probably be moved outside of Ancients
-    // once this is used for other things.
-    public static void ConfirmProgress(
-        RunState runState,
-        ulong ownerNetId,
-        long revision,
-        ApRunProgressState progress)
-    {
-        if (!ReferenceEquals(_runState, runState) || !progress.Initialized)
-        {
-            return;
-        }
-
-        if (!ApRunData.TryGetPlayerState(runState, ownerNetId, out ApPlayerRunState state)
-            || state.Participation != ApParticipationKind.OwnApSlot
-            || (ConfirmedByOwner.TryGetValue(ownerNetId, out ConfirmedProgress? existing)
-                && revision < existing.Revision))
-        {
-            return;
-        }
-
-        ConfirmedByOwner[ownerNetId] = new ConfirmedProgress(
-            revision,
-            new Dictionary<long, int>(progress.ProgressiveAncients)
-        );
     }
 
     public static bool TryGetFrozenContext(
@@ -140,9 +79,12 @@ public static class AncientMultiplayer
             return false;
         }
         if (!_encounterFrozen
-            || !FrozenByOwner.TryGetValue(player.NetId, out ConfirmedProgress? progress))
+            || !FrozenByOwner.TryGetValue(
+                player.NetId,
+                out IReadOnlyDictionary<long, int>? progressiveAncients
+            ))
         {
-            reason = $"No host-confirmed Ancient progress was frozen for player {player.NetId}.";
+            reason = $"No agreed Ancient progress was frozen for player {player.NetId}.";
             return false;
         }
         if (!settings.TryGetCharacterConfig(
@@ -155,7 +97,7 @@ public static class AncientMultiplayer
         }
 
         characterOffset = config.CharOffset;
-        progress.ProgressiveAncients.TryGetValue(characterOffset, out receivedCount);
+        progressiveAncients.TryGetValue(characterOffset, out receivedCount);
         if (characterOffset > 0)
             return true;
 

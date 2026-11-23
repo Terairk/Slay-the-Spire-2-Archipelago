@@ -475,7 +475,6 @@ public static class ApRunData
         {
             if (!BroadcastHostConfirmedProgress(snapshotMessage, deltaMessage))
                 return false;
-            AncientMultiplayer.ConfirmProgress(runState, player.NetId, revision, snapshot);
         }
         return true;
     }
@@ -545,12 +544,6 @@ public static class ApRunData
                 {
                     if (runState.GetPlayer(context.Message.OwnerNetId) is Player existingOwner)
                         StandardRelicPool.ReserveAssignedChoices(existingOwner, state.Progress);
-                    AncientMultiplayer.ConfirmProgress(
-                        runState,
-                        context.Message.OwnerNetId,
-                        context.Message.Revision,
-                        context.Message.Progress
-                    );
                 }
                 return;
             }
@@ -568,12 +561,6 @@ public static class ApRunData
                 if (!BroadcastHostConfirmedProgress(context.Message, deltaMessage: null))
                     return;
             }
-            AncientMultiplayer.ConfirmProgress(
-                runState,
-                context.Message.OwnerNetId,
-                context.Message.Revision,
-                state.Progress
-            );
         });
         if (!posted)
             LogUtility.Error("Could not schedule the AP progress snapshot on the game main loop.");
@@ -615,12 +602,6 @@ public static class ApRunData
                 {
                     if (runState.GetPlayer(context.Message.OwnerNetId) is Player existingOwner)
                         StandardRelicPool.ReserveAssignedChoices(existingOwner, state.Progress);
-                    AncientMultiplayer.ConfirmProgress(
-                        runState,
-                        context.Message.OwnerNetId,
-                        context.Message.Revision,
-                        state.Progress
-                    );
                 }
                 return;
             }
@@ -660,12 +641,6 @@ public static class ApRunData
                     return;
                 }
             }
-            AncientMultiplayer.ConfirmProgress(
-                runState,
-                context.Message.OwnerNetId,
-                context.Message.Revision,
-                state.Progress
-            );
         });
         if (!posted)
             LogUtility.Error("Could not schedule the AP progress delta on the game main loop.");

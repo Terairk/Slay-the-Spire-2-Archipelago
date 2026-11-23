@@ -202,6 +202,10 @@ namespace StS2AP.Patches
                 Player? localPlayer = MultiplayerSupport.BeginRun(__result);
                 if (localPlayer == null)
                     return;
+                // Before the claims check: every replica must build the same campfire and Ancient
+                // options, including one whose own AP claims are disabled.
+                RoomInputsMultiplayer.BindRun(__result);
+                AncientMultiplayer.BindRun(__result);
                 if (MultiplayerSupport.ClaimsInvalidated)
                 {
                     LogUtility.Error(
@@ -210,7 +214,6 @@ namespace StS2AP.Patches
                     return;
                 }
 
-                AncientMultiplayer.BindRun(__result);
                 StandardRelicPool.BindRun(__result);
 
                 ArchipelagoCharTrackerUI.RemoveUI();
